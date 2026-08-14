@@ -22,24 +22,43 @@ MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
-**Current baseline: 1759 tests — 1752 passing, 1 skipped, 6 failing (2026-08-14, 15m45s).** Measured in the
-SDK container with D-336 and D-338 in the tree, so it is a floor. Of the 6:
-**4 `ClamAvUploadPathTests`** (the `clamav` service sits behind `profiles: ["scanning"]` and was not up —
-`CLAMAV_HOST=clamav` alone does nothing if nothing is listening); **1 `NoContentDeclarationTests`**, which is
-an artifact of the runner below rather than of the code; and **1 flaky
-`NotificationDedupTests.Kinds_that_legitimately_repeat_are_not_constrained`** — see below.
+**Current baseline: 1820 tests — 1819 passing, 1 skipped, 0 failing (2026-08-14, 16m48s).** Measured in the
+SDK container with clamd up. **Zero is the standard now — a red test is a defect, not "the environment."**
 
-> ⚠️ **A test that keys a fixture on `GetHashCode()` is flaky by construction.**
-> `NotificationDedupTests` derives its phone suffix from `Math.Abs(kind.GetHashCode()) % 100`.
-> `string.GetHashCode()` is **randomized per process** in .NET Core+, so the suffix changes every run and
-> roughly **6%** of processes map two of that Theory's four `kind` values onto the same number — a duplicate
-> `IX_users_Phone` and a `23505` that looks like a real regression. It passes **4/4 in isolation**, which is
-> the tell. Pre-existing (untouched since `d150f01`), unrelated to whatever change surfaces it. **Never key a
-> test fixture on a string hash** — use the value itself or the case index. Fix: `NewUserAsync(kind)`.
+Run it exactly like this; the two `-e` flags are what the ClamAV class needs and nothing else supplies:
 
-*Previous baseline: 1709 tests — 1697 passing, 1 skipped, 11 failing (2026-08-11, 25m24s).* Its 11 included
-**3 `EventAudienceAuthorizationTests`** that were genuinely failing on committed `HEAD` — verified in a
-pristine `git worktree` at `dd04d54`.
+```bash
+docker compose --profile scanning up -d clamav      # NOT in the default profile; ~1 min to healthy
+MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
+  -e CLAMAV_HOST=clamav -e CLAMAV_PORT=3310 \
+  -v "/d/event/Kurx:/src" -w /src/backend mcr.microsoft.com/dotnet/sdk:10.0 bash -c \
+  "dotnet build Kurx.sln -c Debug -warnaserror -p:ArtifactsPath=/tmp/artifacts --nologo -v q && \
+   dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
+```
+
+**The three failures this baseline used to carry were fixed, not tolerated.** Each had been written off as
+environmental, and two of the three were real defects wearing that label:
+
+- **4 `ClamAvUploadPathTests`** — genuinely just the daemon. It sits behind `profiles: ["scanning"]`, and
+  `CLAMAV_HOST=clamav` does nothing if nothing is listening. Start it and all five pass, EICAR included.
+  (If `docker pull clamav/clamav:1.4` fails with a TLS error against `auth.docker.io`, retry — it is
+  transient Hub auth flakiness, not a broken mirror.)
+- **`NoContentDeclarationTests` + `OpenApiCoverageTests`** — both walked up from `AppContext.BaseDirectory`
+  to find the repo, which cannot work under `-p:ArtifactsPath` (the binary lands outside the `/src` mount).
+  Now resolved through `RepoRoot`, which uses `[CallerFilePath]` — the compile-time source path — with the
+  old walk kept as a fallback. **The sibling was the worse half:** `OpenApiCoverageTests` treats "spec not
+  found" as "not generated yet" and *returns*, so it silently skipped its own assertion in the container and
+  passed against a floor of 64 while real coverage was 464/535. A ratchet that stops ratcheting is worse
+  than one that fails. Baseline raised to the measured 464.
+- **`NotificationDedupTests`** — keyed a phone suffix on `Math.Abs(kind.GetHashCode()) % 100`, and
+  `string.GetHashCode()` is **randomized per process** in .NET Core, so ~6% of runs mapped two of its four
+  Theory cases onto one phone and hit `IX_users_Phone` with a `23505` that reads like a real regression.
+  Passing 4/4 on an isolated re-run is the tell. **Never key a test fixture on a string hash** — write the
+  value down, as every other test in that file already did.
+
+*Previous baselines: 1759 / 1752 pass / 6 fail (2026-08-14, before those fixes); 1709 / 1697 pass / 11 fail
+(2026-08-11), whose 11 included **3 `EventAudienceAuthorizationTests`** genuinely failing on committed
+`HEAD`, verified in a pristine `git worktree` at `dd04d54`.*
 
 **Those 3 are now fixed, and the cause is worth carrying.** `LoginAsAsync(userId)` reassigns a
 user's phone and then signs in — but `otp/verify` is a **sign-in-or-register** ceremony, and the helper

@@ -36,13 +36,16 @@ services:
       timeout: 3s
       retries: 20
 
-  # D-298. Behind a profile so `docker compose up` stays fast: the image pulls a ~250 MB signature
-  # database and takes a minute or two before it answers. Start it with
-  # `docker compose --profile scanning up -d clamav`, and set FILE_SCANNER=clamav to use it.
+  # D-298. Starts with the default `up`. It is the slow one: the image pulls a ~250 MB signature
+  # database and takes a minute or two before it answers a scan, so the first `up` after a fresh
+  # pull is not quick. Set FILE_SCANNER=clamav to actually route uploads through it.
   clamav:
     image: clamav/clamav:1.4
     container_name: kurx-clamav
-    profiles: ["scanning"]
+    # No profile: a default `up` starts the whole stack. Note this is the heaviest service here — the
+    # image is ~1 GB and `start_period: 120s` is real, because clamd loads its signature database
+    # before it will answer a scan. It is also what `FILE_SCANNER=clamav` and the four
+    # ClamAvUploadPathTests need, so having it up by default is what makes those pass.
     ports:
       - "3310:3310"
     healthcheck:
@@ -90,8 +93,8 @@ services:
       # number is PII and this file is committed. No-op unless set AND the platform has no SuperAdmin yet,
       # and it only grants the role to an account that already registered through the real OTP flow.
       SUPERADMIN_BOOTSTRAP_PHONE: ${SUPERADMIN_BOOTSTRAP_PHONE:-}
-      # D-298. Defaults to `none` so a dev machine needs no clamd. Set FILE_SCANNER=clamav in .env and
-      # start the daemon with `docker compose --profile scanning up -d clamav`.
+      # D-298. Defaults to `none` — scanning is off unless asked for, even though the daemon now starts
+      # with the stack. Set FILE_SCANNER=clamav in .env to route uploads through it.
       FILE_SCANNER: ${FILE_SCANNER:-none}
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
@@ -144,13 +147,13 @@ services:
       retries: 20
 
   web:
-    # Behind a profile so the default `docker compose up` is the backend stack alone (API, Postgres,
-    # Redis, storage). Running the front ends natively with `npm run dev` is the common local loop —
-    # and a native dev server already holding :3000 makes the compose `web` container fail to bind,
-    # which failed the whole `up` command rather than just that one service. Start them with
-    # `docker compose --profile frontend up -d`, or name one directly (`docker compose up -d admin`),
-    # which enables its profile implicitly.
-    profiles: ["frontend"]
+    # Starts with the default `docker compose up` — the whole stack comes up in one command.
+    #
+    # It was previously behind a `frontend` profile because running the front ends natively with
+    # `npm run dev` is a common local loop, and a native dev server already holding :3000 makes this
+    # container fail to bind — which fails the whole `up`, not just this service. That trade is
+    # deliberately reversed: one command starting everything is worth more than tolerating a port
+    # clash. If you do run `npm run dev` natively, stop it first or `docker compose up -d --scale web=0`.
     build:
       context: .
       dockerfile: web/Dockerfile
@@ -184,7 +187,6 @@ services:
 
   admin:
     # Same reasoning as web above — see that comment.
-    profiles: ["frontend"]
     build:
       context: .
       dockerfile: admin/Dockerfile

@@ -27,19 +27,27 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Everything else sits behind a profile, so the default `up` is the loop most changes actually need:
+**There are no profiles: a default `up` starts the whole stack** — `postgres`, `redis`, `backend`,
+`web` (`:3000`), `admin` (`:3001`) and `clamav` (`:3310`), six services in one command.
 
-| Profile | Services | Start with |
+| Service | Port | Notes |
 |---|---|---|
-| `frontend` | `web`, `admin` | `docker compose --profile frontend up --build -d` |
-| `scanning` | `clamav` | `docker compose --profile scanning up -d clamav` |
+| `postgres` | 5433 → 5432 | system of record |
+| `redis` | 6380 → 6379 | SignalR backplane, presence, rate limits |
+| `backend` | 5080 → 8080 | the one dev API port |
+| `web` | 3000 | |
+| `admin` | 3001 | |
+| `clamav` | 3310 | heaviest service — ~1 GB image, `start_period: 120s` while clamd loads its signature database |
 
-Naming a service directly (`docker compose up -d admin`) enables its profile implicitly, and a
-default `up` leaves already-running profiled services alone rather than treating them as orphans.
+Two consequences worth knowing rather than discovering:
 
-`web` and `admin` are profiled because running them natively with `npm run dev` is the common local
-loop, and a native dev server already holding `:3000` made the compose `web` container fail to bind —
-which failed the whole `up` command rather than just that one service.
+- **A native dev server holding `:3000` or `:3001` will fail the whole `up`**, not just that one
+  service. `web`/`admin` used to be profiled out for exactly this reason. If you run them natively
+  with `npm run dev`, stop the container first (`docker compose up -d --scale web=0`) or stop the
+  native server.
+- **First `up` after a pull is slow** because of clamav's image and signature download. It is also
+  what `FILE_SCANNER=clamav` and the four `ClamAvUploadPathTests` need, so having it up by default is
+  what makes those pass.
 
 Startup order is enforced by healthchecks: Postgres/Redis must report healthy before the API container starts; the API must report healthy (`GET /health` via its own healthcheck) before web/admin start. This means a broken database connection or a bad secret fails the API's healthcheck (and thus the container never reports ready) rather than silently serving broken traffic.
 

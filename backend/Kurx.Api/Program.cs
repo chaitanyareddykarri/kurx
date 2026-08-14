@@ -189,11 +189,17 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
     ctx.ProblemDetails.Extensions["correlationId"] = correlationId;
 });
 
+// AllowCredentials is load-bearing, not decoration: the login calls send `withCredentials` so the
+// browser will store/return the httpOnly `kurx_tb` trusted-browser cookie. Without this header the
+// browser drops the request *after* a successful preflight — the API sees OPTIONS 204 and no POST, and
+// the user gets a generic "couldn't sign you in" with nothing in the server log to explain it. Safe here
+// only because the origins are an explicit list; the spec forbids pairing credentials with AllowAnyOrigin.
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
     .WithOrigins((builder.Configuration["ALLOWED_ORIGINS"] ?? "")
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     .AllowAnyHeader()
-    .AllowAnyMethod()));
+    .AllowAnyMethod()
+    .AllowCredentials()));
 
 builder.Services.AddRateLimiter(o =>
 {

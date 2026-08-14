@@ -12,7 +12,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - kurx_pgdata:/var/lib/postgresql/data
+      - kurx_pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kurx"]
       interval: 5s
@@ -53,4 +53,6 @@ services:
         condition: service_healthy
 
 volumes:
-  kurx_pgdata:
+  # `17`, matching the postgres major above: a major upgrade cannot read the older cluster's data
+  # directory, so the new major gets a new volume rather than failing to start on the old one.
+  kurx_pgdata17:

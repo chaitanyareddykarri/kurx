@@ -266,7 +266,7 @@ kurx/
 ├─ web/       Next.js — public site + organizer dashboard
 ├─ admin/     Next.js — staff console (verification, users/orgs, events, blacklist/risk, staff, audit, analytics live; finance pending — admin/STATUS.md)
 ├─ mobile/    Flutter — attendee app (D-019); broad screen surface, per-screen wiring in docs/roadmap/README.md
-└─ infra/     docker-compose for local Postgres + Redis
+└─ infra/     API Dockerfile + Terraform (the stack's compose file is at the repo root)
 ```
 
 **Backend layering** (strict dependency direction, `Api → Infrastructure → Application ← implemented by Infrastructure`, everything depends on `Domain`):
@@ -309,7 +309,7 @@ kurx/
 | `mobile/` | Mobile app | `lib/core`, `lib/common`, `lib/features/{auth,events,orders,organizer,social,...}` | Working Flutter app — OTP auth plus trusted devices/passkeys/recovery, event browse, orders, event chat with attachments and presence, certificates, gamification, 24 organizer screens. Paid checkout and multi-step event creation are the known gaps (see [`roadmap/README.md`](roadmap/README.md)) |
 | `docs/` | All documentation | `DECISIONS.md`, `architecture/`, `api/`, `auth/`, `database/`, `deployment/`, `security/`, `roadmap/`, `ui-ux/`, this handbook | `DECISIONS.md` is the spec (`planning/`/`product/` were never created — see banner) |
 | `.claude/` | Claude Code configuration | `index.md`, `memory/`, `agents/`, `commands/`, `workflows/`, `checklists/` | Session rules and persistent working memory, not product spec |
-| `infra/` | Local infra | Lighter alternate `docker-compose.yml` (Postgres + Redis only) | Compare against root `docker-compose.yml` |
+| `infra/` | Deploy inputs | `Dockerfile.api` (built by root compose, `scripts/push-ecr.sh` and CD), `terraform/` | No compose file lives here — the only one is at the repo root (D-339) |
 
 ---
 

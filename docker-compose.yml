@@ -118,7 +118,7 @@ services:
       IDENTITY_VERIFICATION_BYPASS: ${IDENTITY_VERIFICATION_BYPASS:-true}
     ports:
       # 5080 is the ONE dev API port. `dotnet run` (launchSettings) already serves 5080, and every
-      # client default, `.env.example` and `infra/docker-compose.yml` say 5080 — so compose publishing
+      # client default and `.env.example` say 5080 — so compose publishing
       # 5001 meant the two dev topologies were not interchangeable and mobile (`KURX_API_BASE` default
       # `localhost:5080`) could not reach a compose-run backend at all. Do not reintroduce a second port.
       - "5080:8080"

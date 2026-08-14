@@ -6,7 +6,7 @@ India-focused event-ticketing platform. .NET 10 API (Clean Architecture), Postgr
 - **Web**: `web/` — Next.js 14 App Router, public marketing site + OTP login + attendee/host app shell
 - **Admin**: `admin/` — Next.js staff console on `:3001` (verification queue, event approval, staff & roles, users, orgs, blacklist, risk, reports, audit log, analytics live; finance pending — see [`admin/STATUS.md`](admin/STATUS.md))
 - **Mobile**: `mobile/` — Flutter attendee app (auth, discovery, orders, certificates, gamification, social screens; per-screen wiring status in [`docs/roadmap/README.md`](docs/roadmap/README.md); payments blocked on backend — D-019)
-- **Infra**: `infra/` + root `docker-compose.yml` — Postgres, Redis, API, web, admin containers
+- **Infra**: root `docker-compose.yml` — Postgres, Redis, API, web, admin containers; `infra/` holds the API Dockerfile and Terraform
 
 See [`docs/DECISIONS.md`](docs/DECISIONS.md) for the authoritative record of every non-obvious implementation choice, and [`docs/README.md`](docs/README.md) for the documentation index (architecture, deployment, security, API, roadmap).
 
@@ -56,8 +56,6 @@ docker compose up --build
 ```
 
 This starts Postgres, Redis, the API (`:5080` → container `:8080`), the web app (`:3000`), and the admin app (`:3001`). All four services have real healthchecks; `depends_on: condition: service_healthy` means the API won't start serving until Postgres/Redis report healthy, and web/admin wait on the API.
-
-`infra/docker-compose.yml` is a lighter alternative that only runs Postgres + Redis (`docker compose --profile full up` to also include the API) — useful if you're running the backend/web natively but still want containerized infra.
 
 ## Environment variables
 
@@ -132,7 +130,7 @@ kurx/
 ├── admin/                   # Next.js staff console (trust & safety, users/orgs, events, audit, analytics)
 ├── mobile/                  # Flutter attendee app (feature-first clean architecture)
 ├── packages/ui/             # Shared @kurx/ui design system (consumed by web + admin)
-├── infra/                   # Standalone infra-only docker-compose + API Dockerfile
+├── infra/                   # API Dockerfile (built by compose, push-ecr.sh and CD) + Terraform
 ├── docs/                    # Architecture, deployment, security, API, roadmap docs + DECISIONS.md
 └── docker-compose.yml       # Full-stack compose: postgres, redis, backend, web, admin
 ```

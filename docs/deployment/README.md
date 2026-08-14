@@ -116,8 +116,6 @@ One-time codes are never delivered in development (`SMS_PROVIDER`/`EMAIL_PROVIDE
 `console`), so they exist only in the API log. `scripts/otp.sh` (or `otp.ps1`) prints the most recent
 one with its age against the 5-minute expiry.
 
-`infra/docker-compose.yml` is a lighter, infra-only alternative (Postgres + Redis, with the API behind a `full` profile) for machines that want to run the backend/web natively but still want containerized Postgres/Redis.
-
 ## Startup behavior
 
 On every boot, the API:

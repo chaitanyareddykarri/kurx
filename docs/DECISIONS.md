@@ -13182,3 +13182,46 @@ This does not close the presign TOCTOU that all eight paths share: a presigned U
 so bytes can in principle be replaced after the scan and before the object is read. That predates this work,
 applies equally to chat and posts, and closing it means invalidating a presign on claim — its own decision.
 Named so it is not mistaken for covered.
+
+---
+
+## D-339 · `infra/docker-compose.yml` is deleted; the root compose is the only one (2026-08-14)
+
+**Status: ACCEPTED — one file deleted, six doc references corrected. No application code, no schema, no
+API contract touched.**
+
+`infra/docker-compose.yml` was the original local-infra stack: Postgres + Redis, with the API behind a
+`full` profile, documented as "a lighter alternative … if you're running the backend/web natively but
+still want containerized infra". The root `docker-compose.yml` grew past it and D-337's predecessor
+removed profiles from the root file so one `docker compose up` starts everything. The two had since
+drifted into direct conflict:
+
+| | root `docker-compose.yml` | `infra/docker-compose.yml` |
+|---|---|---|
+| project name | explicit `name: kurx` | none → derived `infra` |
+| postgres container | `kurx-postgres` | `kurx-postgres` — **same name** |
+| postgres host port | 5433 (deliberately, to dodge a native 5432) | **5432** |
+| redis host port | 6380 | 6379 |
+| services | postgres, redis, clamav, backend, web, admin | postgres, redis, api |
+
+The identical `container_name` and the overlapping ports meant the two stacks could never run at the
+same time — starting the infra one while the root stack was up failed on the name collision, and its
+5432 binding reintroduced exactly the native-Postgres shadowing the root file's 5433 mapping exists to
+avoid. It also carried its own copy of the postgres volume name, which is how it survived the D-338-era
+sweep and had to be fixed a second time in `aeb614e` immediately before this deletion. A second compose
+file that cannot run alongside the first, duplicates its services, and needs every infra fix applied
+twice is a maintenance trap, not an alternative.
+
+**Chose:** delete it. The root compose covers the containerized case; running Postgres/Redis natively is
+still supported and documented (see the native fallback the file's own header pointed at), and needs no
+compose file at all.
+
+**Kept:** `infra/Dockerfile.api` and `infra/terraform/`. The Dockerfile is load-bearing — the root
+compose's `backend` service, `scripts/push-ecr.sh` and `.github/workflows/cd.yml` all build from it.
+`infra/` is now deploy inputs, not a runnable stack.
+
+**Docs corrected in the same commit** (they described a file that no longer exists): `README.md` ×3,
+`docs/PROJECT_HANDBOOK.md` ×2, `docs/deployment/README.md` ×1, plus the port-rationale comments in
+`docker-compose.yml` and `.claude/memory/deployment.md` that cited it as corroborating evidence for
+D-318's single 5080 port. Historical entries above that mention the file are left as written — they
+record what was true when decided.

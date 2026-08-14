@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.kurx.kurx_mobile",
+      "sha256_cert_fingerprints": [
+        "CD:DC:AC:94:81:3A:0C:58:4D:80:7A:A3:16:04:90:89:13:0C:6F:CD:7D:B2:2E:5E:DF:84:07:43:3B:D5:FD:F3",
+        "95:CC:B4:8B:67:2D:A7:A4:83:CE:5B:83:4D:5A:6D:D0:2A:F8:FF:13:87:68:62:62:1C:52:96:DF:F3:7E:0A:C2"
+      ]
+    }
+  }
+]

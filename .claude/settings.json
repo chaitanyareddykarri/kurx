@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export DOTNET_ROOT=*)",
+      "Bash(export PATH=*)",
+      "Bash(~/tools/pg/bin/pg_ctl -D ~/tools/pg-data/kurx status*)",
+      "Bash(dotnet --version)"
+    ]
+  }
+}

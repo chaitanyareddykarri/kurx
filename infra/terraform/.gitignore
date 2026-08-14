@@ -1,0 +1,8 @@
+# Terraform state contains resource identifiers and, for some resources, secret material.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan

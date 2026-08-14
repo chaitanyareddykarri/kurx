@@ -1,0 +1,21 @@
+{
+  "omnisharp.dotnetPath": "/Users/naralanaveen/.dotnet",
+  "dotnet.defaultSolution": "backend/Kurx.sln",
+  "terminal.integrated.env.osx": {
+    "DOTNET_ROOT": "/Users/naralanaveen/.dotnet",
+    "PATH": "/Users/naralanaveen/.dotnet:/Users/naralanaveen/.dotnet/tools:${env:PATH}"
+  },
+  "dotnetAcquisitionExtension.existingDotnetPath": [
+    {
+      "extensionId": "ms-dotnettools.csharp",
+      "path": "/Users/naralanaveen/.dotnet/dotnet"
+    },
+    {
+      "extensionId": "ms-dotnettools.csdevkit",
+      "path": "/Users/naralanaveen/.dotnet/dotnet"
+    }
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "git pull": true
+  }
+}

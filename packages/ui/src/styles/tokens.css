@@ -1,0 +1,97 @@
+/*
+ * Kurx design tokens — the single source of truth for theme colours, shared by
+ * web and admin. RGB triplets consumed via `rgb(var(--color-*) / <alpha>)` from
+ * the Tailwind preset. Dark is the default (:root); `.light` overrides it.
+ * next-themes toggles the `light`/`dark` class on <html>.
+ *
+ * Palette: blue on black (D-288, superseding D-286's warm ember direction and,
+ * before it, D-065's two-register split). Every foreground value below was
+ * solved against ALL THREE surface steps — background, surface and elevated —
+ * not just the page background, and verified at >= 4.5:1 for text and >= 3:1
+ * for control boundaries. The verification is executable:
+ * web/test/design-tokens.test.ts re-measures every pair on each run, so a value
+ * cannot be edited below the floor.
+ *
+ * Separate tokens exist because a single one could not do the job:
+ *
+ *   --color-border         decorative edges (cards, dividers). Low contrast by
+ *                          design; WCAG 1.4.11 does not govern chrome.
+ *   --color-border-strong  boundaries that IDENTIFY a control (inputs, selects,
+ *                          checkboxes). Must clear 3:1 or the control's extent
+ *                          is not perceivable. Every pre-D-286 palette failed
+ *                          this at 1.30-1.55:1.
+ *
+ *   --color-accent         the blue FILL (#2563EB). Deliberately one ramp step
+ *                          below --color-accent-text so a WHITE label on it
+ *                          clears AA at 5.17:1; it is a surface, not text
+ *                          (3.26:1 as text on dark, which is why it is not the
+ *                          link colour).
+ *   --color-accent-text    blue as TEXT — links, text buttons. #3B82F6 on dark
+ *                          (4.58:1 worst step), darkened to #1D4ED8 on light
+ *                          (6.12:1 worst step).
+ *   --color-on-accent      the label ON a blue fill. White, and measured:
+ *                          #FFFFFF/#2563EB is 5.17:1. The inverse of the D-286
+ *                          ember finding, where white on #F0762B was 2.86:1 and
+ *                          the label had to be ink. The rule is "measure the
+ *                          fill", not "always ink".
+ *
+ * Semantics: blue acts, teal attests. Blue marks the live and the actionable;
+ * teal marks the verified and the attested (provenance, certificates, confirmed
+ * allies). `--color-success` is separate on purpose — overloading teal with
+ * generic success chrome would dilute the provenance signal.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --color-background: 10 10 10;
+  --color-surface: 17 24 39;
+  --color-elevated: 22 29 45;
+  --color-border: 31 41 55;
+  --color-border-strong: 100 116 139;
+  --color-text: 255 255 255;
+  --color-muted: 156 163 175;
+  --color-accent: 37 99 235;
+  --color-on-accent: 255 255 255;
+  --color-accent-text: 59 130 246;
+  --color-teal: 48 158 136;
+  --color-success: 63 185 80;
+  --color-warning: 230 179 30;
+  --color-danger: 240 92 89;
+}
+
+.light {
+  color-scheme: light;
+
+  --color-background: 255 255 255;
+  --color-surface: 248 250 252;
+  --color-elevated: 241 245 249;
+  --color-border: 226 232 240;
+  --color-border-strong: 100 116 139;
+  --color-text: 15 23 42;
+  --color-muted: 71 85 105;
+  --color-accent: 37 99 235;
+  --color-on-accent: 255 255 255;
+  --color-accent-text: 29 78 216;
+  --color-teal: 31 107 92;
+  --color-success: 25 124 54;
+  --color-warning: 135 104 9;
+  --color-danger: 206 44 44;
+}
+
+/*
+ * Reduced motion. Every animated Kurx component honours this; before D-286 no
+ * component on any surface checked it (audit S2-6). Transforms become instant
+ * and fades are clamped short rather than removed, so state changes stay
+ * perceivable without movement.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+    scroll-behavior: auto !important;
+  }
+}

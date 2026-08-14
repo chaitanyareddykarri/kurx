@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- Invitation emails -->
+  <data name="invitation_subject" xml:space="preserve">
+    <value>You're invited to {0}</value>
+  </data>
+  <data name="invitation_greeting" xml:space="preserve">
+    <value>Hi {0},</value>
+  </data>
+  <data name="invitation_body_line1" xml:space="preserve">
+    <value>You're invited to <strong>{0}</strong> on {1}.</value>
+  </data>
+  <data name="invitation_body_cta" xml:space="preserve">
+    <value>Register here</value>
+  </data>
+  <data name="invitation_wa_message" xml:space="preserve">
+    <value>Hi {0}, you're invited to {1} on {2}. Register: {3}</value>
+  </data>
+
+  <!-- Announcement emails -->
+  <data name="announcement_email_body" xml:space="preserve">
+    <value>&lt;p&gt;&lt;strong&gt;{0}&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;{1}&lt;/p&gt;</value>
+  </data>
+  <data name="announcement_wa_message" xml:space="preserve">
+    <value>{0}\n{1}</value>
+  </data>
+
+  <!-- Push notifications -->
+  <data name="push_new_event" xml:space="preserve">
+    <value>New event: {0}</value>
+  </data>
+  <data name="push_ticket_confirmed" xml:space="preserve">
+    <value>Your ticket for {0} is confirmed.</value>
+  </data>
+  <data name="push_event_reminder" xml:space="preserve">
+    <value>{0} starts tomorrow. Don't forget!</value>
+  </data>
+  <data name="push_transfer_received" xml:space="preserve">
+    <value>{0} has transferred a ticket to you for {1}.</value>
+  </data>
+</root>

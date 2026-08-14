@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      NU1902/NU1903: transitive vulnerability warnings from MessagePack (pulled in by SignalR).
+      We have no direct dependency on MessagePack and cannot upgrade it; suppress to keep
+      -warnaserror clean. Track the upstream fix at:
+      https://github.com/dotnet/aspnetcore/issues — remove this NoWarn when SignalR
+      ships a patched MessagePack transitive.
+    -->
+    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,35 @@
+{
+  "_readme": [
+    "Cross-platform phone conformance corpus (D-288). The authentication surface parses phone numbers on",
+    "three platforms with three INDEPENDENT libphonenumber ports: libphonenumber-csharp (backend),",
+    "libphonenumber-js (web + admin) and phone_numbers_parser (Flutter). Their version numbers are not",
+    "comparable to each other, so there is nothing to pin — the only thing that can be held stable is",
+    "BEHAVIOUR. Each platform has a test that reads this file and asserts it produces exactly these",
+    "results, so a metadata drift that would make one platform reject what another accepts fails CI",
+    "instead of failing a user who cannot register.",
+    "",
+    "Adding a case: pick a number that is real-shaped but not a real subscriber, and add it here first.",
+    "If a platform then fails, that platform's metadata is the outlier — bump it, do not edit the",
+    "expectation to match the outlier."
+  ],
+  "cases": [
+    { "input": "+919876543210",   "region": "IN", "e164": "+919876543210",   "valid": true,  "note": "India — the legacy default region" },
+    { "input": "+14155552671",    "region": "US", "e164": "+14155552671",    "valid": true,  "note": "United States" },
+    { "input": "+442071838750",   "region": "GB", "e164": "+442071838750",   "valid": true,  "note": "United Kingdom" },
+    { "input": "+6591234567",     "region": "SG", "e164": "+6591234567",     "valid": true,  "note": "Singapore — 10-digit E.164, corrupted by the old length rule" },
+    { "input": "+4791234567",     "region": "NO", "e164": "+4791234567",     "valid": true,  "note": "Norway — 10-digit E.164, corrupted by the old length rule" },
+    { "input": "+4531234567",     "region": "DK", "e164": "+4531234567",     "valid": true,  "note": "Denmark — 10-digit E.164, corrupted by the old length rule" },
+    { "input": "+61412345678",    "region": "AU", "e164": "+61412345678",    "valid": true,  "note": "Australia" },
+    { "input": "+4915112345678",  "region": "DE", "e164": "+4915112345678",  "valid": true,  "note": "Germany — 13 digits, the long end of the range" },
+    { "input": "+33612345678",    "region": "FR", "e164": "+33612345678",    "valid": true,  "note": "France" },
+    { "input": "+818012345678",   "region": "JP", "e164": "+818012345678",   "valid": true,  "note": "Japan" },
+
+    { "input": "+91 98765 43210", "region": "IN", "e164": "+919876543210",   "valid": true,  "note": "Spacing is not significant" },
+    { "input": "+1 (415) 555-2671","region": "US", "e164": "+14155552671",   "valid": true,  "note": "Punctuation is not significant" },
+
+    { "input": "+99900011122",    "region": null, "e164": null,              "valid": false, "note": "Unassigned country code — must never be given an invented country" },
+    { "input": "+12345",          "region": null, "e164": null,              "valid": false, "note": "Too short to be anyone's number" },
+    { "input": "+6512345678",     "region": null, "e164": null,              "valid": false, "note": "Parses AND resolves to SG, but is not a real Singapore range — parseable is not valid, which is the distinction every platform must agree on" },
+    { "input": "+442071838",      "region": null, "e164": null,              "valid": false, "note": "Too short for its own numbering plan" }
+  ]
+}

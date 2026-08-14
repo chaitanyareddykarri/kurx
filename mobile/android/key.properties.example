@@ -1,0 +1,14 @@
+# Release signing credentials (D-103a). Copy to key.properties and fill in.
+#
+# key.properties and *.jks are GITIGNORED. Never commit either — a leaked upload key lets someone
+# else publish updates to your app.
+#
+# Generate an upload keystore (see docs/mobile/RELEASE_SIGNING.md):
+#   keytool -genkeypair -v -keystore upload-keystore.jks -storetype JKS \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+# storeFile is resolved relative to mobile/android/app/
+storeFile=../upload-keystore.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME

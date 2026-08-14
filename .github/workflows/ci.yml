@@ -1,0 +1,278 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — build & test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: kurx
+          POSTGRES_PASSWORD: kurx
+          POSTGRES_DB: kurx
+        ports:
+          - 5432:5432
+        # pg_isready must be given the role and database explicitly. Bare `pg_isready` runs inside the
+        # container as root and defaults both to "root", which the server rejects — it still reports the
+        # server as accepting connections (so the gate passes), but it logs `FATAL: role "root" does not
+        # exist` every health-interval for the life of the job (152 of them in run 31065053020) and it
+        # proves nothing about whether kurx/kurx is actually usable yet.
+        options: >-
+          --health-cmd "pg_isready -U kurx -d kurx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # ClamAvUploadPathTests drives a REAL clamd (D-298) — it is the only class that sets
+      # FILE_SCANNER=clamav, and without a daemon its four tests fail `scan_unavailable` rather than
+      # skipping. CI had no scanner, so those four could never pass and the backend job was red on an
+      # infrastructure gap rather than on any code.
+      #
+      # The healthcheck is `clamdcheck.sh`, not a TCP probe, for the reason docker-compose.yml already
+      # documents: clamd binds its socket BEFORE loading the signature database, so a port check reports
+      # ready while every scan still fails. start-period covers that first load.
+      clamav:
+        image: clamav/clamav:1.4
+        ports:
+          - 3310:3310
+        options: >-
+          --health-cmd "clamdcheck.sh"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 20
+          --health-start-period 120s
+
+    env:
+      ConnectionStrings__Default: "Host=localhost;Port=5432;Database=kurx;Username=kurx;Password=kurx"
+      JWT_SECRET: "ci-only-secret-not-for-production-0123456789abcdef"
+      TICKET_HMAC_SECRET: "ci-only-ticket-hmac-secret-not-for-prod"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('backend/**/*.csproj') }}
+          restore-keys: nuget-
+
+      # Kept only to match the D-003 local cluster layout (databases `kurx` + `kurx_test`). The suite does
+      # not use this database: since the D-128 hardening each test class clones its own
+      # `kurx_test_<guid>` from a per-run migrated template, connecting as admin to `kurx`. Tolerate an
+      # existing database so the step can never be the thing that reddens a run.
+      - name: Create kurx_test database
+        run: psql -c "CREATE DATABASE kurx_test;" || echo "kurx_test already exists"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: kurx
+          PGPASSWORD: kurx
+          PGDATABASE: kurx
+
+      - name: Restore
+        run: dotnet restore Kurx.sln
+        working-directory: backend
+
+      - name: Build (Release, warnings-as-errors)
+        run: dotnet build Kurx.sln --no-restore --configuration Release -warnaserror
+        working-directory: backend
+
+      - name: Test
+        run: dotnet test Kurx.sln --no-build --configuration Release --logger "console;verbosity=normal" --logger "trx;LogFileName=results.trx"
+        working-directory: backend
+
+      # API contract drift gate (D-259). Three clients hand-maintain their own request/response models
+      # against this API and nothing compared them to it — which is how web AND admin both shipped a
+      # snake_case Zod schema for /v1/orgs/{orgId}/wallet, whose records actually serialize camelCase,
+      # so `.parse()` threw on every call and two finance pages could not render. A checked-in spec
+      # turns that class of bug into a failed build instead of a blank page.
+      - name: Generate OpenAPI spec
+        run: |
+          dotnet run --project Kurx.Api/Kurx.Api.csproj --no-build --configuration Release &
+          API_PID=$!
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:5080/swagger/v1/swagger.json -o /tmp/openapi.json && break
+            sleep 2
+          done
+          kill $API_PID 2>/dev/null || true
+          test -s /tmp/openapi.json
+        working-directory: backend
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://localhost:5080
+
+      - name: Fail on API contract drift
+        run: |
+          if [ ! -f docs/api/openapi.json ]; then
+            echo "::error::docs/api/openapi.json is missing. Generate it once with scripts/generate-openapi.sh and commit it."
+            exit 1
+          fi
+          # jq -S sorts keys so formatting/ordering churn is not reported as drift.
+          jq -S . /tmp/openapi.json > /tmp/openapi.normalized.json
+          jq -S . docs/api/openapi.json > /tmp/openapi.committed.json
+          if ! diff -u /tmp/openapi.committed.json /tmp/openapi.normalized.json; then
+            echo "::error::The API surface changed but docs/api/openapi.json was not updated."
+            echo "Regenerate it with scripts/generate-openapi.sh and commit the result."
+            exit 1
+          fi
+
+      # Proves *spec ↔ client*. The step above proves backend ↔ spec; nothing proved that the three
+      # hand-maintained client model sets still match it, and that gap shipped the same bug three
+      # times (D-245, D-292, and `me.can_organize_paid` reading false for every user because the wire
+      # nests it under `trust` while web declared it flat with a default). Runs after the drift gate
+      # so the spec it validates against is known current.
+      # Pinned rather than relying on whatever Node the runner image ships: the script is an ES
+      # module, and a silent image change is exactly the kind of thing a contract gate should not
+      # be at the mercy of.
+      - name: Set up Node for contract validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate client contracts
+        run: node scripts/contract-check.mjs
+
+      # Response-contract ratchet (D-313). The client gate above can only check operations the spec
+      # actually describes — an undeclared response is invisible to it and passes vacuously, which is the
+      # D-303 failure mode. This fails when a NEW endpoint lands without saying what it returns, and when
+      # the allow-list goes stale, so the declared count can only go up.
+      - name: Fail on new undeclared responses
+        run: node scripts/openapi-response-check.mjs
+
+      # A declaration can be present and WRONG. `.Produces<T>()` is metadata the C# compiler never checks
+      # against the handler body, and a wrong T is worse than none — clients are generated from it and
+      # contract-check then validates them against a lie. This proves the declared type is the type the
+      # endpoint's mapper actually returns (D-313).
+      - name: Verify declared response types match the handler
+        run: node scripts/response-shape-check.mjs
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/**/*.trx
+
+  web:
+    name: Web — typecheck, lint & build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: web
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: web
+
+      - name: Lint
+        run: npm run lint
+        working-directory: web
+
+      # The vitest suite was never wired in, so it had been green-by-absence. It now also carries the web
+      # half of the cross-platform phone corpus (D-288), which only guards anything if it actually runs.
+      - name: Test
+        run: npm test
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:5080
+
+  admin:
+    name: Admin — typecheck, lint, test & build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: admin
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: admin
+
+      - name: Lint
+        run: npm run lint
+        working-directory: admin
+
+      # Admin has had a vitest suite (3 files, 27 tests) that this job never ran, so every one of them
+      # was invisible to CI — passing locally and unable to fail a build. Mirrors the web job, which has
+      # run its tests between lint and build all along.
+      - name: Test
+        run: npm test
+        working-directory: admin
+
+      - name: Build
+        run: npm run build
+        working-directory: admin
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:5080
+
+  mobile:
+    name: Mobile — analyze & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the toolchain the app is developed against. Freezed/json_serializable output is
+      # committed (22 generated files are tracked), so build_runner deliberately does NOT run here —
+      # CI verifies the committed code, and a stale generated file shows up as an analyze failure.
+      - name: Setup Flutter 3.44.6
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+          cache: true
+
+      - name: Install
+        run: flutter pub get
+        working-directory: mobile
+
+      # Gate is errors + warnings. The package carries 62 pre-existing style infos; failing on
+      # those would make this job red on arrival and would have
+      # meant a 30-file style sweep inside an unrelated phase. Infos are tracked, not enforced —
+      # tighten this to plain `flutter analyze` once they are cleared.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+        working-directory: mobile
+
+      - name: Test
+        run: flutter test
+        working-directory: mobile

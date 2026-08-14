@@ -1,0 +1,112 @@
+{
+  "$comment": [
+    "Which client model implements which OpenAPI schema. Read by scripts/contract-check.mjs.",
+    "",
+    "Explicit rather than inferred: nothing links `meSchema` to `MeResponse` by name, and guessing the",
+    "pairing would produce confident nonsense. A model absent from this file is NOT validated, and the",
+    "checker reports coverage so that absence stays visible instead of reading as a pass.",
+    "",
+    "COVERAGE GAP — CLOSED. This file previously recorded that PublicProfileView and IdentityStatusView",
+    "returned anonymous objects, had no schema, and so could not be listed. Both are now typed, as are",
+    "the twelve profile sub-resources that were still projecting through hand-written mappers, and all",
+    "of them appear below. The wire did not move: PublicCertificateCard keeps `issued_at` via",
+    "[JsonPropertyName] because the mapper renamed it from CreatedAt, and the Journey keeps its nested",
+    "`evidence` object and constant `source` as JourneyNodeView. Those two are the reason this expansion",
+    "is worth more than it looks — both are shapes a naive 'just return the record' would have broken",
+    "silently, and both are now pinned by a mapping below rather than by a comment.",
+    "",
+    "GATE STRENGTH, measured rather than assumed — and now fixed. Swashbuckle used to emit `required` on",
+    "36 of 266 schemas (53 entries in total), so two of contract-check's checks — missing_required and",
+    "optionality — were inert and only unknown_field was live. The cause was that the intended switch,",
+    "SchemaGeneratorOptions.NonNullableReferenceTypesAsRequired, does not exist in the pinned Swashbuckle",
+    "6.6.2; it arrived in 6.7.0, and setting it was a compile error. RequiredFromNonNullableSchemaFilter",
+    "re-implements it against the nullability Swashbuckle already computes. The spec now carries required",
+    "on 245 of 290 schemas (808 entries), and the two dormant checks report 31 real findings where they",
+    "previously reported none. scripts/contract-check.test.mjs asserts each category still fires, so a",
+    "future regression to the inert state fails a test instead of reading as a clean pass."
+  ],
+  "sources": {
+    "web": [
+      "web/lib/api.ts",
+      "web/lib/account-api.ts",
+      "web/lib/chat-api.ts",
+      "web/lib/posts-api.ts",
+      "web/lib/capabilities.ts",
+      "web/lib/auth-api.ts"
+    ],
+    "admin": ["admin/lib/api.ts"],
+    "flutter": [
+      "mobile/lib/features/auth/data/models/current_user_dto.dart",
+      "mobile/lib/features/public_profile/data/models/public_profile_dto.dart",
+      "mobile/lib/features/orders/data/models/attendee_dtos.dart",
+      "mobile/lib/features/social/data/models/chat_dto.dart"
+    ]
+  },
+  "models": [
+    {
+      "$why": "Bug #3 lived here: the wire nests these under `trust`, web declared can_organize_paid flat with .default(false), so paid hosting read as unavailable to every user on every request.",
+      "spec": "MeResponse",
+      "web": "meSchema",
+      "admin": "meSchema",
+      "flutter": "CurrentUserDto"
+    },
+    {
+      "$why": "The nested half of the same bug. Reused by the endpoint rather than re-projected, so one definition serves both.",
+      "spec": "TrustCapabilities",
+      "flutter": "TrustCapabilitiesDto"
+    },
+    {
+      "$why": "D-292: web declared camelCase against a snake_case API, every parse threw, and /chats caught it and rendered 'No event chats' for everyone. The fix kept camelCase models behind a camelizeKeys() adapter, so this pair is validated through that transform — the field names here are post-normalisation, not wire keys.",
+      "spec": "ChatRoomView",
+      "web": "chatRoomSchema",
+      "transform": "snake_to_camel"
+    },
+    {
+      "$why": "Same outage, the list side.",
+      "spec": "MyChatView",
+      "web": "myChatSchema",
+      "transform": "snake_to_camel"
+    },
+
+    {
+      "$why": "The profile root. Typed in this pass; previously an anonymous object, so the platform's most-read public page had no contract at all. Its nested members are mapped separately below — that is what makes a nested mismatch visible rather than hidden inside the parent.",
+      "spec": "PublicProfileView",
+      "web": "publicProfileSchema",
+      "flutter": "PublicProfileDto"
+    },
+    {
+      "$why": "The renamed key. The mapper emitted CreatedAt as `issued_at`; both clients bind `issued_at`, so returning the record raw would have silently become `created_at`. Mapped so the attribute that preserves it can never be dropped unnoticed.",
+      "spec": "PublicCertificateCard",
+      "web": "publicCertificateCardSchema",
+      "flutter": "PublicCertificateCardDto"
+    },
+    {
+      "$why": "The re-nested shape. The wire carries `source` plus an `evidence` object that the flat JourneyNode does not have; JourneyNodeView is that shape given a name.",
+      "spec": "JourneyNodeView",
+      "web": "journeyNodeSchema",
+      "flutter": "JourneyNodeDto"
+    },
+    { "spec": "JourneyEvidenceView", "flutter": "JourneyEvidenceDto" },
+    { "spec": "PublicEventCard", "web": "publicEventCardSchema", "flutter": "PublicEventCardDto" },
+    { "spec": "TimelineEntry", "web": "timelineEntrySchema", "flutter": "TimelineEntryDto" },
+    { "spec": "AllyProfileCard", "web": "allyProfileCardSchema", "flutter": "AllyProfileCardDto" },
+    { "spec": "ProfileMetrics", "web": "profileMetricsSchema", "flutter": "ProfileMetricsDto" },
+    { "spec": "ExperienceSummary", "web": "experienceSummarySchema", "flutter": "ExperienceSummaryDto" },
+    { "spec": "ContributionsSummary", "web": "contributionsSchema", "flutter": "ContributionsDto" },
+    { "spec": "ContributionDay", "web": "contributionDaySchema", "flutter": "ContributionDayDto" },
+    { "spec": "CompetitionResultCard", "web": "competitionResultSchema" },
+    { "spec": "SpeakerSessionCard", "web": "speakerSessionSchema" },
+    { "spec": "PublicUserSearchResult", "flutter": "PublicUserSearchResultDto" },
+
+    {
+      "$why": "Nested members of PublicProfileView. Mapped individually because contract-check compares one schema to one client model — a mismatch inside `stats` or `verification` is invisible from the parent, which only sees that the key exists.",
+      "spec": "ProfileStats",
+      "flutter": "ProfileStatsDto"
+    },
+    { "spec": "VerificationBadges", "flutter": "VerificationBadgesDto" },
+    { "spec": "AchievementCard", "flutter": "AchievementCardDto" },
+    { "spec": "EventDnaTag", "flutter": "EventDnaTagDto" },
+    { "spec": "OrgProfileView", "flutter": "ProfileOrgDto" },
+    { "spec": "CollegeAffiliation", "flutter": "CollegeDto" }
+  ]
+}

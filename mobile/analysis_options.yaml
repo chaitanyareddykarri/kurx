@@ -1,0 +1,19 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    # Generated build output (git-ignored). The macOS SwiftPM checkout under build/ vendors
+    # third-party packages' own test files (e.g. firebase_messaging's tests import mockito, which
+    # this app doesn't depend on), so analyzing it produces ~170 phantom errors in files we don't own.
+    - "build/**"
+  errors:
+    # Known Freezed + json_serializable interplay: @JsonKey on a factory parameter
+    # is forwarded to the generated field, but the analyzer flags the annotation site.
+    invalid_annotation_target: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_final_locals: true

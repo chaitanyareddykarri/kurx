@@ -1,0 +1,32 @@
+# Build context is ./backend (see docker-compose.yml).
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+# Project manifests before sources so the restore layer is keyed on dependency changes alone. The
+# previous `COPY . .` ahead of publish invalidated restore on every source edit, so each build
+# re-downloaded the entire package graph. Only Kurx.Api's transitive closure is needed — Kurx.Tests
+# is not published.
+COPY Kurx.Api/Kurx.Api.csproj ./Kurx.Api/
+COPY Kurx.Application/Kurx.Application.csproj ./Kurx.Application/
+COPY Kurx.Domain/Kurx.Domain.csproj ./Kurx.Domain/
+COPY Kurx.Infrastructure/Kurx.Infrastructure.csproj ./Kurx.Infrastructure/
+RUN dotnet restore Kurx.Api/Kurx.Api.csproj
+COPY . .
+RUN dotnet publish Kurx.Api/Kurx.Api.csproj -c Release -o /app --no-restore /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app .
+# Run unprivileged (D-256). APP_UID is the non-root user the aspnet base image already provides, so
+# there is no useradd here. The published output stays root-owned and read-only to the app — the
+# process has no reason to rewrite its own binaries — but LOCALDISK_ROOT does need to be writable:
+# LocalDiskStorage calls Directory.CreateDirectory on it in its constructor, so the container would
+# fail to start without this. Path mirrors the provider's default of ".localdata/storage" under the
+# working directory.
+RUN mkdir -p /app/.localdata/storage && chown -R $APP_UID:$APP_UID /app/.localdata
+USER $APP_UID
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Kurx.Api.dll"]

@@ -1,0 +1,228 @@
+# Explicit project name: the working tree is reached through a symlink on some machines, and
+# compose would otherwise derive a different name per path and orphan the volumes.
+name: kurx
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: kurx-postgres
+    environment:
+      POSTGRES_USER: kurx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kurx}
+      POSTGRES_DB: kurx
+    ports:
+      # Host 5433, not 5432: a native Windows PostgreSQL service commonly holds 5432, and Windows
+      # lets both processes bind it — the first binder silently wins every connection, so host tools
+      # reach the wrong server and fail auth against a database that looks healthy in `docker ps`.
+      # Same reason redis maps 6380 below. Nothing inside Docker is affected: the backend reaches
+      # this over the compose network as `postgres:5432`. Host-side tests: KURX_TEST_PG_PORT=5433.
+      - "5433:5432"
+    volumes:
+      - kurx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kurx -d kurx"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8
+    container_name: kurx-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # D-298. Behind a profile so `docker compose up` stays fast: the image pulls a ~250 MB signature
+  # database and takes a minute or two before it answers. Start it with
+  # `docker compose --profile scanning up -d clamav`, and set FILE_SCANNER=clamav to use it.
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: kurx-clamav
+    profiles: ["scanning"]
+    ports:
+      - "3310:3310"
+    healthcheck:
+      # Not a port check: clamd binds the socket before the signature database is loaded, so a plain
+      # TCP probe reports ready while every scan would still fail.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../infra/Dockerfile.api
+    container_name: kurx-backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=kurx;Username=kurx;Password=${POSTGRES_PASSWORD:-kurx}
+      # DB-2 pool + timeout ceilings. Deliberately smaller than the production defaults: the postgres
+      # container ships max_connections=100, and a dev machine commonly also has a test run, psql, or a
+      # second compose stack against the same server. API and jobs hold separate pools, so this container's
+      # ceiling is MaxPoolSize + JobsMaxPoolSize. See docs/deployment/CONNECTION_POOLING.md.
+      Database__MaxPoolSize: ${DB_MAX_POOL_SIZE:-12}
+      Database__JobsMaxPoolSize: ${DB_JOBS_MAX_POOL_SIZE:-6}
+      Database__JobWorkerCount: ${DB_JOB_WORKER_COUNT:-4}
+      Database__MinPoolSize: ${DB_MIN_POOL_SIZE:-1}
+      Database__CommandTimeoutSeconds: ${DB_COMMAND_TIMEOUT_SECONDS:-30}
+      Database__ConnectionTimeoutSeconds: ${DB_CONNECTION_TIMEOUT_SECONDS:-15}
+      Database__ConnectionIdleLifetimeSeconds: ${DB_CONNECTION_IDLE_LIFETIME_SECONDS:-300}
+      REDIS_CONNECTION: redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      JWT_ISSUER: kurx
+      JWT_AUDIENCE: kurx-app
+      TICKET_HMAC_SECRET: ${TICKET_HMAC_SECRET:-dev-only-ticket-hmac-change-me}
+      OTP_PEPPER: ${OTP_PEPPER:-dev-only-otp-pepper-change-me}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      # D-302. The host LocalDiskStorage stamps into every presigned URL. The browser is what follows
+      # these URLs, so it must be the *published host* port — not the container port, and not a port
+      # nothing publishes (that was the original D-302 bug: every presigned banner, avatar and
+      # attachment resolved to a refused connection). Now the same 5080 the whole repo defaults to.
+      KURX_API_BASE: ${KURX_API_BASE:-http://localhost:5080}
+      # D-274 first-SuperAdmin bootstrap. Read from the (gitignored) .env, never hardcoded here — a phone
+      # number is PII and this file is committed. No-op unless set AND the platform has no SuperAdmin yet,
+      # and it only grants the role to an account that already registered through the real OTP flow.
+      SUPERADMIN_BOOTSTRAP_PHONE: ${SUPERADMIN_BOOTSTRAP_PHONE:-}
+      # D-298. Defaults to `none` so a dev machine needs no clamd. Set FILE_SCANNER=clamav in .env and
+      # start the daemon with `docker compose --profile scanning up -d clamav`.
+      FILE_SCANNER: ${FILE_SCANNER:-none}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_SECONDS: ${CLAMAV_TIMEOUT_SECONDS:-30}
+      # D-323. Skips the govt-ID/PAN/bank proofs so a dev account can publish a public event, sell
+      # tickets and receive a payout — every one of those proofs is answered by MockKycProvider, so
+      # enforcing them here costs four submissions and establishes nothing. Defaults to `false`:
+      # set IDENTITY_VERIFICATION_BYPASS=true in .env to open it. The API REFUSES TO START if it is
+      # set while ASPNETCORE_ENVIRONMENT=Production, so this line cannot leak the gate into a real
+      # deployment. Fraud/blacklist checks are unaffected.
+      # Defaults to `true` HERE and nowhere else. This file is the local Docker development
+      # environment, and every proof the flag relaxes is answered by MockKycProvider in it (the boot
+      # log lists "KYC (mock — checks always approve)"), so enforcing the gate locally costs four
+      # submissions per test account to reach a verdict the mock was always going to give — while
+      # blocking public-event creation, paid organizing and payouts, i.e. most of what there is to
+      # test. Nothing else defaults it on: the ECS task definition never sets it, so staging and
+      # production stay enforced, and `AddKurxInfrastructure` throws at startup if it is ever true
+      # with ASPNETCORE_ENVIRONMENT=Production — including from this file, so pointing compose at a
+      # Production environment fails closed rather than quietly opening the gate.
+      # Set IDENTITY_VERIFICATION_BYPASS=false in .env to exercise the real gate locally.
+      IDENTITY_VERIFICATION_BYPASS: ${IDENTITY_VERIFICATION_BYPASS:-true}
+    ports:
+      # 5080 is the ONE dev API port. `dotnet run` (launchSettings) already serves 5080, and every
+      # client default, `.env.example` and `infra/docker-compose.yml` say 5080 — so compose publishing
+      # 5001 meant the two dev topologies were not interchangeable and mobile (`KURX_API_BASE` default
+      # `localhost:5080`) could not reach a compose-run backend at all. Do not reintroduce a second port.
+      - "5080:8080"
+    volumes:
+      # STORAGE_PROVIDER=localdisk writes uploads under LOCALDISK_ROOT (default `.localdata/storage`,
+      # so /app/.localdata/storage given the image's WORKDIR). Without this volume that path lives in
+      # the container's writable layer, and `docker compose up --build` recreates the container — so
+      # every banner, avatar, chat attachment and certificate uploaded since the last build is
+      # destroyed by the ordinary rebuild command. Postgres keeps the rows, which makes the loss look
+      # like corruption rather than a wipe: the record still resolves to a URL that now 404s.
+      # The image pre-creates the directory owned by APP_UID (see infra/Dockerfile.api), and Docker
+      # seeds a fresh named volume from the image content, so ownership carries over and the
+      # unprivileged process can still write.
+      - kurx_storage:/app/.localdata/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # D-299 — liveness, not readiness. Pointing this at /health restarts the API whenever Postgres or
+      # Redis hiccups, turning a recoverable dependency blip into a restart loop.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    # Behind a profile so the default `docker compose up` is the backend stack alone (API, Postgres,
+    # Redis, storage). Running the front ends natively with `npm run dev` is the common local loop —
+    # and a native dev server already holding :3000 makes the compose `web` container fail to bind,
+    # which failed the whole `up` command rather than just that one service. Start them with
+    # `docker compose --profile frontend up -d`, or name one directly (`docker compose up -d admin`),
+    # which enables its profile implicitly.
+    profiles: ["frontend"]
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        # Browser runs on the host, so it reaches the backend via the published host port (5080), not the
+        # container name. Baked at build time (NEXT_PUBLIC_*).
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:5080
+        # The dedicated admin console's public URL — web's former /host/admin/* pages redirect here (D-195).
+        NEXT_PUBLIC_ADMIN_URL: http://localhost:3001
+    container_name: kurx-web
+    environment:
+      NODE_ENV: production
+      # Server-side renders reach the backend over the compose network, not the host port.
+      API_INTERNAL_URL: http://backend:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  admin:
+    # Same reasoning as web above — see that comment.
+    profiles: ["frontend"]
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+      args:
+        # Same split as web: the browser reaches the backend on the published host port, and this is
+        # baked into the client bundle at build time (NEXT_PUBLIC_*). Setting it at runtime instead
+        # would never reach the browser.
+        NEXT_PUBLIC_API_URL: http://localhost:5080
+        # The public site, for links OUT of the console — the mirror of web's NEXT_PUBLIC_ADMIN_URL
+        # (D-195). A reviewer has to be able to open the event they are judging, and the public event
+        # page is served by web, not here: a relative /e/{slug} would 404 on the console's own origin.
+        NEXT_PUBLIC_WEB_URL: http://localhost:3000
+    container_name: kurx-admin
+    environment:
+      NODE_ENV: production
+      # Server-side renders and middleware token refresh run inside the container, so they reach the
+      # backend over the compose network — localhost:5080 does not exist in here.
+      API_URL: http://backend:8080
+    # The admin package starts on 3001 (`next start -p 3001`), so the container port is 3001.
+    ports:
+      - "3001:3001"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  kurx_pgdata:
+  # Uploaded files for STORAGE_PROVIDER=localdisk. Survives `up --build`; removed only by an explicit
+  # `docker volume rm kurx_kurx_storage` or `docker compose down -v`.
+  kurx_storage:

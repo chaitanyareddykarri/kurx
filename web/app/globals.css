@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (--color-*) are imported from @kurx/ui/styles/tokens.css in the
+   root layout — the single source of truth shared with admin. This file used to
+   inline a verbatim copy of them (D-285). */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-text));
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+/*
+ * Smooth the light↔dark handover (D-291).
+ *
+ * Scoped to the four properties that actually change between themes. A blanket
+ * `transition: all` would also animate layout and transforms, which is how a theme
+ * toggle starts sliding components around — and the brief's hard rule is that
+ * nothing MOVES between themes, only colour changes.
+ *
+ * `prefers-reduced-motion` is handled by tokens.css, which clamps every transition
+ * to 80ms rather than removing it: the change stays perceivable without motion.
+ */
+body,
+body * {
+  transition-property: background-color, border-color, color, fill;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--color-accent));
+  outline-offset: 2px;
+}
+
+.container-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+/*
+ * The /discover filter panel collapses below `lg` and is always open above it.
+ *
+ * `<details>` is used rather than a JS drawer because that page is entirely
+ * URL-as-state with no client JS, and native details is keyboard-operable and
+ * announced as expanded/collapsed for free. The UA hides non-summary children of
+ * a closed `<details>`; overriding that with `display: block` at the desktop
+ * breakpoint is what keeps the panel permanently open there.
+ */
+@media (min-width: 1024px) {
+  .filter-panel > summary {
+    display: none;
+  }
+  .filter-panel:not([open]) > form {
+    display: block;
+  }
+}
+
+/*
+ * The blue grid (D-290). One definition, shared by the splash overlay and the hero
+ * beneath it, so the handover between them has no visible seam.
+ *
+ * Tinted with `--color-accent` rather than `--color-border`: at 0.10 it reads as a
+ * faint blue rule on the near-black ground and disappears entirely on light, which
+ * is what "subtle" has to mean on a surface that is 96% background. `1px` lines on
+ * a `32px` cell scale by percentage of nothing — the cell is fixed, so the grid
+ * cannot cause overflow at any width.
+ */
+.grid-bg {
+  background-image:
+    linear-gradient(rgb(var(--color-accent) / 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--color-accent) / 0.1) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/*
+ * Splash (D-290).
+ *
+ * Deliberately CSS, not Framer Motion, even though Framer is installed and the brief
+ * preferred it. The overlay is server-rendered so it is in the first paint; a JS-driven
+ * one mounts after hydration, which means a flash of the marketing page before the
+ * splash covers it. The same choice makes the splash self-clearing: every animation
+ * below ends on its final frame via `forwards`, so with JS disabled — or blocked, or
+ * still loading — the overlay still fades out and the page underneath is reachable.
+ * Nothing about the marketing page's availability depends on a script running.
+ *
+ * `prefers-reduced-motion` is already handled: tokens.css clamps every animation to
+ * 0.01ms, so each of these lands on its end state at once — logo shown, overlay gone.
+ * That is exactly the "skip the animation" branch the brief asked for, and it needs no
+ * second code path that could rot.
+ */
+@keyframes splash-veil {
+  0%, 74% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+@keyframes splash-ring {
+  0% { opacity: 0; transform: scale(0.82); }
+  28% { opacity: 1; transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes splash-mark {
+  0%, 8% { opacity: 0; transform: scale(0.9); }
+  42% { opacity: 1; transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes splash-tagline {
+  0%, 46% { opacity: 0; transform: translateY(6px); }
+  70% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.splash {
+  animation: splash-veil 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.splash-ring {
+  animation: splash-ring 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.splash-mark {
+  animation: splash-mark 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.splash-tagline {
+  animation: splash-tagline 2600ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}

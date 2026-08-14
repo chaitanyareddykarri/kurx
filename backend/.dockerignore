@@ -1,0 +1,8 @@
+# The build context is backend/, so this is the .dockerignore that applies to Dockerfile.api.
+# bin/ and obj/ are ~760MB of Windows-built artifacts here: they make the context slow to send and,
+# worse, obj/project.assets.json carries host NuGet paths that break restore inside the container.
+**/bin
+**/obj
+**/.vs
+**/*.user
+.localdata

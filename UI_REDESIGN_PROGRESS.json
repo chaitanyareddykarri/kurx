@@ -1,0 +1,2025 @@
+{
+  "$comment": "Machine-readable mirror of UI_REDESIGN_PROGRESS.md. That file is authoritative for prose; this one is authoritative for state. Keep both in sync in the same commit.",
+  "schemaVersion": 1,
+  "overallProgress": 99.9,
+  "currentPhase": "50",
+  "currentSubPhase": "46.3c",
+  "status": "READY_TO_RESUME",
+  "lastUpdated": "2026-08-08",
+  "branch": "redesign/ui-ux-phase-18a",
+  "baselineCommit": "c66ae16",
+  "totalWeight": 1000,
+  "earnedWeight": 999.0,
+  "tracks": {
+    "designSystem": {
+      "weight": 180,
+      "earned": 180,
+      "percent": 100.0
+    },
+    "web": {
+      "weight": 388,
+      "earned": 388,
+      "percent": 100.0
+    },
+    "admin": {
+      "weight": 98,
+      "earned": 98,
+      "percent": 100.0
+    },
+    "mobile": {
+      "weight": 194,
+      "earned": 194,
+      "percent": 100.0
+    },
+    "accessibility": {
+      "surfaces": 206,
+      "checked": 54,
+      "percent": 26.2
+    }
+  },
+  "statusCounts": {
+    "PENDING": 0,
+    "READY": 0,
+    "IN_PROGRESS": 2,
+    "VALIDATING": 0,
+    "COMPLETE": 57,
+    "BLOCKED": 0
+  },
+  "completed": [
+    "0",
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.4",
+    "0.5",
+    "1",
+    "1.1",
+    "1.2",
+    "1.3",
+    "1.4",
+    "1.5",
+    "1.6",
+    "2",
+    "2.1",
+    "2.2",
+    "2.3",
+    "2.4",
+    "3",
+    "3.1",
+    "3.2",
+    "3.3",
+    "4",
+    "4.0",
+    "4.1",
+    "4.2",
+    "4.3",
+    "4.4",
+    "4.5",
+    "4.6",
+    "5",
+    "5.1",
+    "5.2",
+    "5.3",
+    "5.4",
+    "5.5",
+    "6.6",
+    "6.1",
+    "6",
+    "6.2",
+    "6.3",
+    "6.4",
+    "6.5",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "32",
+    "13",
+    "14",
+    "15",
+    "33",
+    "13A",
+    "16",
+    "17",
+    "18",
+    "18A",
+    "19",
+    "20",
+    "20A",
+    "20B",
+    "20C",
+    "20D",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "38A",
+    "38B",
+    "39",
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "48",
+    "49",
+    "50"
+  ],
+  "inProgress": [
+    "51",
+    "46",
+    "47"
+  ],
+  "blocked": [],
+  "next": [
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "milestones": [
+    {
+      "id": "M0",
+      "name": "Baseline Established",
+      "phases": [
+        "0",
+        "1",
+        "2"
+      ],
+      "weight": 34,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M1",
+      "name": "Kurx Design Language Established",
+      "phases": [
+        "3",
+        "4",
+        "5"
+      ],
+      "weight": 42,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M2",
+      "name": "Design System Implemented",
+      "phases": [
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ],
+      "weight": 114,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M3",
+      "name": "Web Foundation Complete",
+      "phases": [
+        "11"
+      ],
+      "weight": 22,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M4",
+      "name": "Core Customer Web Complete",
+      "phases": [
+        "12",
+        "13",
+        "13A",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "18A",
+        "19",
+        "20",
+        "20A",
+        "20B",
+        "20C",
+        "20D"
+      ],
+      "weight": 254,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M5",
+      "name": "Host / Representation Web Complete",
+      "phases": [
+        "21",
+        "22",
+        "23",
+        "24"
+      ],
+      "weight": 92,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M6",
+      "name": "Web Production Pass",
+      "phases": [
+        "25"
+      ],
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M7",
+      "name": "Admin Redesign Complete",
+      "phases": [
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31"
+      ],
+      "weight": 98,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M8",
+      "name": "Mobile Foundation Complete",
+      "phases": [
+        "32",
+        "33"
+      ],
+      "weight": 36,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M9",
+      "name": "Core Mobile Complete",
+      "phases": [
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "38A",
+        "38B",
+        "39",
+        "40"
+      ],
+      "weight": 158,
+      "status": "COMPLETE",
+      "percent": 100
+    },
+    {
+      "id": "M10",
+      "name": "Cross-Platform Polish",
+      "phases": [
+        "41",
+        "42",
+        "43",
+        "44",
+        "45",
+        "46",
+        "47"
+      ],
+      "weight": 94,
+      "status": "PENDING",
+      "percent": 0
+    },
+    {
+      "id": "M11",
+      "name": "Regression & Cleanup",
+      "phases": [
+        "48",
+        "49"
+      ],
+      "weight": 20,
+      "status": "PENDING",
+      "percent": 0
+    },
+    {
+      "id": "M12",
+      "name": "Production-Ready Redesign",
+      "phases": [
+        "50",
+        "51"
+      ],
+      "weight": 16,
+      "status": "IN_PROGRESS",
+      "percent": 0
+    }
+  ],
+  "phases": [
+    {
+      "id": "0",
+      "name": "Baseline & Safety",
+      "track": "meta",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [],
+      "subPhases": [
+        {
+          "id": "0.1",
+          "name": "Inventory & tracker scaffold",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "0.2",
+          "name": "Baseline verification run",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "0.3",
+          "name": "Frozen-surface list + dirty-tree quarantine",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "0.4",
+          "name": "Visual baseline capture strategy",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "0.5",
+          "name": "Regression criteria",
+          "status": "COMPLETE"
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "name": "Product & UX Audit",
+      "track": "meta",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "0"
+      ],
+      "subPhases": [
+        {
+          "id": "1.1",
+          "name": "Web app surface audit",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "1.2",
+          "name": "Web host surface audit",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "1.3",
+          "name": "Web public surface audit",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "1.4",
+          "name": "Admin audit",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "1.5",
+          "name": "Mobile audit",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "1.6",
+          "name": "Severity ranking",
+          "status": "COMPLETE"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Information Architecture",
+      "track": "meta",
+      "weight": 6,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "1"
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Kurx Visual Identity",
+      "track": "designSystem",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "2"
+      ]
+    },
+    {
+      "id": "4",
+      "name": "Design Tokens",
+      "track": "designSystem",
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "3"
+      ]
+    },
+    {
+      "id": "5",
+      "name": "Accessibility Foundation",
+      "track": "designSystem",
+      "weight": 10,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "4"
+      ]
+    },
+    {
+      "id": "6",
+      "name": "Core UI Primitives",
+      "track": "designSystem",
+      "weight": 42,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "5"
+      ],
+      "subPhases": [
+        {
+          "id": "6.6",
+          "name": "Collapse forked primitives",
+          "status": "COMPLETE",
+          "commit": "1c6b462"
+        },
+        {
+          "id": "6.1",
+          "name": "Button, IconButton, Link",
+          "status": "COMPLETE",
+          "commit": "cd85864"
+        },
+        {
+          "id": "6.2",
+          "name": "Form control primitives",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "6.3",
+          "name": "Date/time controls",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "6.4",
+          "name": "Badge, Chip, Avatar, Divider",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "6.5",
+          "name": "Tooltip, Spinner, Progress, Skeleton",
+          "status": "COMPLETE"
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "name": "Form System",
+      "track": "designSystem",
+      "weight": 18,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "6"
+      ]
+    },
+    {
+      "id": "8",
+      "name": "Feedback & State Components",
+      "track": "designSystem",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "7"
+      ]
+    },
+    {
+      "id": "9",
+      "name": "Overlay & Interaction Components",
+      "track": "designSystem",
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "6"
+      ]
+    },
+    {
+      "id": "10",
+      "name": "Content Components",
+      "track": "designSystem",
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "6",
+        "8"
+      ]
+    },
+    {
+      "id": "11",
+      "name": "Application Shell",
+      "track": "web",
+      "weight": 22,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "10"
+      ]
+    },
+    {
+      "id": "12",
+      "name": "Search & Discovery UX",
+      "track": "web",
+      "weight": 16,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ]
+    },
+    {
+      "id": "13",
+      "name": "Web Home / Discover",
+      "track": "web",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "12"
+      ]
+    },
+    {
+      "id": "13A",
+      "name": "Public Marketing Site",
+      "track": "web",
+      "weight": 10,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ]
+    },
+    {
+      "id": "14",
+      "name": "Event Listing & Search Results",
+      "track": "web",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "13"
+      ]
+    },
+    {
+      "id": "15",
+      "name": "Event Detail Experience",
+      "track": "web",
+      "weight": 30,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "14"
+      ]
+    },
+    {
+      "id": "16",
+      "name": "Authentication",
+      "track": "web",
+      "weight": 18,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ],
+      "sensitive": "security"
+    },
+    {
+      "id": "17",
+      "name": "Onboarding",
+      "track": "web",
+      "weight": 8,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "16"
+      ]
+    },
+    {
+      "id": "18",
+      "name": "Profile & Account",
+      "track": "web",
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ]
+    },
+    {
+      "id": "18A",
+      "name": "Public Profile & Professional Identity",
+      "track": "web",
+      "weight": 32,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "18"
+      ],
+      "subPhases": [
+        {
+          "id": "18A.0",
+          "name": "Tabs ARIA pattern + web toast provider (prerequisite)",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.1",
+          "name": "/u/[username] header, identity, layout",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.2",
+          "name": "Professional identity \u2014 provenance, metrics, shared history",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.3",
+          "name": "Profile sections \u2014 tabs, timeline, events, orgs, certificates, allies",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.4",
+          "name": "/allies \u2014 shell, manager, people search, suggestions",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.5",
+          "name": "Action controls \u2014 connect, message, follow",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "18A.6",
+          "name": "/o/[slug] org public profile",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "2934ffe"
+    },
+    {
+      "id": "19",
+      "name": "Ticketing / Registration",
+      "track": "web",
+      "weight": 30,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "15"
+      ],
+      "sensitive": "payments",
+      "subPhases": [
+        {
+          "id": "19.1",
+          "name": "/tickets \u2014 real ticket QR, order status, outage handling",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "19.2",
+          "name": "/tickets/refunds \u2014 status tones, outage handling, empty state",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "19.3",
+          "name": "/book/[slug] \u2014 remove the false-success checkout (REG-009)",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "19.4",
+          "name": "EmptyState string-icon leak; orderStatusOf; QR route handler",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "72a4d85"
+    },
+    {
+      "id": "20",
+      "name": "User Events & Tickets",
+      "track": "web",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "19"
+      ],
+      "subPhases": [
+        {
+          "id": "20.1",
+          "name": "/workspace \u2014 counts, views, event rows, REG-003",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20.2",
+          "name": "/workspace/[eventId] \u2014 participant launcher",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "b5a5c9a"
+    },
+    {
+      "id": "20A",
+      "name": "Posts & Social Feed",
+      "track": "web",
+      "weight": 16,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "10"
+      ],
+      "subPhases": [
+        {
+          "id": "20A.1",
+          "name": "PostCard \u2014 counts, toggle state, dead links, verification badge",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20A.2",
+          "name": "PostFeed \u2014 failure reporting, load-more announcement, empty state",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "1b80aa0"
+    },
+    {
+      "id": "20B",
+      "name": "Messaging & Chat",
+      "track": "web",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "10"
+      ],
+      "subPhases": [
+        {
+          "id": "20B.1",
+          "name": "Phantom colour tokens across 8 files + guard",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20B.2",
+          "name": "MessageBubble \u2014 delivery state, locale, recovery controls",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20B.3",
+          "name": "Chat empty states \u2014 real icons",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "460ad1d"
+    },
+    {
+      "id": "20C",
+      "name": "Certificates, Gamification, Groups, Competitions",
+      "track": "web",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "10"
+      ],
+      "subPhases": [
+        {
+          "id": "20C.1",
+          "name": "/certificates \u2014 the owner's own credentials",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20C.2",
+          "name": "/groups \u2014 tokens",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "0dd8d6a"
+    },
+    {
+      "id": "20D",
+      "name": "Notifications & Invitations",
+      "track": "web",
+      "weight": 10,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ],
+      "subPhases": [
+        {
+          "id": "20D.1",
+          "name": "/verify/[code] \u2014 the verdict, and REG-005's third instance",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "20D.2",
+          "name": "/invitations, /i/[token], /notifications \u2014 outages, dates, tokens",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "0dd8d6a"
+    },
+    {
+      "id": "21",
+      "name": "Host / Workspace Experience",
+      "track": "web",
+      "weight": 44,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "11"
+      ],
+      "subPhases": [
+        {
+          "id": "21.1",
+          "name": "Event workspace shell \u2014 tab strip, header, overview",
+          "status": "COMPLETE",
+          "commit": "f202615"
+        },
+        {
+          "id": "21.6",
+          "name": "The four WorkflowPage placeholder routes",
+          "status": "COMPLETE",
+          "commit": "f202615"
+        },
+        {
+          "id": "21.7",
+          "name": "Cross-cutting sweeps \u2014 contrast, shims, the last lint warning",
+          "status": "COMPLETE",
+          "commit": "f202615"
+        },
+        {
+          "id": "21.4",
+          "name": "Ticket types & registration forms",
+          "status": "COMPLETE",
+          "commit": "59e5377"
+        },
+        {
+          "id": "21.10",
+          "name": "Destructive-action sweep \u2014 13 unguarded deletes",
+          "status": "COMPLETE",
+          "commit": "59e5377"
+        },
+        {
+          "id": "21.11",
+          "name": "Form controls \u2014 the Field gap across 21 files",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "21.2",
+          "name": "Event workspace screens \u2014 details, schedule, people, media",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "21.3",
+          "name": "Attendees, registrations & check-in",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "21.5",
+          "name": "Announcements, invitations, certificates, team, analytics",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "21.8",
+          "name": "Payouts, wallet & KYC \u2014 the route redirects into Finance",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "21.9",
+          "name": "Representing & org finance",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "321c23b"
+    },
+    {
+      "id": "22",
+      "name": "Event Creation",
+      "track": "web",
+      "weight": 24,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "21"
+      ],
+      "subPhases": [
+        {
+          "id": "22.1",
+          "name": "The five single-select steps \u2014 real radio groups",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "22.2",
+          "name": "Step chrome \u2014 FormSteps, step announcement",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "22.3",
+          "name": "Blocked navigation \u2014 say why, not just refuse",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "22.4",
+          "name": "Field hints and character counters",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "22.5",
+          "name": "/host/events/new \u2014 the representation outage",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "ac0f5ab"
+    },
+    {
+      "id": "23",
+      "name": "Event Editing",
+      "track": "web",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "22"
+      ],
+      "subPhases": [
+        {
+          "id": "23.1",
+          "name": "EditEventForm \u2014 both outcomes of a save",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "23.2",
+          "name": "updateEventAction \u2014 deliver the contract the form was written against",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "676b12f"
+    },
+    {
+      "id": "24",
+      "name": "Authorization / Representative Flows",
+      "track": "web",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "22"
+      ],
+      "sensitive": "contract",
+      "securityReview": "passed",
+      "subPhases": [
+        {
+          "id": "24.1",
+          "name": "AuthorizationForm \u2014 field names, document integrity",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "24.2",
+          "name": "RepresentativePicker \u2014 search announcement",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "24.3",
+          "name": "Security review",
+          "status": "PASSED"
+        }
+      ],
+      "commit": "ea6ef95"
+    },
+    {
+      "id": "25",
+      "name": "Web Responsive Pass",
+      "track": "web",
+      "weight": 20,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "12",
+        "13",
+        "13A",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "18A",
+        "19",
+        "20",
+        "20A",
+        "20B",
+        "20C",
+        "20D",
+        "21",
+        "22",
+        "23",
+        "24"
+      ],
+      "subPhases": [
+        {
+          "id": "25.1",
+          "name": "Six-width measurement across the public surface",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "25.2",
+          "name": "PublicNav \u2014 overflow at 360 and at 768",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "25.3",
+          "name": "Touch targets below 768",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "25.4",
+          "name": "Dialog \u2014 viewport bound",
+          "status": "COMPLETE"
+        }
+      ],
+      "verifiedInBrowser": {
+        "widths": [
+          360,
+          414,
+          768,
+          1024,
+          1440,
+          1920
+        ],
+        "routes": 12,
+        "result": "no horizontal scroll, no undersized target"
+      },
+      "commit": "ed71327"
+    },
+    {
+      "id": "26",
+      "name": "Admin Information Architecture",
+      "track": "admin",
+      "weight": 6,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "2"
+      ],
+      "subPhases": [
+        {
+          "id": "26.1",
+          "name": "Reachability audit \u2014 nav <-> routes, both directions",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "26.2",
+          "name": "Route-level role enforcement from NAV",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "26.3",
+          "name": "The five ready:false nav items",
+          "status": "COMPLETE"
+        }
+      ],
+      "verified": {
+        "consoleRoutes": 24,
+        "roleScopedAfter": 20,
+        "roleScopedBefore": 0
+      },
+      "commit": "e8b039c"
+    },
+    {
+      "id": "27",
+      "name": "Admin Shell",
+      "track": "admin",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "26"
+      ],
+      "subPhases": [
+        {
+          "id": "27.1",
+          "name": "Admin's first test harness",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "27.2",
+          "name": "The mobile drawer \u2014 the modal it claimed to be",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "27.3",
+          "name": "Sidebar \u2014 targets, tint, count semantics",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "844becd"
+    },
+    {
+      "id": "28",
+      "name": "Admin Data Components",
+      "track": "admin",
+      "weight": 18,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "27"
+      ],
+      "subPhases": [
+        {
+          "id": "28.1",
+          "name": "DataTable \u2014 keyboard operation, selection semantics, busy state",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "28.2",
+          "name": "PageHeader / SectionHeader \u2014 contrast, and the promotion decision",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "28.3",
+          "name": "Admin-wide accent-as-text sweep",
+          "status": "COMPLETE"
+        }
+      ],
+      "commit": "1b8fe33"
+    },
+    {
+      "id": "29",
+      "name": "Admin Core Screens",
+      "track": "admin",
+      "weight": 40,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "28"
+      ],
+      "note": "no automated test coverage",
+      "commit": "295c6a7"
+    },
+    {
+      "id": "30",
+      "name": "Admin Review / Moderation UX",
+      "track": "admin",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "29"
+      ],
+      "commit": "4290c3f"
+    },
+    {
+      "id": "31",
+      "name": "Admin Real-Time UX",
+      "track": "admin",
+      "weight": 8,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "29"
+      ],
+      "sensitive": "realtime",
+      "securityReview": "passed",
+      "commit": "7b6aa7e"
+    },
+    {
+      "id": "32",
+      "name": "Flutter Design Foundation",
+      "track": "mobile",
+      "weight": 24,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "4"
+      ]
+    },
+    {
+      "id": "33",
+      "name": "Flutter Navigation",
+      "track": "mobile",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "32"
+      ]
+    },
+    {
+      "id": "34",
+      "name": "Flutter Discovery",
+      "track": "mobile",
+      "weight": 16,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "commit": "5c610ea"
+    },
+    {
+      "id": "35",
+      "name": "Flutter Event Detail",
+      "track": "mobile",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "34"
+      ],
+      "commit": "306bd4b"
+    },
+    {
+      "id": "36",
+      "name": "Flutter Authentication",
+      "track": "mobile",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "sensitive": "security",
+      "securityReview": "passed",
+      "commit": "e6b7b21"
+    },
+    {
+      "id": "37",
+      "name": "Flutter Tickets & Registration",
+      "track": "mobile",
+      "weight": 18,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "35"
+      ],
+      "sensitive": "payments",
+      "securityReview": "passed",
+      "commit": "ab46155"
+    },
+    {
+      "id": "38",
+      "name": "Flutter Profile & Settings",
+      "track": "mobile",
+      "weight": 16,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "commit": "367032a"
+    },
+    {
+      "id": "38A",
+      "name": "Flutter Posts & Chat",
+      "track": "mobile",
+      "weight": 16,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "commit": "45a2cd2"
+    },
+    {
+      "id": "38B",
+      "name": "Flutter Identity, Certificates, Gamification",
+      "track": "mobile",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "commit": "190416f"
+    },
+    {
+      "id": "39",
+      "name": "Flutter Organizer Screens",
+      "track": "mobile",
+      "weight": 36,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "33"
+      ],
+      "commit": "31807e7"
+    },
+    {
+      "id": "40",
+      "name": "Mobile Native UX",
+      "track": "mobile",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "38A",
+        "38B",
+        "39"
+      ]
+    },
+    {
+      "id": "41",
+      "name": "Cross-Platform Consistency",
+      "track": "crossCutting",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "25",
+        "31",
+        "40"
+      ]
+    },
+    {
+      "id": "42",
+      "name": "Microinteractions",
+      "track": "crossCutting",
+      "weight": 10,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "41"
+      ]
+    },
+    {
+      "id": "43",
+      "name": "UX Writing",
+      "track": "crossCutting",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "41"
+      ]
+    },
+    {
+      "id": "44",
+      "name": "Error Recovery",
+      "track": "crossCutting",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "41"
+      ]
+    },
+    {
+      "id": "45",
+      "name": "Performance UX",
+      "track": "crossCutting",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "41"
+      ]
+    },
+    {
+      "id": "46",
+      "name": "Accessibility Verification",
+      "track": "crossCutting",
+      "weight": 16,
+      "status": "IN_PROGRESS",
+      "percent": 95,
+      "dependsOn": [
+        "42",
+        "43",
+        "44",
+        "45"
+      ]
+    },
+    {
+      "id": "47",
+      "name": "Visual Regression Audit",
+      "track": "crossCutting",
+      "weight": 16,
+      "status": "IN_PROGRESS",
+      "percent": 85,
+      "dependsOn": [
+        "46"
+      ]
+    },
+    {
+      "id": "48",
+      "name": "Functional Regression",
+      "track": "crossCutting",
+      "weight": 12,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "47"
+      ]
+    },
+    {
+      "id": "49",
+      "name": "Dead UI Cleanup",
+      "track": "crossCutting",
+      "weight": 8,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "48"
+      ]
+    },
+    {
+      "id": "50",
+      "name": "Final Product Polish",
+      "track": "crossCutting",
+      "weight": 14,
+      "status": "COMPLETE",
+      "percent": 100,
+      "dependsOn": [
+        "49"
+      ]
+    },
+    {
+      "id": "51",
+      "name": "Progress Tracking & Ledger",
+      "track": "meta",
+      "weight": 2,
+      "status": "IN_PROGRESS",
+      "percent": 0,
+      "dependsOn": [
+        "0"
+      ],
+      "note": "continuous for the life of the program"
+    }
+  ],
+  "baseline": {
+    "commit": "c66ae16",
+    "measured": "2026-08-06",
+    "web": {
+      "typecheck": "pass",
+      "lint": "pass",
+      "testFiles": 17,
+      "tests": 265,
+      "passed": 265,
+      "build": "pass",
+      "staticPages": 65
+    },
+    "admin": {
+      "typecheck": "pass",
+      "lint": "pass",
+      "tests": null,
+      "build": "pass",
+      "staticPages": 29
+    },
+    "mobile": {
+      "analyze": "No issues found",
+      "tests": 307,
+      "passed": 307
+    },
+    "backend": {
+      "build": "pass",
+      "total": 1433,
+      "passed": 1432,
+      "skipped": 1,
+      "failed": 0
+    },
+    "latestRun": {
+      "date": "2026-08-07",
+      "afterPhase": "40",
+      "web": {
+        "tests": 340,
+        "staticPages": 65,
+        "typecheck": "clean",
+        "lint": "clean \u2014 zero warnings"
+      },
+      "admin": {
+        "tests": 27,
+        "staticPages": 29,
+        "typecheck": "clean",
+        "lint": "clean"
+      },
+      "mobile": {
+        "tests": 322,
+        "analyze": "No issues found"
+      },
+      "backend": {
+        "rerun": false,
+        "reason": "no contract touched; backend/ unchanged"
+      }
+    }
+  },
+  "screens": {
+    "web": 88,
+    "admin": 27,
+    "mobile": 91,
+    "total": 206,
+    "migrated": 0
+  },
+  "decisions": [
+    {
+      "id": "UX-1",
+      "summary": "One visual register; warm direction corrected to pass WCAG (white-on-ember was 2.86:1)",
+      "dNumber": "D-286",
+      "recordedIn": "docs/DECISIONS.md"
+    },
+    {
+      "id": "UX-2",
+      "summary": "Manual visual baselines; no new repo test dependency (honours D-109)",
+      "dNumber": "D-285",
+      "recordedIn": "docs/DECISIONS.md"
+    },
+    {
+      "id": "UX-3",
+      "summary": "Social/identity surfaces in scope",
+      "dNumber": "D-285",
+      "recordedIn": "docs/DECISIONS.md"
+    },
+    {
+      "id": "UX-4",
+      "summary": "Add non-colour token scales to web+admin mirroring Flutter names",
+      "dNumber": "D-285",
+      "recordedIn": "docs/DECISIONS.md"
+    },
+    {
+      "id": "UX-5",
+      "summary": "Phase 21 renamed to Host / Workspace Experience per D-271 terminology",
+      "dNumber": "D-285",
+      "recordedIn": "docs/DECISIONS.md"
+    },
+    {
+      "id": "UX-6",
+      "summary": "Anek replaces Plus Jakarta Sans \u2014 no Devanagari coverage and hi.json is a shipped locale",
+      "dNumber": "D-287",
+      "recordedIn": "docs/DECISIONS.md"
+    }
+  ],
+  "regressions": [
+    {
+      "id": "REG-001",
+      "severity": "S1",
+      "surface": "web",
+      "problem": "account recovery pushes to /account/security which does not exist",
+      "status": "fixed",
+      "owner": "Phase 16",
+      "commit": "04b55f0"
+    },
+    {
+      "id": "REG-002",
+      "severity": "S1",
+      "surface": "web",
+      "problem": "all invitation->event links use /events/{slug}; route is /e/[slug]",
+      "status": "fixed",
+      "owner": "Phase 20D",
+      "commit": "04b55f0"
+    },
+    {
+      "id": "REG-003",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "/workspace links to /host/templates which has no page",
+      "status": "fixed",
+      "owner": "Phase 20"
+    },
+    {
+      "id": "REG-004",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "event card bookmark button had no onClick \u2014 a dead control on the most-rendered card",
+      "status": "open-preexisting",
+      "owner": "Phase 13"
+    },
+    {
+      "id": "REG-005",
+      "severity": "S3",
+      "surface": "web",
+      "problem": "'Event QR code' card rendered a lucide glyph; qrcode.react used nowhere",
+      "status": "resolved-by-removal",
+      "commit": "5555e6d"
+    },
+    {
+      "id": "REG-006",
+      "severity": "S3",
+      "surface": "web",
+      "problem": "/o/[slug] states an event count with no way to see the events; /discover is auth-gated and does not read orgId",
+      "status": "open",
+      "owner": "Phase 50",
+      "commit": null
+    },
+    {
+      "id": "REG-007",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "ToastProvider was mounted nowhere in web, so Phase 8's feedback channel was inert on all 88 routes",
+      "status": "fixed",
+      "owner": "Phase 18A",
+      "commit": null
+    },
+    {
+      "id": "REG-008",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "/allies called requireSession() from outside every shell, so the app nav's Community item navigated out of the navigation",
+      "status": "fixed",
+      "owner": "Phase 18A",
+      "commit": null
+    },
+    {
+      "id": "REG-009",
+      "severity": "S1",
+      "surface": "web",
+      "problem": "web checkout opened Razorpay with no order_id or amount, ignored the payment result, and navigated to /tickets regardless \u2014 reporting a purchase that never happened",
+      "status": "neutralised",
+      "owner": "needs a product decision + D-NNN",
+      "commit": null
+    },
+    {
+      "id": "REG-010",
+      "severity": "S3",
+      "surface": "web",
+      "problem": "DownloadApp renders a decorative QR glyph captioned as a download QR, and its 'Continue in Browser' button links to the kurx:// app deep link",
+      "status": "open",
+      "owner": "Phase 50",
+      "commit": null
+    },
+    {
+      "id": "REG-011",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "20 colour classes across 8 files named tokens that do not exist (bg-card, text-fg, text-destructive, text-muted-foreground) \u2014 incoming chat bubbles had no background and every auth error was not red",
+      "status": "fixed",
+      "owner": "Phase 20B",
+      "commit": null
+    },
+    {
+      "id": "REG-012",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "13 irreversible deletes across the host surface fired on a single click with no confirmation, including a whole draft event; the draft delete also swallowed its own failures",
+      "status": "fixed",
+      "owner": "Phase 21",
+      "commit": null
+    },
+    {
+      "id": "REG-013",
+      "severity": "S1",
+      "surface": "web",
+      "problem": "160 hand-rolled form controls across 21 host files with zero Field wrappers \u2014 Phase 7's S1-1 aria wiring never reached the host surface; the forked class string carried 40px height, the decorative border token at 1.30:1 and no focus ring",
+      "status": "fixed",
+      "owner": "Phase 21",
+      "commit": null
+    },
+    {
+      "id": "REG-014",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "the create-event wizard's five single-select steps were grids of plain buttons \u2014 no group name, no mutual exclusivity, and the choice carried only by a border colour; /host/events/new caught its representation read to [] so an outage offered Personal alone",
+      "status": "fixed",
+      "owner": "Phase 22",
+      "commit": null
+    },
+    {
+      "id": "REG-015",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "EditEventForm's error branch was dead code \u2014 updateEventAction threw instead of returning {error}, so a failed save hit an error boundary; its {ok:true} success was rendered nowhere",
+      "status": "fixed",
+      "owner": "Phase 23",
+      "commit": null
+    },
+    {
+      "id": "REG-016",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "a failed replacement of the authorization letter kept the previous key and filename attached, so a resubmit would file the previous document under the new details; two fields carried their helper text inside the label and so inside the accessible name",
+      "status": "fixed",
+      "owner": "Phase 24",
+      "commit": null
+    },
+    {
+      "id": "REG-017",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "every public page scrolled horizontally at 360px and again at 768px; Dialog had no vertical bound so a confirmation's footer buttons were unreachable on a short viewport",
+      "status": "fixed",
+      "owner": "Phase 25",
+      "commit": null
+    },
+    {
+      "id": "REG-018",
+      "severity": "S2",
+      "surface": "admin",
+      "problem": "the console's role-based IA was declared in NAV and enforced nowhere \u2014 every page guarded with requireStaffSession() alone, so all 24 console routes were reachable by any platform role",
+      "status": "fixed",
+      "owner": "Phase 26",
+      "commit": null
+    },
+    {
+      "id": "REG-019",
+      "severity": "S1",
+      "surface": "admin",
+      "problem": "the admin mobile drawer declared role=dialog and aria-modal=true while implementing none of it \u2014 no focus trap, no Escape, no focus restore, no scroll lock (audit S1-2, never wired to admin)",
+      "status": "fixed",
+      "owner": "Phase 27",
+      "commit": null
+    },
+    {
+      "id": "REG-020",
+      "severity": "S1",
+      "surface": "admin",
+      "problem": "DataTable's clickable rows had no tabIndex, key handler or role, so the primary action on three admin screens was mouse-only; its overflow-x container was not keyboard-scrollable; every row checkbox shared the name 'Select row'; a partial selection rendered as unchecked",
+      "status": "fixed",
+      "owner": "Phase 28",
+      "commit": null
+    },
+    {
+      "id": "REG-021",
+      "severity": "S1",
+      "surface": "all",
+      "problem": "Button set no default type, so every Button inside a form submitted it \u2014 a moderation decision recorded twice, and ConfirmDialog's Cancel submitted the form",
+      "status": "fixed",
+      "owner": "Phase 30",
+      "commit": null
+    },
+    {
+      "id": "REG-022",
+      "severity": "S2",
+      "surface": "mobile",
+      "problem": "15 tappable surfaces are bare GestureDetectors with no Semantics \u2014 no role, no name; the shared chip's delete is a 14px target against the 48dp floor",
+      "status": "fixed",
+      "owner": "Phase 39",
+      "commit": null,
+      "fixed": 15,
+      "remaining": 0
+    },
+    {
+      "id": "REG-023",
+      "severity": "S1",
+      "surface": "mobile",
+      "problem": "CheckoutPage was fully implemented and nothing navigated to it \u2014 registration was reachable only by typing a URL; the mirror of REG-009 on web",
+      "status": "fixed",
+      "owner": "Phase 35",
+      "commit": null
+    },
+    {
+      "id": "REG-024",
+      "severity": "S2",
+      "surface": "mobile",
+      "problem": "MyDevicesPage is an orphan carrying a dead 'Remove' button with an empty onPressed \u2014 implying a device revocation that never happened; security_page has the working one",
+      "status": "control-neutralised",
+      "owner": "Phase 49 (page deletion)",
+      "commit": null
+    },
+    {
+      "id": "REG-024",
+      "severity": "S2",
+      "surface": "mobile",
+      "problem": "11 sites wrote a colour as a literal where a token existed (7 ambers for warning, a red for danger, a brown as body text, 2 callout backgrounds fixed light) \u2014 a literal has one value where a token has two, so each was also a dark-theme defect",
+      "status": "fixed",
+      "owner": "Phase 41",
+      "commit": "5b29ec8"
+    },
+    {
+      "id": "REG-025",
+      "severity": "S3",
+      "surface": "mobile",
+      "problem": "an order web labels Paid or Free the app labelled Confirmed for both \u2014 same status, two vocabularies, collapsing the distinction a refund turns on",
+      "status": "fixed",
+      "owner": "Phase 41",
+      "commit": "5b29ec8"
+    },
+    {
+      "id": "REG-026",
+      "severity": "S2",
+      "surface": "mobile",
+      "problem": "motion.dart had one consumer; 7 files animated with raw durations and two repeated with no end condition, so reduced motion was ignored (WCAG 2.3.3, 2.2.2)",
+      "status": "fixed",
+      "owner": "Phase 42",
+      "commit": "a8872ac"
+    },
+    {
+      "id": "REG-027",
+      "severity": "S2",
+      "surface": "web+admin",
+      "problem": "confirm-then-submit primitives showed no pending state, so a confirmed destructive action could be fired twice; on admin, Reject stayed live during an in-flight Approve on the same event",
+      "status": "fixed",
+      "owner": "Phase 42",
+      "commit": "a8872ac"
+    },
+    {
+      "id": "REG-028",
+      "severity": "S2",
+      "surface": "web+admin",
+      "problem": "apiErrorMessage returned ProblemDetails.error verbatim, a machine-readable code by documented contract, so users saw strings like invalid_code and forbidden as their error message",
+      "status": "fixed",
+      "owner": "Phase 43",
+      "commit": "10fbfa1"
+    },
+    {
+      "id": "REG-029",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "only one route had an error boundary; every other route fell through to Next's unstyled production error screen with no retry or navigation",
+      "status": "fixed",
+      "owner": "Phase 44",
+      "commit": "4d72baf"
+    },
+    {
+      "id": "REG-030",
+      "severity": "S3",
+      "surface": "web",
+      "problem": "no not-found.tsx, so every notFound() \u2014 including D-018's deliberate 404 for hidden resources \u2014 rendered Next's default dead-end 404",
+      "status": "fixed",
+      "owner": "Phase 44",
+      "commit": "4d72baf"
+    },
+    {
+      "id": "REG-031",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "the (public) group and the (app) root had no loading.tsx, so those segments could not stream and a navigation held the previous page with no signal",
+      "status": "fixed",
+      "owner": "Phase 45",
+      "commit": "84c8977"
+    },
+    {
+      "id": "REG-032",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "four sites used alt=\"\" on meaningful images, including the post media grid where the images are the post's content",
+      "status": "fixed",
+      "owner": "Phase 46.1",
+      "commit": "3a04292"
+    },
+    {
+      "id": "REG-033",
+      "severity": "S2",
+      "surface": "admin",
+      "problem": "/events/review, the full moderation review flow, had no inbound link anywhere and was reachable only by typing the URL; its role gate was correct only by prefix fallback to /events",
+      "status": "fixed",
+      "owner": "Phase 50.1",
+      "commit": "1f4a4b5"
+    },
+    {
+      "id": "REG-034",
+      "severity": "S2",
+      "surface": "web",
+      "problem": "not-found.tsx's primary CTA linked to /events, a route with no page \u2014 a 404 whose main button led to another 404; the Phase 44 test asserted the broken href",
+      "status": "fixed",
+      "owner": "Phase 47.2",
+      "commit": "1a06421"
+    },
+    {
+      "id": "REG-035",
+      "severity": "S2",
+      "surface": "admin",
+      "problem": "three unresolved template hrefs: /e/{slug} and /o/{slug} are relative so they open on the admin origin instead of the web site, and /verification/doc/{id} has no route at all",
+      "status": "fixed",
+      "owner": "Phase 47.3",
+      "commit": "8195946"
+    },
+    {
+      "id": "REG-036",
+      "severity": "S1",
+      "surface": "web+admin",
+      "problem": "the shared Button and four other UI primitives carried no focus styles at all, so every button on both surfaces was invisible to a keyboard user (WCAG 2.4.7)",
+      "status": "fixed",
+      "owner": "Phase 46.3b",
+      "commit": "a7fbcd1"
+    }
+  ],
+  "deferred": [
+    {
+      "item": "Verify /host/admin/* orphaned after D-195",
+      "originPhase": "0.1",
+      "targetPhase": "49",
+      "risk": "low"
+    },
+    {
+      "item": "Replace 4 WorkflowPage placeholders",
+      "originPhase": "0.1",
+      "targetPhase": "21/49",
+      "risk": "medium"
+    },
+    {
+      "item": "i18n coverage: only 2 next-intl call-sites",
+      "originPhase": "0.1",
+      "targetPhase": "43",
+      "risk": "medium"
+    },
+    {
+      "item": "Self-host Anek webfont binaries (next/font needs network)",
+      "originPhase": "4.2",
+      "targetPhase": "45",
+      "risk": "low \u2014 token already correct, adoption is a no-code change"
+    },
+    {
+      "item": "Admin's two Tabs call sites have keyboard navigation but no tab-panel wiring",
+      "originPhase": "18A.0",
+      "targetPhase": "28/29",
+      "risk": "low"
+    },
+    {
+      "item": "The web booking journey is unbuilt \u2014 no order creation, ticket-type selection or payment",
+      "originPhase": "19",
+      "targetPhase": "needs a product owner",
+      "risk": "high"
+    },
+    {
+      "item": "Six EmptyState call sites still pass Material Symbols names as icons",
+      "originPhase": "19.4",
+      "targetPhase": "20A/20B/21",
+      "risk": "low"
+    },
+    {
+      "item": "GET /v1/me/participations returns no event title, so /workspace titles each participation by role",
+      "originPhase": "20.1",
+      "targetPhase": "needs a backend owner",
+      "risk": "low"
+    },
+    {
+      "item": "POST /v1/groups/join exists and nothing in the Flutter app calls it \u2014 no join screen, data source method or route",
+      "originPhase": "38B",
+      "targetPhase": "needs a product owner",
+      "risk": "medium"
+    },
+    {
+      "item": "70 Flutter fields carry no textInputAction, so multi-field forms do not chain next through the keyboard",
+      "originPhase": "40",
+      "targetPhase": "42/46",
+      "risk": "low"
+    },
+    {
+      "id": "DEF-012",
+      "surface": "web",
+      "owner": "Phase 50.4",
+      "item": "delete 12 verified-orphan routes (/host/admin/*, /host/{attendees,certificates,forms,notifications,payouts,risk,settings}, /onboarding); give /host an inbound link",
+      "why": "12 route-tree deletions is a large change; recorded from an exhaustive verified sweep rather than executed on the last of a session's context",
+      "status": "done",
+      "commit": "pending"
+    },
+    {
+      "id": "DEF-013",
+      "surface": "web",
+      "owner": "unassigned",
+      "item": "settle whether Escape dismisses Dialog \u2014 real defect or jsdom artifact",
+      "why": "skipped test in web/test/focus-return.test.tsx documents both readings; one browser check resolves it",
+      "status": "resolved \u2014 jsdom artifact, Escape works in Chrome"
+    },
+    {
+      "id": "DEF-014",
+      "surface": "web+admin",
+      "owner": "unassigned",
+      "item": "six-width sweep of the admin console (15 routes remain; /users at 360 verified)",
+      "why": "admin sets X-Frame-Options/CSP frame-ancestors, so the iframe batch technique cannot be used \u2014 needs top-level navigation per page-width. Staff seeding and session are solved; see 47.4."
+    }
+  ],
+  "auditFindings": {
+    "S1": 5,
+    "S2": 7,
+    "S3": 6,
+    "S4": 5,
+    "file": "docs/ui-ux/audit-findings.md",
+    "criticalPrerequisite": "S1-5 \u2014 collapse 8 forked primitives in web/components/ui before the S1-1 Field fix, or 5 of 6 auth components keep the broken copy"
+  },
+  "s1FindingsClosed": {
+    "S1-1": "563c85e",
+    "S1-2": "14779ed",
+    "S1-3": "14779ed",
+    "S1-4": "3b21fd0",
+    "S1-5": "1c6b462"
+  }
+}

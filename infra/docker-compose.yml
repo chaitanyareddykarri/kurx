@@ -1,0 +1,56 @@
+# Kurx local infrastructure.
+# Dev machines without Docker can run Postgres/Redis natively instead
+# (see README "Native fallback") — same ports/credentials either way.
+services:
+  postgres:
+    image: postgres:17
+    container_name: kurx-postgres
+    environment:
+      POSTGRES_USER: kurx
+      POSTGRES_PASSWORD: kurx
+      POSTGRES_DB: kurx
+    ports:
+      - "5432:5432"
+    volumes:
+      - kurx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kurx"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8
+    container_name: kurx-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: ../infra/Dockerfile.api
+    container_name: kurx-api
+    profiles: ["full"]        # `docker compose --profile full up` to run the API in Docker too
+    env_file:
+      # Optional: .env is gitignored and absent on a fresh clone. Without this the whole file fails
+      # to load under --profile full rather than falling back to the defaults below.
+      - path: ../.env
+        required: false
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=kurx;Username=kurx;Password=kurx"
+      REDIS_CONNECTION: "redis:6379"
+    ports:
+      - "5080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  kurx_pgdata:

@@ -18,7 +18,7 @@ services:
       # this over the compose network as `postgres:5432`. Host-side tests: KURX_TEST_PG_PORT=5433.
       - "5433:5432"
     volumes:
-      - kurx_pgdata:/var/lib/postgresql/data
+      - kurx_pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kurx -d kurx"]
       interval: 5s
@@ -224,7 +224,9 @@ services:
       retries: 20
 
 volumes:
-  kurx_pgdata:
+  # `17`, matching the postgres major above: a major upgrade cannot read the older cluster's data
+  # directory, so the new major gets a new volume rather than failing to start on the old one.
+  kurx_pgdata17:
   # Uploaded files for STORAGE_PROVIDER=localdisk. Survives `up --build`; removed only by an explicit
   # `docker volume rm kurx_kurx_storage` or `docker compose down -v`.
   kurx_storage:

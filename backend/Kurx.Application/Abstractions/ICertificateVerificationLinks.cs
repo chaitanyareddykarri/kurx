@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Where a certificate's QR points (D-344, Phase 5).
+/// Where a certificate's QR points (D-355, Phase 5).
 ///
 /// <para>The public verification origin is configuration, not a constant: a self-hosted deployment, a
 /// staging environment and production all publish on different hosts, and a hardcoded URL would print the
@@ -17,7 +17,7 @@ public interface ICertificateVerificationLinks
     string VerificationUrl(string certificateId);
 
     /// <summary>The page a participant with no account lands on to reach their own certificates
-    /// (D-344, Phase 10). Same origin as verification, and built here for the same reason — the emailed
+    /// (D-355, Phase 10). Same origin as verification, and built here for the same reason — the emailed
     /// link and the one an organiser copies out of the dashboard must be the same link.</summary>
     string AccessUrl(string token);
 }

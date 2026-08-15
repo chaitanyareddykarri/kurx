@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Producing one certificate (D-344, Phase 4).
+/// Producing one certificate (D-355, Phase 4).
 ///
 /// <para><b>Preview and issue share a single path.</b> Both assemble the same
 /// <see cref="CertificateDocument"/> from the same template and hand it to the same renderer; they differ
@@ -26,7 +26,7 @@ public interface ICertificateIssuingService
     Task<ServiceResult<IssuedCertificateView>> IssueAsync(
         Guid userId, Guid templateId, IssueCertificateInput input, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>Assembles a template ONCE for a run of many certificates (D-344, Phase 7).
+    /// <summary>Assembles a template ONCE for a run of many certificates (D-355, Phase 7).
     ///
     /// <para>The assembly is the expensive part — it reads the artwork out of storage and resolves every
     /// field — and it produces the same document for every row. Doing it per row would mean one storage

@@ -80,6 +80,7 @@ _$TrustCapabilitiesDtoImpl _$$TrustCapabilitiesDtoImplFromJson(
   identityVerified: json['identity_verified'] as bool? ?? false,
   bankVerified: json['bank_verified'] as bool? ?? false,
   canCreatePublicEvent: json['can_create_public_event'] as bool? ?? false,
+  requiresRepresentation: json['requires_representation'] as bool? ?? true,
   canCreatePrivateEvent: json['can_create_private_event'] as bool? ?? true,
 );
 
@@ -93,6 +94,7 @@ Map<String, dynamic> _$$TrustCapabilitiesDtoImplToJson(
   'identity_verified': instance.identityVerified,
   'bank_verified': instance.bankVerified,
   'can_create_public_event': instance.canCreatePublicEvent,
+  'requires_representation': instance.requiresRepresentation,
   'can_create_private_event': instance.canCreatePrivateEvent,
 };
 

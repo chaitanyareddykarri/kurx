@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Getting certificates to the people they were issued to (D-344, Phase 8).
+/// Getting certificates to the people they were issued to (D-355, Phase 8).
 ///
 /// <para><b>Queue, then drain.</b> Sending is never done inside the request that asks for it. A send loop
 /// over four hundred recipients inside an HTTP call fails halfway with no record of how far it got, and

@@ -57,32 +57,41 @@ public class TrustService(KurxDbContext db, IFraudService fraud, IdentityVerific
 
         var fraudClear = await fraud.IsUserClearAsync(userId, ct);   // live blocklist + risk-score read (M13)
 
-        // D-323 — every proof above is answered by MockKycProvider today (DigiLocker always approves; PAN and
-        // penny-drop pass for anything not ending "0000"), so outside Production the gate costs four
-        // submissions and establishes nothing. The flag relaxes the PROOFS only; `fraudClear` is deliberately
-        // outside it and is still ANDed into all three capabilities below, because the blacklist and risk
-        // engine are real implementations and switching them off would test less rather than more.
-        // Refused at startup in Production (DependencyInjection). Reasoning: IdentityVerificationOptions.
-        var proofsSatisfied = identityOptions.Bypass || (identityVerified && panVerified && bankVerified);
+        // D-343 — the proofs are TWO tiers, split by what each one actually establishes, because the two
+        // questions they answer are different:
+        //
+        //   identity  — "who is behind this event"      → govt ID or PAN
+        //   financial — "whose account receives money"  → PAN + bank + penny drop + holder-name match
+        //
+        // They were one lump (`proofsSatisfied`), which made a FREE public event prove ownership of a bank
+        // account that would never receive a rupee — four submissions to establish a fact the event cannot
+        // use. D-307's reasoning is kept intact and is the reason the identity tier still gates Public: a
+        // free public event carries the platform's name into discovery, so the harm it can do is not bounded
+        // by whether money moved. What D-307 over-applied was the FINANCIAL half; nothing settles on a free
+        // event, so there is no account to own.
+        //
+        // D-323 — every proof is answered by MockKycProvider today (DigiLocker always approves; PAN and
+        // penny-drop pass for anything not ending "0000"), so outside Production the gate costs submissions
+        // and establishes nothing. The flag relaxes the PROOFS only; `fraudClear` is deliberately outside it
+        // and is still ANDed into all three capabilities below, because the blacklist and risk engine are
+        // real implementations and switching them off would test less rather than more. Refused at startup
+        // in Production (DependencyInjection). Reasoning: IdentityVerificationOptions.
+        var identityProofs = identityOptions.Bypass || identityVerified;
+        var financialProofs = identityOptions.Bypass || (identityVerified && panVerified && bankVerified);
 
         var canOrganizeFree = true;                                       // any account: free/private events, no KYC
 
-        // Selling and settling now carry the SAME bar. They used to differ — payout asked only for a
-        // bank account — so a user could receive money having proved nothing about who they were.
-        // Both are "the platform is moving this person's money", and both require the full set.
-        var canOrganizePaid = proofsSatisfied && fraudClear;
+        // Selling and settling carry the SAME bar. They used to differ — payout asked only for a bank
+        // account — so a user could receive money having proved nothing about who they were. Both are
+        // "the platform is moving this person's money", and both require the full financial tier.
+        var canOrganizePaid = financialProofs && fraudClear;
         var canReceivePayout = canOrganizePaid;
 
-        // D-307 — publishing to the public is itself a trust event. A free public event still carries the
-        // platform's name and reaches every user through discovery, so the harm is not bounded by whether
-        // money moved; bounding verification by payment was the wrong axis.
-        //
-        // The predicate is IDENTICAL to canOrganizePaid today and is deliberately written out rather than
-        // assigned from it. They answer different questions — may this person publish publicly, versus may
-        // this person take money — and aliasing them would mean a future change to either silently moved
-        // the other. `bankVerified` already carries the penny drop and the name match, so bank OWNERSHIP
-        // is inside this, not beside it.
-        var canCreatePublicEvent = proofsSatisfied && fraudClear;
+        // Identity tier only (D-343). PAN is deliberately NOT required here: PAN is a tax identity, a free
+        // event reports no income, and demanding it would ask for a tax document for a non-taxable act —
+        // which also locks out anyone holding a passport or Aadhaar but no PAN. Written out rather than
+        // assigned from `identityProofs` so the predicate stays readable next to the one below it.
+        var canCreatePublicEvent = identityProofs && fraudClear;
 
         // Constant true: a Private event cannot be Listed, cannot take payment and appears on no discovery
         // surface (PolicyResolver + nine services), so there is no exposure to bound and no money to
@@ -92,17 +101,36 @@ public class TrustService(KurxDbContext db, IFraudService fraud, IdentityVerific
         // Label over the flags. L0 (guest) never applies to an authenticated user; L3+ need org context.
         var level = canOrganizePaid ? "L2" : "L1";
 
+        // D-353/D-352 — the representation rule is real logic, but it needs an admin-approved organization
+        // to satisfy, which is exactly the kind of human-reviewed gate the bypass exists to lift.
+        var requiresRepresentation = !identityOptions.Bypass;
+
         return new TrustCapabilities(level, canOrganizeFree, canOrganizePaid, canReceivePayout,
-            identityVerified, bankVerified, canCreatePublicEvent, canCreatePrivateEvent);
+            identityVerified, bankVerified, canCreatePublicEvent, canCreatePrivateEvent,
+            requiresRepresentation);
     }
 
     public async Task<OrgTrustCapabilities> GetOrgCapabilitiesAsync(Guid userId, Guid orgId, CancellationToken ct = default)
     {
         var membership = await db.Memberships.AsNoTracking()
             .FirstOrDefaultAsync(m => m.OrgId == orgId && m.UserId == userId, ct);
-        var orgVerified = await db.Organizations.AsNoTracking()
+        // D-352 — the bypass reaches ORG verification too, not just the person's proofs. Same reason as
+        // D-323: approving an organization requires a reviewer working a queue against documents that
+        // `MockKycProvider` and a stubbed rasterizer produce, so enforcing it outside Production costs a
+        // manual approval per test org and establishes nothing about a real institution.
+        //
+        // Deliberately the SAME flag rather than a second one: one switch, one Production guard, one
+        // thing to delete when real adapters ship. A separate `ORG_VERIFICATION_BYPASS` would be a
+        // second door to remember to lock.
+        //
+        // It relaxes the CAPABILITY only. `VerificationStatus` on the row is untouched, so the admin
+        // console and the org profile keep reporting what is actually on file — the D-323 rule that a
+        // bypass may open a gate but must never forge a fact.
+        var orgVerified = identityOptions.Bypass || await db.Organizations.AsNoTracking()
             .AnyAsync(o => o.Id == orgId && o.DeletedAt == null && o.VerificationStatus == OrgVerificationStatus.Verified, ct);
 
+        // `canRepresent` stays real: it reads the caller's own membership row, which no provider mocks
+        // and which a test seeds directly. Relaxing it would let anyone represent anyone.
         var canRepresent = membership?.IsVerified == true;
         return new OrgTrustCapabilities(canRepresent, canRepresent && orgVerified, orgVerified);
     }

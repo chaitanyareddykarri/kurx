@@ -73,7 +73,12 @@ public static class OrgEndpoints
             return Results.Ok(mine.Select(o => new RepresentableOrg(
                 o.Id, o.Name, o.Slug, o.LogoKey,
                 // The caller's authority to act for this organization — not a role they hold over events.
-                o.Authority.ToLowerInvariant())));
+                o.Authority.ToLowerInvariant(),
+                // The organization's own registry status (D-350) — a paid event may only represent a
+                // verified one, and a pending representation request is legitimately in this list.
+                o.IsVerified,
+                // D-352 — the capability the client gates on. Identical to the fact in Production.
+                o.CanBackPaidEvent)));
         }).RequireAuthorization().WithTags("representations").Produces<IReadOnlyList<RepresentableOrg>>();
 
         orgs.MapGet("/{orgId:guid}", async (Guid orgId, ClaimsPrincipal principal, IOrgService svc, CancellationToken ct) =>

@@ -4,7 +4,7 @@ import {
 } from "@/lib/certificate-artwork-map";
 
 /**
- * Warning a creator before they place a field over their own design's text (D-344).
+ * Warning a creator before they place a field over their own design's text (D-355).
  *
  * The direction of the errors matters more than the precision. A missed overlap costs a warning nobody
  * sees; a false one fires on every design and teaches people to ignore the warning entirely — which is

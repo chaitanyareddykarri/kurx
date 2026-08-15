@@ -1477,6 +1477,20 @@ mixin _$RepresentationDto {
   /// The caller's authority to act for this organization, lowercased — not a role over events.
   String get authority => throw _privateConstructorUsedError;
 
+  /// The ORGANIZATION's registry status (D-350), distinct from [authority], which is the caller's
+  /// standing over it. A staged representation request is a real `PendingReview` row in this list —
+  /// legitimate for a free event, never for a paid one, because ticket money settles into the
+  /// organization's account. Defaulted so an older server that omits the field reads as "not
+  /// verified", which is the closed position.
+  @JsonKey(name: 'is_verified')
+  bool get isVerified => throw _privateConstructorUsedError;
+
+  /// D-352 — the CAPABILITY the client gates on; [isVerified] is the FACT it displays. They differ
+  /// only under the dev bypass, which opens the gate without forging the status. Defaulted false so an
+  /// older server that omits it lands on the closed position.
+  @JsonKey(name: 'can_back_paid_event')
+  bool get canBackPaidEvent => throw _privateConstructorUsedError;
+
   /// Serializes this RepresentationDto to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
@@ -1500,6 +1514,8 @@ abstract class $RepresentationDtoCopyWith<$Res> {
     String? slug,
     @JsonKey(name: 'logo_key') String? logoKey,
     String authority,
+    @JsonKey(name: 'is_verified') bool isVerified,
+    @JsonKey(name: 'can_back_paid_event') bool canBackPaidEvent,
   });
 }
 
@@ -1523,6 +1539,8 @@ class _$RepresentationDtoCopyWithImpl<$Res, $Val extends RepresentationDto>
     Object? slug = freezed,
     Object? logoKey = freezed,
     Object? authority = null,
+    Object? isVerified = null,
+    Object? canBackPaidEvent = null,
   }) {
     return _then(
       _value.copyWith(
@@ -1546,6 +1564,14 @@ class _$RepresentationDtoCopyWithImpl<$Res, $Val extends RepresentationDto>
                 ? _value.authority
                 : authority // ignore: cast_nullable_to_non_nullable
                       as String,
+            isVerified: null == isVerified
+                ? _value.isVerified
+                : isVerified // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            canBackPaidEvent: null == canBackPaidEvent
+                ? _value.canBackPaidEvent
+                : canBackPaidEvent // ignore: cast_nullable_to_non_nullable
+                      as bool,
           )
           as $Val,
     );
@@ -1567,6 +1593,8 @@ abstract class _$$RepresentationDtoImplCopyWith<$Res>
     String? slug,
     @JsonKey(name: 'logo_key') String? logoKey,
     String authority,
+    @JsonKey(name: 'is_verified') bool isVerified,
+    @JsonKey(name: 'can_back_paid_event') bool canBackPaidEvent,
   });
 }
 
@@ -1589,6 +1617,8 @@ class __$$RepresentationDtoImplCopyWithImpl<$Res>
     Object? slug = freezed,
     Object? logoKey = freezed,
     Object? authority = null,
+    Object? isVerified = null,
+    Object? canBackPaidEvent = null,
   }) {
     return _then(
       _$RepresentationDtoImpl(
@@ -1612,6 +1642,14 @@ class __$$RepresentationDtoImplCopyWithImpl<$Res>
             ? _value.authority
             : authority // ignore: cast_nullable_to_non_nullable
                   as String,
+        isVerified: null == isVerified
+            ? _value.isVerified
+            : isVerified // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        canBackPaidEvent: null == canBackPaidEvent
+            ? _value.canBackPaidEvent
+            : canBackPaidEvent // ignore: cast_nullable_to_non_nullable
+                  as bool,
       ),
     );
   }
@@ -1626,6 +1664,8 @@ class _$RepresentationDtoImpl implements _RepresentationDto {
     this.slug,
     @JsonKey(name: 'logo_key') this.logoKey,
     required this.authority,
+    @JsonKey(name: 'is_verified') this.isVerified = false,
+    @JsonKey(name: 'can_back_paid_event') this.canBackPaidEvent = false,
   });
 
   factory _$RepresentationDtoImpl.fromJson(Map<String, dynamic> json) =>
@@ -1648,9 +1688,25 @@ class _$RepresentationDtoImpl implements _RepresentationDto {
   @override
   final String authority;
 
+  /// The ORGANIZATION's registry status (D-350), distinct from [authority], which is the caller's
+  /// standing over it. A staged representation request is a real `PendingReview` row in this list —
+  /// legitimate for a free event, never for a paid one, because ticket money settles into the
+  /// organization's account. Defaulted so an older server that omits the field reads as "not
+  /// verified", which is the closed position.
+  @override
+  @JsonKey(name: 'is_verified')
+  final bool isVerified;
+
+  /// D-352 — the CAPABILITY the client gates on; [isVerified] is the FACT it displays. They differ
+  /// only under the dev bypass, which opens the gate without forging the status. Defaulted false so an
+  /// older server that omits it lands on the closed position.
+  @override
+  @JsonKey(name: 'can_back_paid_event')
+  final bool canBackPaidEvent;
+
   @override
   String toString() {
-    return 'RepresentationDto(organizationId: $organizationId, name: $name, slug: $slug, logoKey: $logoKey, authority: $authority)';
+    return 'RepresentationDto(organizationId: $organizationId, name: $name, slug: $slug, logoKey: $logoKey, authority: $authority, isVerified: $isVerified, canBackPaidEvent: $canBackPaidEvent)';
   }
 
   @override
@@ -1664,13 +1720,25 @@ class _$RepresentationDtoImpl implements _RepresentationDto {
             (identical(other.slug, slug) || other.slug == slug) &&
             (identical(other.logoKey, logoKey) || other.logoKey == logoKey) &&
             (identical(other.authority, authority) ||
-                other.authority == authority));
+                other.authority == authority) &&
+            (identical(other.isVerified, isVerified) ||
+                other.isVerified == isVerified) &&
+            (identical(other.canBackPaidEvent, canBackPaidEvent) ||
+                other.canBackPaidEvent == canBackPaidEvent));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, organizationId, name, slug, logoKey, authority);
+  int get hashCode => Object.hash(
+    runtimeType,
+    organizationId,
+    name,
+    slug,
+    logoKey,
+    authority,
+    isVerified,
+    canBackPaidEvent,
+  );
 
   /// Create a copy of RepresentationDto
   /// with the given fields replaced by the non-null parameter values.
@@ -1696,6 +1764,8 @@ abstract class _RepresentationDto implements RepresentationDto {
     final String? slug,
     @JsonKey(name: 'logo_key') final String? logoKey,
     required final String authority,
+    @JsonKey(name: 'is_verified') final bool isVerified,
+    @JsonKey(name: 'can_back_paid_event') final bool canBackPaidEvent,
   }) = _$RepresentationDtoImpl;
 
   factory _RepresentationDto.fromJson(Map<String, dynamic> json) =
@@ -1717,6 +1787,22 @@ abstract class _RepresentationDto implements RepresentationDto {
   /// The caller's authority to act for this organization, lowercased — not a role over events.
   @override
   String get authority;
+
+  /// The ORGANIZATION's registry status (D-350), distinct from [authority], which is the caller's
+  /// standing over it. A staged representation request is a real `PendingReview` row in this list —
+  /// legitimate for a free event, never for a paid one, because ticket money settles into the
+  /// organization's account. Defaulted so an older server that omits the field reads as "not
+  /// verified", which is the closed position.
+  @override
+  @JsonKey(name: 'is_verified')
+  bool get isVerified;
+
+  /// D-352 — the CAPABILITY the client gates on; [isVerified] is the FACT it displays. They differ
+  /// only under the dev bypass, which opens the gate without forging the status. Defaulted false so an
+  /// older server that omits it lands on the closed position.
+  @override
+  @JsonKey(name: 'can_back_paid_event')
+  bool get canBackPaidEvent;
 
   /// Create a copy of RepresentationDto
   /// with the given fields replaced by the non-null parameter values.

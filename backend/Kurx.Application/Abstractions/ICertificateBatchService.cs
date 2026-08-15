@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Generating certificates for a whole participant list (D-344, Phase 7).
+/// Generating certificates for a whole participant list (D-355, Phase 7).
 ///
 /// <para>The confirmed flow is <b>upload → map → preview → approve → generate</b>, and the approval gate
 /// is the point of it. A batch is the one operation here that is genuinely hard to undo: two hundred

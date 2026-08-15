@@ -10,7 +10,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Generating certificates for a whole participant list (D-344, Phase 7).
+/// Generating certificates for a whole participant list (D-355, Phase 7).
 ///
 /// <para>Three properties carry this phase. <b>Nothing generates at scale without an approval</b> — the
 /// gate is the only thing standing between a mistyped event name and two hundred certificates that have

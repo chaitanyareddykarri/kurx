@@ -3,7 +3,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Picks a reader and enforces the limits that protect the server (D-344, Phase 6).
+/// Picks a reader and enforces the limits that protect the server (D-355, Phase 6).
 ///
 /// <para>Format selection is by extension, not by sniffing content. An organiser who renames a
 /// <c>.numbers</c> file to <c>.csv</c> gets a clear "could not read" rather than a parser that guesses

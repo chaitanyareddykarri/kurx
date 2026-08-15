@@ -2,7 +2,7 @@ using Kurx.Domain.Enums;
 
 namespace Kurx.Domain.Entities;
 
-// ── The certificate module (D-344) ───────────────────────────────────────────────────────────────
+// ── The certificate module (D-355) ───────────────────────────────────────────────────────────────
 //
 // A self-contained module: certificate issuance, verification and distribution. It references the
 // platform's Event and User by **id value only** — there is not one navigation property to either, and
@@ -410,7 +410,7 @@ public class CertificateEvent
 }
 
 /// <summary>
-/// A key used to sign certificates (D-344, Phase 5).
+/// A key used to sign certificates (D-355, Phase 5).
 ///
 /// <para><b>Deliberately separate from the platform's JWT <c>SigningKey</c>.</b> The two have opposite
 /// lifetimes and that difference is not cosmetic. A JWT key is retired quickly and its private half is
@@ -463,7 +463,7 @@ public class CertificateSigningKey
 }
 
 /// <summary>A long-lived, revocable way for someone with no account to reach their certificates
-/// (D-344, Phase 10).
+/// (D-355, Phase 10).
 ///
 /// <para>It belongs to the <b>recipient</b>, not to a single certificate, and that is what makes it
 /// durable: when a certificate is corrected, the same link keeps working and shows the corrected one.

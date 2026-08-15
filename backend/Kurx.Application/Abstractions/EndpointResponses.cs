@@ -681,12 +681,20 @@ public sealed record OrgSearchHit(
 
 /// <summary>An organization the caller may represent (D-075). <c>authority</c> is the caller's standing
 /// to act for it — never a role over its events.</summary>
+/// <param name="IsVerified">Whether the ORGANIZATION is Verified in the registry (M5), distinct from
+/// <paramref name="Authority"/>, which is the caller's standing over it. A staged representation request
+/// is a real <c>PendingReview</c> row in this list, and only a verified organization may be represented
+/// by a paid event (D-350) — so the client needs both facts, not one.</param>
 public sealed record RepresentableOrg(
     Guid OrganizationId,
     string Name,
     string Slug,
     string? LogoKey,
-    string Authority);
+    string Authority,
+    bool IsVerified,
+    /// <summary>D-352 — the capability beside the fact. Equal to <c>IsVerified</c> in Production; both
+    /// travel so a client never has to know whether a bypass is on.</summary>
+    bool CanBackPaidEvent);
 
 /// <summary><c>GET /v1/orgs/{orgId}/my-capabilities</c> — the caller's live trust capabilities for one
 /// organization (M7), resolved per request and never read from a token claim.</summary>

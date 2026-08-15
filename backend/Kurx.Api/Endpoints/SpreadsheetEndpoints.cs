@@ -6,7 +6,7 @@ namespace Kurx.Api.Endpoints;
 using Kurx.Api.ExceptionHandling;
 
 /// <summary>
-/// Reading a participant list, without generating anything (D-344, Phase 6).
+/// Reading a participant list, without generating anything (D-355, Phase 6).
 ///
 /// <para>The mapping step exists because a silent guess is dangerous: a column called "Name" holding a
 /// team name is an ordinary spreadsheet, and applying that guess prints the wrong words on every

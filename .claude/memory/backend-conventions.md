@@ -192,6 +192,28 @@ public `GET /v1/events/{slug}`. Adding the location group wholesale would have p
 (`EventLocationDetailView` has no password field, so it *cannot* leak) rather than filtered at the
 call site, where the next caller forgets.
 
+## Copying an entity: name what must NOT travel, never what must (D-344)
+
+`EventService.CloneAsync` built its copy from a hand-written property list — 47 of `Event`'s 110 columns.
+The other 56 were never mentioned, so they landed on their C# defaults. Every column D-265 and D-266 added
+after that list was written updated the entity and `ApplyUpdateAsync` and left the clone alone: the legal
+terms, the consent gate, the age and gender limits, the tax treatment, `RegistrationPolicy`. Measured
+against the running API, cloning silently dropped **30 columns**, including `RequiresConsent` true→false
+and `TaxInclusive` false→true.
+
+**An allowlist rots because nothing forces you to extend it.** Copy the whole row (`ShallowCopy()`), then
+reset the named exceptions — identity, runtime state, moderation, review outcomes, lineage. A column added
+later is then inherited by default, and the failure mode inverts from silent config loss to a visible
+wrong value someone reports.
+
+The same shape applies to any "build a new X from an existing X" path. If you write `new Thing { A = src.A,
+B = src.B, … }`, you have written a list that will be wrong within two sprints.
+
+**Prove it with reflection, not with a list.** `EventCloneTests` enumerates the entity's properties, probes
+every inheritable one with a non-default value, clones over real HTTP and compares. Two name-sets encode
+the intent (re-derived, blanked); anything in neither must survive the copy. A second hand-maintained list
+in the test would rot exactly like the first.
+
 ## Capabilities decide behaviour, never authorization (D-266 M2)
 
 `CapabilityResolver` answers *"what does this event support?"*. It takes an archetype slug, an

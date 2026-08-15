@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Certificate designs: the uploaded artwork and the fields placed on it (D-344, Phase 3).
+/// Certificate designs: the uploaded artwork and the fields placed on it (D-355, Phase 3).
 ///
 /// <para><b>Authority has two shapes here, not one.</b> A template attached to an event is governed by
 /// <c>IEventAuthority</c> like any other event content. A template in a creator's reusable library belongs
@@ -65,7 +65,7 @@ public interface ICertificateTemplateService
     Task<ServiceResult<bool>> ArchiveAsync(
         Guid userId, Guid templateId, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>Saves a copy of a design into the caller's reusable library (D-344, Phase 13).
+    /// <summary>Saves a copy of a design into the caller's reusable library (D-355, Phase 13).
     ///
     /// <para>A <b>copy</b>, never a reference. The artwork bytes are duplicated under the library's own
     /// storage prefix, so the two designs share nothing: editing or archiving the event's copy cannot
@@ -74,7 +74,7 @@ public interface ICertificateTemplateService
     Task<ServiceResult<CertificateTemplateView>> CopyToLibraryAsync(
         Guid userId, Guid templateId, string? name, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>Uses a saved design on an event (D-344, Phase 13).
+    /// <summary>Uses a saved design on an event (D-355, Phase 13).
     ///
     /// <para>Also a copy, for the same reasons and one more: an event's certificates record the template
     /// id and version they were rendered from, and a template that could still be edited from a library
@@ -82,7 +82,7 @@ public interface ICertificateTemplateService
     Task<ServiceResult<CertificateTemplateView>> CopyToEventAsync(
         Guid userId, Guid templateId, Guid eventId, string? name, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>A coarse map of where the artwork already has something printed on it (D-344).
+    /// <summary>A coarse map of where the artwork already has something printed on it (D-355).
     ///
     /// <para>Exists so the editor can warn that a field is being placed over the design's own text —
     /// the failure that produces <c>[Recipient's Full Name] John Doe</c> on a finished certificate,
@@ -94,7 +94,7 @@ public interface ICertificateTemplateService
     Task<ServiceResult<CertificateArtworkMap>> ArtworkMapAsync(
         Guid userId, Guid templateId, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>The artwork's own colour behind a region of the design (D-344).
+    /// <summary>The artwork's own colour behind a region of the design (D-355).
     ///
     /// <para>What a field needs in order to cover printed text convincingly. Sampled rather than assumed
     /// white: certificate stock is cream, grey, navy or textured as often as not, and a white patch on
@@ -105,7 +105,7 @@ public interface ICertificateTemplateService
     Task<ServiceResult<string>> ArtworkColourAsync(
         Guid userId, Guid templateId, CertificateRegion region, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>Asks whether the design's artwork has recognisable text on it (D-344, Phase 12).
+    /// <summary>Asks whether the design's artwork has recognisable text on it (D-355, Phase 12).
     ///
     /// <para>The editor's OCR extension point. It goes through <see cref="ITextDetector"/>, which no build
     /// currently backs with an engine, so today this always answers "not available" — and that answer is a

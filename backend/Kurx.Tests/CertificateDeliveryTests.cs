@@ -10,7 +10,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Getting certificates to the people they were issued to (D-344, Phase 8).
+/// Getting certificates to the people they were issued to (D-355, Phase 8).
 ///
 /// <para>What is asserted here is mostly about restraint. <b>Pressing send twice does not send twice</b>,
 /// because a page that has not visibly changed yet is pressed twice by real people. <b>A revoked

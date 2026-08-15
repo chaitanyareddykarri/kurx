@@ -4,7 +4,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// CSV, per RFC 4180 (D-344, Phase 6).
+/// CSV, per RFC 4180 (D-355, Phase 6).
 ///
 /// <para>Hand-rolled, and only just: the grammar is small and this implements all of it — quoted fields,
 /// embedded commas, embedded newlines, doubled quotes, CRLF, bare LF, a lone CR, and Excel's UTF-8 BOM.

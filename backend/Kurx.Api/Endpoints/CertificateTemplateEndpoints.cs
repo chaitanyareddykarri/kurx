@@ -14,7 +14,7 @@ public record ReplaceCertificateFieldsBody(IReadOnlyList<CertificateFieldInput> 
 public record IssueCertificateBody(string RecipientName, string? Email, Dictionary<string, string>? Values);
 
 /// <summary>
-/// Certificate designs (D-344, Phase 3).
+/// Certificate designs (D-355, Phase 3).
 ///
 /// <para>Two entry points by design. Event templates are created under an event, because that is where
 /// authority for them comes from. Every by-id route then re-resolves authority from the template's own
@@ -96,7 +96,7 @@ public static class CertificateTemplateEndpoints
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
         }).Produces<CertificateTemplateView>();
 
-        // Reuse (D-344, Phase 13). Two verbs rather than one with a target, because "save this for later"
+        // Reuse (D-355, Phase 13). Two verbs rather than one with a target, because "save this for later"
         // and "use this here" are different intentions and the second needs an entitlement on a
         // destination event that the first has no concept of.
         byId.MapPost("/copy-to-library", async (Guid templateId, CopyCertificateTemplateBody? body,
@@ -118,7 +118,7 @@ public static class CertificateTemplateEndpoints
                 : Fail(r.Error);
         }).Produces<CertificateTemplateView>(StatusCodes.Status201Created);
 
-        // Where the design already has something printed (D-344). The editor fetches this once and checks
+        // Where the design already has something printed (D-355). The editor fetches this once and checks
         // overlaps locally as a field is dragged — a request per mouse move would be unusable, and reading
         // the artwork's pixels in the browser is blocked by canvas tainting whenever storage is a
         // different origin, which it is by default.
@@ -130,7 +130,7 @@ public static class CertificateTemplateEndpoints
         }).Produces<CertificateArtworkMap>();
 
         // The artwork's own colour behind a region — what a field needs to cover printed text without
-        // leaving a visible patch (D-344).
+        // leaving a visible patch (D-355).
         byId.MapGet("/artwork-colour", async (Guid templateId, double x, double y, double width,
             double height, ClaimsPrincipal p, ICertificateTemplateService svc, CancellationToken ct) =>
         {
@@ -139,7 +139,7 @@ public static class CertificateTemplateEndpoints
             return r.Ok ? Results.Ok(new { colour = r.Value }) : Fail(r.Error);
         }).Produces<object>();
 
-        // The OCR extension point (D-344, Phase 12). Answers 200 with `available: false` rather than an
+        // The OCR extension point (D-355, Phase 12). Answers 200 with `available: false` rather than an
         // error status: no engine configured is a fact about this deployment, not a failed request, and an
         // editor renders a capability from it rather than handling an exception. No build currently
         // registers an engine, so today the answer is always "not available" — and nothing in the save,

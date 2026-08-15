@@ -7,7 +7,7 @@ using Npgsql;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Allocates certificate ids with a single atomic statement per call (D-344).
+/// Allocates certificate ids with a single atomic statement per call (D-355).
 ///
 /// <para><b>The unsafe implementation this exists to prevent.</b> Read <c>NextSequence</c>, add one in C#,
 /// write it back. Two generations running at once both read <c>7</c>, both write <c>8</c>, and both issue

@@ -13,7 +13,18 @@ public record ServiceResult<T>(bool Ok, string? Error = null, T? Value = default
 /// <c>Authority</c>, not "role": a role over an event would imply ownership, and representation never
 /// confers that. There is no "personal" variant: representing yourself is not an organization, so it is
 /// not in this list at all (D-268).</summary>
-public record RepresentableOrganization(Guid Id, string Name, string Slug, string? LogoKey, string Authority);
+/// <param name="IsVerified">Whether the organization itself is <c>Verified</c> in the registry (M5) — not
+/// whether the caller's standing over it is verified, which is <paramref name="Authority"/>. Carried
+/// because a representation request stages a <c>PendingReview</c> placeholder org that legitimately
+/// appears in this list, and a paid event may only represent a verified one (D-350). Without it the
+/// client cannot tell the two apart and offers a choice the server refuses at submission.</param>
+/// <param name="CanBackPaidEvent">Whether this organization may be represented by a PAID event — the
+/// CAPABILITY, where <paramref name="IsVerified"/> is the FACT. They differ only under D-352's bypass,
+/// which opens the gate outside Production while leaving the reported status truthful. The client gates
+/// on this and displays that; deriving the gate from the fact is what made a dev account unable to
+/// create the paid event the server would have accepted.</param>
+public record RepresentableOrganization(Guid Id, string Name, string Slug, string? LogoKey, string Authority,
+    bool IsVerified = false, bool CanBackPaidEvent = false);
 
 public record PublicOrgView(
     Guid Id, string Name, string Slug, string? LogoKey, string? Bio,

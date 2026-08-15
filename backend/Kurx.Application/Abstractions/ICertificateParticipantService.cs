@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// How the person named on a certificate reaches it (D-344, Phase 10).
+/// How the person named on a certificate reaches it (D-355, Phase 10).
 ///
 /// <para>Two routes, because participants are not all account holders. Someone with a Kurx account gets
 /// their certificates in their account. Someone who was on a spreadsheet and nothing more gets a

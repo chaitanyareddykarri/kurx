@@ -46,7 +46,7 @@ boundary except push and SMS**, and the container refuses to start if configured
 | Interface | Development implementation | Config key | Default | Consumed by | Production status |
 |---|---|---|---|---|---|
 | `IStorage` | `LocalDiskStorage` | `STORAGE_PROVIDER` | `localdisk` | media, chat attachments, certificates, verification documents | **Not implemented** |
-| `IFileScanner` | `NoOpFileScanner` | `FILE_SCANNER` | `none` | chat attachments (all upload confirms) | **Available** (`clamav`, D-298) |
+| `IFileScanner` | `NoOpFileScanner` | `FILE_SCANNER` | `none` (dev) — rejected in Production (D-338) | all 8 upload-confirm paths: chat attachments and event media scan directly; the other 6 (org verification, membership claims, org assets, event authorization, auth documents) route through `UploadScanGate` | **Available** (`clamav`, D-298/D-338) |
 | `IEmailSender` | `ConsoleEmailSender` | `EMAIL_PROVIDER` | `console` | notifications, invitations, certificates | **Not implemented** |
 | `IWhatsAppSender` | `ConsoleWhatsAppSender` | `WHATSAPP_PROVIDER` | `console` | notifications, tickets, announcements | **Not implemented** |
 | `ISmsProvider` | `ConsoleSmsProvider` | `SMS_PROVIDER` | `console` | OTP delivery | **Available** (`sns`, dormant until credentialed) |

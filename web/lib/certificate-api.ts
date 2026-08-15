@@ -2,7 +2,7 @@ import { z } from "zod";
 import { api, authHeaders } from "@/lib/api";
 
 /**
- * The certificate module's API client (D-344).
+ * The certificate module's API client (D-355).
  *
  * A sibling of `lib/api.ts` rather than a second axios instance — one client, one auth convention.
  *
@@ -171,7 +171,7 @@ function uploadHeaders(accessToken: string) {
   return { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": undefined } };
 }
 
-/** A participant list, read but not yet turned into anything (D-344, Phase 6). */
+/** A participant list, read but not yet turned into anything (D-355, Phase 6). */
 export const spreadsheetPreviewSchema = z.object({
   columns: z.array(z.string()),
   sampleRows: z.array(z.array(z.string())),
@@ -194,7 +194,7 @@ export async function previewParticipants(accessToken: string, eventId: string, 
   return spreadsheetPreviewSchema.parse(data);
 }
 
-/** A generation run (D-344, Phase 7). */
+/** A generation run (D-355, Phase 7). */
 export const certificateBatchSchema = z.object({
   id: z.string(),
   event_id: z.string(),
@@ -259,7 +259,7 @@ export async function cancelBatch(accessToken: string, batchId: string) {
   return certificateBatchSchema.parse(data);
 }
 
-/** What happened to a run's sends (D-344, Phase 8). */
+/** What happened to a run's sends (D-355, Phase 8). */
 export const deliverySummarySchema = z.object({
   batch_id: z.string(),
   total: z.number(),
@@ -295,7 +295,7 @@ export async function getDeliveries(accessToken: string, batchId: string) {
   return deliverySummarySchema.parse(data);
 }
 
-/** One link in a certificate's chain (D-344, Phase 9). */
+/** One link in a certificate's chain (D-355, Phase 9). */
 export const certificateLineageSchema = z.object({
   id: z.string(),
   certificate_id: z.string(),
@@ -338,7 +338,7 @@ export async function getLineage(accessToken: string, certificateRowId: string) 
   return z.array(certificateLineageSchema).parse(data);
 }
 
-/** What a participant sees of their own certificate (D-344, Phase 10). */
+/** What a participant sees of their own certificate (D-355, Phase 10). */
 export const participantCertificateSchema = z.object({
   certificate_id: z.string(),
   event_title: z.string(),
@@ -397,7 +397,7 @@ export async function revokeAccessLink(accessToken: string, linkId: string) {
   await api.delete(`/v1/certificate-access-links/${linkId}`, authHeaders(accessToken));
 }
 
-/** Certificate activity for an event (D-344, Phase 11). */
+/** Certificate activity for an event (D-355, Phase 11). */
 export const certificateDashboardSchema = z.object({
   templates: z.number(),
   batches: z.number(),
@@ -421,7 +421,7 @@ export async function getCertificateDashboard(accessToken: string, eventId: stri
   return certificateDashboardSchema.parse(data);
 }
 
-/** The OCR extension point (D-344, Phase 12). The schema lives in `certificate-detection.ts` so the
+/** The OCR extension point (D-355, Phase 12). The schema lives in `certificate-detection.ts` so the
  *  contract can be tested without this module's API client; re-exported here so callers have one import. */
 export { textDetectionSchema, type TextDetection } from "@/lib/certificate-detection";
 import { textDetectionSchema as detectionSchema } from "@/lib/certificate-detection";
@@ -432,7 +432,7 @@ export async function detectTemplateText(accessToken: string, templateId: string
   return detectionSchema.parse(data);
 }
 
-/** Saves a copy of a design into the caller's reusable library (D-344, Phase 13). A copy, never a
+/** Saves a copy of a design into the caller's reusable library (D-355, Phase 13). A copy, never a
  *  reference — the two designs share nothing afterwards. */
 export async function copyTemplateToLibrary(
   accessToken: string, templateId: string, name?: string
@@ -451,7 +451,7 @@ export async function copyTemplateToEvent(
   return certificateTemplateSchema.parse(data);
 }
 
-/** Where the design already has something printed (D-344). Fetched once when the editor opens. */
+/** Where the design already has something printed (D-355). Fetched once when the editor opens. */
 export { artworkMapSchema, type ArtworkMap } from "@/lib/certificate-artwork-map";
 import { artworkMapSchema as artworkSchema } from "@/lib/certificate-artwork-map";
 
@@ -462,7 +462,7 @@ export async function getArtworkMap(accessToken: string, templateId: string) {
 }
 
 /** The artwork's own colour behind a region — what a field needs to cover printed text without leaving
- *  a visible patch (D-344). */
+ *  a visible patch (D-355). */
 export async function getArtworkColour(
   accessToken: string, templateId: string,
   region: { x: number; y: number; width: number; height: number }

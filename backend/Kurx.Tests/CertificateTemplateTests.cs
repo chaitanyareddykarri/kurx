@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Certificate designs (D-344, Phase 3).
+/// Certificate designs (D-355, Phase 3).
 ///
 /// <para>The properties that carry weight: <b>a template is reachable only by someone entitled to it</b>,
 /// through whichever of the two authority rules applies; <b>artwork cannot be attached from outside the

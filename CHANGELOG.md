@@ -18,6 +18,98 @@ Changes · Verification · Remaining Work).
 
 ## [Unreleased]
 
+### A dormant crypto leak, nine seeders outside the migration lock, and 52 phantom IDE errors (2026-08-15) - D-344, D-345
+
+**Implementation Summary.** Four findings from an external read of `Program.cs` were checked against the
+running system; **two were real, two were not**, and the severity of one real finding was reported wrongly.
+
+**The ECDsa leak (D-344) is real but dormant.** The ES256 `IssuerSigningKeyResolver` called
+`ECDsa.Create()` inline and never disposed it - the only un-disposed `ECDsa.Create()` in the repository,
+where `JwksEndpoints`, `DeviceSignatures`, `SigningKeyService` and `TokenService` all use `using`. But it
+was reported as firing on every authenticated request, and it fires on none: all six issuance sites call
+the synchronous HS256 `CreateAccessToken`, and `CreateAccessTokenAsync` has zero callers. Verified against
+the running API rather than by reading - a live token's header is `{"alg":"HS256","typ":"JWT"}` with no
+`kid`. Fixed anyway: the defect would go live with the ES256 cut-over, on the hottest path in the app, in a
+change whose reviewers will be reading issuance rather than validation.
+
+**Nine seeders ran outside any lock (D-344).** EF Core 9 locks `MigrateAsync`; that lock ends with the
+migration and the read-then-insert seeders sit outside it, so two replicas of a rolling deploy both find a
+catalog slug missing, both insert, and the loser takes a `23505` inside the startup gate - a boot crash.
+One `pg_advisory_xact_lock` around the whole block, chosen over making nine seeders individually
+conflict-tolerant so later seeders are covered too.
+
+**52 phantom IDE errors (D-345).** VS Code showed 52 "type or namespace not found" errors in `Program.cs`
+- Serilog, Hangfire, even `IServiceCollection` - while the container build was green. NuGet writes absolute
+paths into `obj/project.assets.json`, and the host and SDK container share this tree over a bind mount, so
+a container restore stamped `/root/.nuget/packages/` onto the host. Whoever built last won; two repairs
+were undone within nine and thirty-four minutes respectively.
+
+**Files Changed.** `Kurx.Api/Program.cs` (resolver + seed lock), new `Kurx.Api/Auth/ValidationKeyCache.cs`,
+`Kurx.Tests/SigningKeyTests.cs` (+1 test), `backend/Directory.Build.props`, `.gitignore`.
+
+**Database.** None. **API.** None - no route, DTO or `openapi.json` change.
+
+**Docs.** `docs/DECISIONS.md` D-344/D-345; `architecture/overview.md` (startup gate, CORS ordering);
+`auth/AUTHENTICATION_ARCHITECTURE.md` (the ES256 cut-over is six call sites, not four);
+`.claude/memory/{backend-conventions,security-rules,database-conventions,deployment,testing-standards}.md`.
+
+**Breaking Changes.** None.
+
+**Verification.** Full suite in the SDK container. The new signing-key test mints ES256 directly, because
+no login path produces such a token - it is currently the only coverage the `kid` branch has, and it closes
+a real gap: the existing compromise test asserts at the service layer and would pass even if the resolver
+served a stale cached key. The lock's safety rests on advisory locks being per-database, which was measured
+rather than assumed. The bare `dotnet restore` that caused the IDE recurrence now writes outside the mount
+and leaves the host's assets byte-identical.
+
+**Rejected, with reasons recorded.** `UseCors()` after `UseExceptionHandler()` is correct - a minimal app
+reproducing Kurx's exact order returns CORS headers on a 500, because `CorsMiddleware` registers a
+`Response.OnStarting` callback that `Response.Clear()` does not remove. `jobs.Trigger("data-backfill")` on
+boot is deliberate and guarded. `UseArtifactsOutput=true` was implemented and measured for D-345, then
+reverted: it moves intermediates to `backend/artifacts/`, still inside the bind mount.
+
+### Event cloning kept 47 of 110 columns; coupons and the phone migration are recorded, not fixed (2026-08-14) — D-340, D-341, D-342
+
+**Implementation Summary.** `EventService.CloneAsync` built the copy from a hand-written property list
+naming 47 of `Event`'s 110 columns. The other 56 were never mentioned, so they landed on their C#
+defaults — every column D-265 and D-266 added after that list was written. Verified against the running
+API, not inferred: an event created through `POST /v1/events` with all six D-265 input groups populated,
+cloned over HTTP, then diffed in Postgres — **36 columns differed, 6 legitimately, 30 silently lost.**
+Including `RequiresConsent` true→false, `GenderRestriction` Female→Any and `TaxInclusive` false→true.
+
+The fix inverts the default: the clone is a `ShallowCopy()` of the source with 27 named resets (fresh
+identity, runtime state, admin moderation per D-186, review outcomes per D-266 M4/M7, series lineage per
+V3 §3.4). A column added later is inherited unless someone deliberately excludes it.
+
+**Files Changed.** `Kurx.Domain/Entities/Events.cs` (+`Event.ShallowCopy()`),
+`Kurx.Infrastructure/Events/EventService.cs` (`CloneAsync` inverted),
+`Kurx.Tests/EventCloneTests.cs` (new, 3 tests).
+
+**Database.** None. **API.** None — same DTO, correct values; `openapi.json` unaffected.
+
+**Docs.** `docs/DECISIONS.md` D-340/D-341/D-342. Alongside it, a documentation-drift sweep corrected
+figures that had gone stale against the code: API surface 427/518 → **441 paths / 535 operations** and
+response coverage 480/518 → **496/535** (`docs/api/README.md`, `docs/architecture/overview.md`); tables
+158 → **162**, with the seven undocumented ones named (`docs/database/DATABASE_TABLES.md`); the test
+baseline 1572/1743/1297 → **1820** across `README.md`, `docs/architecture/overview.md`,
+`docs/PROJECT_HANDBOOK.md` and `docs/roadmap/README.md`; the removed `--profile scanning` recipe
+(D-339) in `.claude/CLAUDE.md`, `.claude/memory/{testing-standards,security-rules}.md`; the root
+README's claim that SES and FCM were still mocked (six adapters are real); `web/README.md`'s reference
+to `/host/organizations/*`, which no longer exists; `docs/architecture/providers.md`'s scanner coverage
+(2 paths → 8, D-338); and the repo's one broken internal link.
+
+**Breaking Changes.** None in shape. A clone now inherits its source's registration policy, fee/tax
+configuration and eligibility limits where it previously reset them to defaults — the intended fix, but a
+real behavioural change for anyone who had adapted to the old copies.
+
+**Verification.** SDK container, `-warnaserror` clean. `EventCloneTests` 3/3 green, and confirmed
+**red-on-purpose**: reintroducing three drops failed the sweep with the exact columns named
+(`RefundPolicy`, `MinAge`, `TaxInclusive`). Full suite re-run recorded below.
+
+**Remaining Work.** D-341 — coupons ship CRUD + `/quote` with no order-path consumer and no client field;
+left in place and recorded rather than wired or deleted. D-342 — nine phone lookups still read the legacy
+`users."Phone"` column while `AuthIdentifiers` reads both; no live symptom, deliberately not widened.
+
 ### Database integrity + observability: a state the schema refuses, and drift that pages (2026-08-12) — D-328
 
 **Implementation Summary.** Two phases kept deliberately apart. **DB-8** puts the *vocabulary* of four

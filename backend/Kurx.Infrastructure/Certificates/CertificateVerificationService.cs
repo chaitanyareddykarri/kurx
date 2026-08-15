@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Public certificate verification (D-344, Phase 5).
+/// Public certificate verification (D-355, Phase 5).
 ///
 /// <para><b>An infrastructure failure is never reported as invalidity.</b> Every unexpected exception
 /// becomes <see cref="CertificateVerificationOutcome.Unavailable"/>, because this page answers "is this

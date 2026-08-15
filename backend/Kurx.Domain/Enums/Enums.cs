@@ -597,7 +597,7 @@ public enum EntitlementGrantStatus
     Refunded,
 }
 
-// ── Certificate module (D-344) ───────────────────────────────────────────────────────────────────
+// ── Certificate module (D-355) ───────────────────────────────────────────────────────────────────
 // Every enum below persists as its member NAME, not its ordinal — the loop at the top of
 // OnModelCreating sets the provider type to string for all enums. Members may therefore be reordered
 // safely, but must NEVER be renamed without a data migration, and a state vocabulary must be kept in
@@ -642,7 +642,7 @@ public enum CertificateDeliveryStatus { Pending, Sent, Failed, Bounced }
 /// <summary>What the dashboard counts. Append-only; carries no identifying data about who did it.</summary>
 public enum CertificateEventType { Viewed, Downloaded, Verified, Shared }
 
-/// <summary>A certificate signing key's standing (D-344). <c>Retired</c> no longer signs but still
+/// <summary>A certificate signing key's standing (D-355). <c>Retired</c> no longer signs but still
 /// verifies; <c>Compromised</c> also still verifies — a certificate signed before the compromise really
 /// was issued by the platform, and reporting it as fake would be the wrong lie.</summary>
 public enum CertificateSigningKeyState { Active, Retired, Compromised }

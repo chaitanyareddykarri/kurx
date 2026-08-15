@@ -71,12 +71,22 @@ public static class PolicyResolver
     /// <param name="ArchetypeRequiresFinancialReview">D-266 M7 — D12 §6 marks this archetype's Review cell
     /// "Required + financial" (A11 Fundraising alone).</param>
     /// <param name="FinancialReviewPassed">FinanceOps has cleared the money path.</param>
+    /// <param name="AuthorizationBypassed">D-352 — outside Production the institutional-consent blockers
+    /// are switched off by the same flag as the identity proofs (D-323), because a letterhead is reviewed
+    /// by a human against documents a stubbed rasterizer produces: enforcing it in dev costs a manual
+    /// approval per test event and establishes nothing about a real institution.
+    ///
+    /// <para>Carried as its OWN field rather than folded into <paramref name="HasApprovedAuthorization"/>,
+    /// which stays a fact about what is on file. A bypass may open a gate; it must never forge the
+    /// evidence — the same rule D-323 holds for <c>IdentityVerified</c>. The reviewer checklist and the
+    /// organiser's readiness page keep reporting the truth while the blocker is lifted.</para></param>
     public sealed record RepresentationFacts(
         bool RepresentsInstitution,
         bool HasApprovedAuthorization,
         bool ArchetypeRequiresRepresentation,
         bool ArchetypeRequiresFinancialReview = false,
-        bool FinancialReviewPassed = false);
+        bool FinancialReviewPassed = false,
+        bool AuthorizationBypassed = false);
 
     /// <summary>Steps 1–3: which policies this event may use at all.
     /// <paramref name="typeAllowList"/> is the taxonomy's stored allow-list for the selected Type; null
@@ -150,13 +160,25 @@ public static class PolicyResolver
         // is no second place an authorization rule could be written and then drift.
         if (product == EventProduct.Public && representation is { } rep)
         {
+            // D-352 — the bypass lifts the two consent blockers, and only those. It does not touch the
+            // product rules above, the eligibility requirements, or the financial review below: those are
+            // real logic over real inputs, and switching them off would test less rather than more.
             if (rep.RepresentsInstitution)
             {
-                if (!rep.HasApprovedAuthorization) violations.Add("event_authorization_required");
+                if (!rep.HasApprovedAuthorization && !rep.AuthorizationBypassed)
+                    violations.Add("event_authorization_required");
             }
-            else if (rep.ArchetypeRequiresRepresentation)
+            else
             {
-                violations.Add("representation_required");
+                // D-353 — a Public event must represent a real organization, archetype or not. This used to
+                // fire only for archetypes that declared `RequiresRepresentation`, which left every other
+                // public archetype publishable with no institution answerable for it. The creation gate
+                // refuses the same shape up front; this is the twin that catches an event which reached
+                // Draft before the rule existed, or whose representation was withdrawn afterwards.
+                //
+                // Bypassable with the rest of the consent blockers: outside Production nobody has an
+                // admin-approved org to represent, so enforcing it would make public events untestable.
+                if (!rep.AuthorizationBypassed) violations.Add("representation_required");
             }
 
             // Step 8 — D-266 M7. A fundraiser solicits money for a cause, so FinanceOps clears the money

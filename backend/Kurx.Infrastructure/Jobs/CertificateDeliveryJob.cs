@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Kurx.Infrastructure.Jobs;
 
-// Drains queued certificate emails (D-344, Phase 8).
+// Drains queued certificate emails (D-355, Phase 8).
 //
 // Recurring rather than enqueued-per-send: the queue is the record of intent, and a job that simply drains
 // whatever is pending recovers from a crash, a provider outage, or a process restart without anyone having

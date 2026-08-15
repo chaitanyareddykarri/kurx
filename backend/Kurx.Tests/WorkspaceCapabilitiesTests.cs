@@ -4,6 +4,7 @@ using System.Text.Json;
 using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Kurx.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurx.Tests;
@@ -211,9 +212,20 @@ public class WorkspaceCapabilitiesTests : IClassFixture<KurxApiFactory>
         }
 
         // No representingOrgId — the Personal path, where the backend resolves the caller's own org.
+        // D-353 narrowed that path to PRIVATE products, so the Type is now stated rather than defaulted.
+        Guid privateTypeId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            privateTypeId = await db.EventCategories
+                .Where(c => c.Level == CategoryLevel.Type && c.ProductClass == EventProduct.Private)
+                .Select(c => c.Id).FirstAsync();
+        }
+
         var created = await Json(await client.CreateEventAsync(null, new
         {
             title = "My Own Workshop",
+            typeId = privateTypeId,
             description = "An event with plenty of detail for validation.",
             categoryId,
             venueName = "Main Hall",

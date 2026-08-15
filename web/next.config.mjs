@@ -47,7 +47,7 @@ const nextConfig = {
       // Participant lists are uploaded through a Server Action, and Next's default body limit is 1MB —
       // well under the 10MB the client offers and the API accepts. Those three numbers disagreeing meant
       // a large-but-legal spreadsheet was rejected at a boundary nobody had configured, before any of our
-      // own validation ran (D-344, Phase 6). 12MB leaves room for multipart overhead on a 10MB file.
+      // own validation ran (D-355, Phase 6). 12MB leaves room for multipart overhead on a 10MB file.
       bodySizeLimit: "12mb"
     }
   },

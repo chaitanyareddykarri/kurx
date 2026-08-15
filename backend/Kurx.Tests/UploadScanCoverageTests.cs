@@ -178,7 +178,7 @@ public class UploadScanCoverageTests : IClassFixture<UnreachableScannerFactory>
         client.DefaultRequestHeaders.Authorization = new("Bearer",
             tokens.GetProperty("access_token").GetString());
 
-        // The caller's OWN prefix (D-343). It used to be `users/x/avatar/a`, which since D-343 is
+        // The caller's OWN prefix (D-354). It used to be `users/x/avatar/a`, which since D-354 is
         // refused as `invalid_storage_key` before the scanner is ever consulted — so the assertion below
         // would have passed for the wrong reason and stopped covering the scan gate at all. The
         // cross-user case has its own test, immediately after this one.
@@ -195,7 +195,7 @@ public class UploadScanCoverageTests : IClassFixture<UnreachableScannerFactory>
         Assert.Equal("scan_unavailable", problem.GetProperty("error").GetString());
     }
 
-    /// <summary>D-343 — a key under ANOTHER user's prefix is refused outright, before the scanner.
+    /// <summary>D-354 — a key under ANOTHER user's prefix is refused outright, before the scanner.
     ///
     /// <para>The hole this closes: nothing checked the prefix, so any account could PATCH another user's
     /// avatar key onto its own profile. Every projection then presigned that key and served a private
@@ -349,7 +349,7 @@ public class FileScannerProductionGuardTests
             ["JWT_SECRET"] = "a-unique-test-secret-that-is-definitely-long-enough-0123456789",
             ["TICKET_HMAC_SECRET"] = "a-unique-test-ticket-hmac-secret-0123456789-abcdef",
             ["OTP_PEPPER"] = "a-unique-test-otp-pepper-0123456789-abcdefghijklmnop",
-            // D-344: STORAGE_PROVIDER=localdisk is refused under Production, and that guard runs BEFORE
+            // D-355: STORAGE_PROVIDER=localdisk is refused under Production, and that guard runs BEFORE
             // this one — so without a durable provider configured here these tests would assert the
             // storage refusal instead of the scanner refusal they exist for. Not a weakening: it is the
             // rest of a valid Production configuration, so the only thing left under test is the scanner.

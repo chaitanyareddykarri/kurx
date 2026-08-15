@@ -1,6 +1,25 @@
 <Project>
   <PropertyGroup>
     <!--
+      D-345: a Linux build in this tree writes its intermediates OUTSIDE the tree.
+
+      The Windows host and the SDK container share this working copy over a bind mount, and NuGet writes
+      absolute paths into obj/project.assets.json. So a container restore stamped
+      `packageFolders: /root/.nuget/packages/` and `projectPath: /src/backend/...` onto the host; VS Code's
+      C# server could then resolve not one package reference and reported every namespace in the open file
+      as missing — 52 phantom "type or namespace not found" errors in Program.cs alone, including
+      IServiceCollection, while the container build was green and 1824 tests passed. Whoever built last won,
+      and with several sessions building it flipped back within minutes of each repair.
+
+      Redirecting by hand (-p:ArtifactsPath=...) only works when every invocation remembers it; the clobber
+      that made this recur was a bare `dotnet restore` inside the container. Doing it here makes it
+      automatic. Deliberately scoped so nothing else moves: Windows keeps the normal per-project obj/bin
+      (which is what the IDE reads), and CI is excluded so its `backend/**/*.trx` upload and Release layout
+      are untouched. Only the local Linux container is redirected, which is the only case that collides.
+      An explicit -p:ArtifactsPath still wins — the condition defers to it.
+    -->
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == '' AND '$(OS)' != 'Windows_NT' AND '$(GITHUB_ACTIONS)' != 'true'">/tmp/kurx-artifacts</ArtifactsPath>
+    <!--
       NU1902/NU1903: transitive vulnerability warnings from MessagePack (pulled in by SignalR).
       We have no direct dependency on MessagePack and cannot upgrade it; suppress to keep
       -warnaserror clean. Track the upstream fix at:

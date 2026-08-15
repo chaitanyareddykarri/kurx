@@ -22,25 +22,63 @@ MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
-**Current baseline: 1820 tests — 1819 passing, 1 skipped, 0 failing (2026-08-14, 16m48s).** Measured in the
+**Current baseline: 1825 tests — 1824 passing, 1 skipped, 0 failing (2026-08-15, 29m23s).** Measured in the
 SDK container with clamd up. **Zero is the standard now — a red test is a defect, not "the environment."**
+
+> ⚠️ **The working tree was red when this was written, and not from the change that measured it.** A later
+> run the same day gave **1826 / 1806 pass / 19 fail** — all in `EventFirstTests` and
+> `WorkspaceCapabilitiesTests`, all failing as `KeyNotFoundException` on `GetProperty("id")` of a
+> **Personal** (no-org) create-event response, i.e. creation itself returning a ProblemDetails. The cause is
+> a concurrent session's in-flight work: `OrgService`/`IOrgService`/`EndpointResponses` grew fields on
+> `RepresentableOrganization` citing **D-350 and D-352 — numbers that do not exist in `DECISIONS.md`**
+> (which ends at D-345), alongside `EventPolicyService`, `PolicyResolver` and `TrustService` edits and
+> matching web/mobile create-event-gate changes. They updated `TrustTests`, `IdCardTests` and `OrgTests`;
+> these two classes are the collateral they have not reached yet.
+>
+> The lesson is procedural: **in a shared checkout, a suite number is only evidence for your change if you
+> can attribute every failure.** Diff the tree first (`git status --short`), group failures by class, and
+> read one failure to its cause before claiming or disclaiming a regression.
 
 Run it exactly like this; the two `-e` flags are what the ClamAV class needs and nothing else supplies:
 
 ```bash
-docker compose --profile scanning up -d clamav      # NOT in the default profile; ~1 min to healthy
-MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
+docker compose up -d clamav                         # in the default stack since D-339; ~1 min to healthy
+MSYS_NO_PATHCONV=1 docker run --rm --memory=4g --network container:kurx-postgres \
   -e CLAMAV_HOST=clamav -e CLAMAV_PORT=3310 \
   -v "/d/event/Kurx:/src" -w /src/backend mcr.microsoft.com/dotnet/sdk:10.0 bash -c \
   "dotnet build Kurx.sln -c Debug -warnaserror -p:ArtifactsPath=/tmp/artifacts --nologo -v q && \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
+`--memory=4g` is not decoration. With the six-service dev stack up, the SDK container competes with it for
+Docker's memory and the build dies mid-copy with `MSB3026 … Cannot allocate memory` — which reads like a
+locked file, not like memory pressure. Cap it, or stop the stack first.
+
+**Why the IDE used to fill with phantom errors (fixed by D-345 — don't reintroduce it).** NuGet writes
+absolute paths into `obj/project.assets.json`, and the host and container share this tree over a bind
+mount. A container restore therefore stamped `packageFolders: /root/.nuget/packages/` and
+`projectPath: /src/backend/…` onto the host; VS Code's C# server resolved no package reference and showed
+**52 "type or namespace not found" errors in `Program.cs`** — Serilog, Hangfire, even `IServiceCollection`
+— with `<No project>` in the status bar, while the container build was green and the suite passed. If you
+ever see that shape again, it is the toolchain, not the code.
+
+`backend/Directory.Build.props` now redirects Unix, non-CI builds to `/tmp/kurx-artifacts`, so a container
+build — **including a bare `dotnet restore` with no flags** — cannot write a file the host reads. Windows
+and GitHub Actions layouts are untouched, and an explicit `-p:ArtifactsPath` still wins.
+
+Two earlier fixes for this were wrong and are worth not repeating: `dotnet restore` on the host is only a
+repair (it was undone by another session's container build within nine minutes), and `UseArtifactsOutput`
+just moves the shared file to `backend/artifacts/`, which is still inside the mount. If the IDE goes red
+anyway, check whose paths are on disk before doing anything else:
+`node -e "console.log(Object.keys(require('./backend/Kurx.Api/obj/project.assets.json').packageFolders))"`
+— a `/root/...` path means something bypassed the redirect.
+
 **The three failures this baseline used to carry were fixed, not tolerated.** Each had been written off as
 environmental, and two of the three were real defects wearing that label:
 
-- **4 `ClamAvUploadPathTests`** — genuinely just the daemon. It sits behind `profiles: ["scanning"]`, and
-  `CLAMAV_HOST=clamav` does nothing if nothing is listening. Start it and all five pass, EICAR included.
+- **4 `ClamAvUploadPathTests`** — genuinely just the daemon. `CLAMAV_HOST=clamav` does nothing if nothing
+  is listening. Start it and all five pass, EICAR included. (It used to sit behind `profiles: ["scanning"]`;
+  D-339 removed profiles, so the default `docker compose up` now starts it.)
   (If `docker pull clamav/clamav:1.4` fails with a TLS error against `auth.docker.io`, retry — it is
   transient Hub auth flakiness, not a broken mirror.)
 - **`NoContentDeclarationTests` + `OpenApiCoverageTests`** — both walked up from `AppContext.BaseDirectory`

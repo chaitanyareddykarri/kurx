@@ -1,7 +1,8 @@
 import { Card } from "@kurx/ui";
 import { requireSession } from "@/lib/session";
 import {
-  getMe, listMyRepresentations, listCategories, listSubcategories, listFieldPresets, getMyIdentity, section
+  getMe, listMyRepresentations, listCategories, listSubcategories, listFieldPresets, getMyIdentity,
+  getRepresentativeRoles, section
 } from "@/lib/api";
 import { CreateEventGate } from "@/components/host/create-event-gate";
 
@@ -21,13 +22,18 @@ export default async function CreateEventPage() {
   // Identity is fetched here so the gate can show what is ALREADY verified and never re-ask for it
   // (D-305). It degrades to "nothing verified" rather than failing the page: a user who cannot read
   // their identity status can still create a free event, which requires none of it.
-  const [me, representations, categories, subcategories, presets, identity] = await Promise.all([
+  // `representativeRoles` is the closed vocabulary the server validates against (D-266 M5). Fetched
+  // here so the Authorization step can offer it (D-351); a hardcoded copy is how a role gets offered
+  // and then refused by the API. An empty list degrades to a free-text-free step rather than failing
+  // the page — the step itself is only reached by an event that represents an institution.
+  const [me, representations, categories, subcategories, presets, identity, representativeRoles] = await Promise.all([
     getMe(session.accessToken),
     section(listMyRepresentations(session.accessToken)),
     listCategories(),
     listSubcategories(),
     listFieldPresets(),
-    getMyIdentity(session.accessToken).catch(() => null)
+    getMyIdentity(session.accessToken).catch(() => null),
+    getRepresentativeRoles(session.accessToken).catch(() => [] as string[])
   ]);
 
   /*
@@ -67,7 +73,10 @@ export default async function CreateEventPage() {
           // identity read that failed must not read as permission.
           canCreatePublicEvent={me.trust?.can_create_public_event ?? false}
           canCreatePrivateEvent={me.trust?.can_create_private_event ?? true}
-          hostName={me.name?.trim() || "Myself"}
+          // D-353/D-352 — the server states whether a Public event needs an organization at all.
+          // Under the dev bypass it does not, and the gate must not add a rule the server has lifted.
+          requiresRepresentation={me.requires_representation}
+          representativeRoles={representativeRoles}
         />
       </Card>
     </div>

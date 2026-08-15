@@ -1,7 +1,7 @@
 import type { CertificateField, CertificateFieldInput, CertificateFieldKind } from "@/lib/certificate-api";
 
 /**
- * The certificate editor's rules and arithmetic, with no DOM in sight (D-344, Phase 3).
+ * The certificate editor's rules and arithmetic, with no DOM in sight (D-355, Phase 3).
  *
  * Everything here is a pure function over an immutable field list: a mutation returns a new list and
  * never touches the one it was given. That is what makes undo a stack of whole documents rather than a
@@ -72,7 +72,7 @@ export function newField(kind: CertificateFieldKind, opts: { fieldKey?: string; 
 }
 
 /**
- * Where a newly added field should land (D-344).
+ * Where a newly added field should land (D-355).
  *
  * Every new text or dynamic field used to appear at the same fixed spot, so adding three produced three
  * boxes stacked exactly on top of one another — which renders as illegible overlapping text on the
@@ -120,7 +120,7 @@ export function squareOnPage(widthPercent: number, pageSize: string): { width: n
 }
 
 /**
- * A field that covers text printed into the uploaded artwork (D-344).
+ * A field that covers text printed into the uploaded artwork (D-355).
  *
  * **This is not editing.** Text baked into a JPG is pixels; nothing can modify it. A masking field paints
  * `ground` over the region and draws new text on top, which is why the ground colour matters more than
@@ -148,7 +148,7 @@ export function maskingField(
 }
 
 /**
- * Turns an existing field into one that covers the artwork behind it (D-344).
+ * Turns an existing field into one that covers the artwork behind it (D-355).
  *
  * **This is replacement, not layering — but not editing either.** Text baked into a JPG is pixels, and
  * nothing can modify pixels. What this does is paint the artwork's own colour across the field's box and

@@ -5,7 +5,7 @@ import { getDeliveriesAction, sendBatchAction } from "@/lib/certificate-actions"
 import type { CertificateBatch, DeliverySummary } from "@/lib/certificate-api";
 
 /**
- * Emailing a run's certificates (D-344, Phase 8).
+ * Emailing a run's certificates (D-355, Phase 8).
  *
  * Two things this screen must never do. It must not say "delivered" — the platform knows only that an
  * email provider accepted the message, and there is no bounce pipeline that could tell it more, so every

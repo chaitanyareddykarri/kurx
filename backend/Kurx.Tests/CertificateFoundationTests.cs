@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// The certificate module's persistent foundation (D-344, Phase 1).
+/// The certificate module's persistent foundation (D-355, Phase 1).
 ///
 /// <para>Three properties carry the weight. <b>A certificate id is unique under concurrency</b>, because
 /// the obvious implementation is not and the failure only appears when two batches overlap.

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Withdrawing a certificate, and correcting one (D-344, Phase 9).
+/// Withdrawing a certificate, and correcting one (D-355, Phase 9).
 ///
 /// <para><b>Nothing is edited in place.</b> The original row keeps its certificate id, its field values,
 /// its signature and its rendered files exactly as issued — only <see cref="IssuedCertificate.Status"/>

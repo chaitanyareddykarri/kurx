@@ -4,7 +4,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// XLSX, via ClosedXML (D-344, Phase 6).
+/// XLSX, via ClosedXML (D-355, Phase 6).
 ///
 /// <para><b>Formulas are never evaluated.</b> A cell carrying <c>=A1</c> is read from its CACHED value —
 /// the number Excel last stored — and never recomputed. Evaluating a stranger's uploaded workbook is a

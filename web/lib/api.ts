@@ -136,7 +136,12 @@ export const meSchema = z.object({
     can_create_public_event: z.boolean().optional().default(false),
     /// Constant true server-side: a Private event can never be Listed, take payment, or reach a
     /// discovery surface. Defaulted true so an older backend does not accidentally block Private.
-    can_create_private_event: z.boolean().optional().default(true)
+    can_create_private_event: z.boolean().optional().default(true),
+    /// D-353/D-352 — whether a PUBLIC event must name a verified organization. True in Production,
+    /// always; false only under the dev bypass, where no admin-approved organization exists to name.
+    /// Defaulted **true**, the closed position: a gate that stops demanding a requirement because a
+    /// field went missing is the wrong failure.
+    requires_representation: z.boolean().optional().default(true)
   }).optional()
 }).transform((me) => ({
   ...me,
@@ -148,7 +153,8 @@ export const meSchema = z.object({
   bank_verified: me.trust?.bank_verified ?? false,
   /// Closed position on absence: a missing capability must never read as permission.
   can_create_public_event: me.trust?.can_create_public_event ?? false,
-  can_create_private_event: me.trust?.can_create_private_event ?? true
+  can_create_private_event: me.trust?.can_create_private_event ?? true,
+  requires_representation: me.trust?.requires_representation ?? true
 }));
 
 export type Me = z.infer<typeof meSchema>;
@@ -161,7 +167,15 @@ export const representationSchema = z.object({
   slug: z.string(),
   logo_key: z.string().nullable(),
   /// The caller's authority to act for this organization — not a role over events.
-  authority: z.string()
+  authority: z.string(),
+  /// The ORGANIZATION's registry status (D-350), distinct from `authority`. A staged representation
+  /// request is a real PendingReview row in this list; only a verified organization may be represented
+  /// by a paid event, and the server refuses the rest at submit-for-review.
+  is_verified: z.boolean(),
+  /// D-352 — the CAPABILITY the client gates on; `is_verified` is the FACT it displays. They differ only
+  /// under the dev bypass, which opens the gate without forging the status. Defaulted so an older server
+  /// that omits it falls back to the fact, which is the closed position in Production.
+  can_back_paid_event: z.boolean().optional()
 });
 
 export type Representation = z.infer<typeof representationSchema>;

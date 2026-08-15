@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Finding the text already printed on a certificate design (D-344, Phase 12).
+/// Finding the text already printed on a certificate design (D-355, Phase 12).
 ///
 /// <para><b>An extension point, not a feature.</b> OCR is deferred by decision, and the editor is required
 /// to work without it — every field is placed by hand today and that path is unchanged. This boundary

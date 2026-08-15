@@ -8,7 +8,7 @@ import { GenerateCertificates } from "@/components/host/certificates/generate-ce
 import { Card } from "@kurx/ui";
 
 /**
- * Event Dashboard → Certificates → Generate (D-344, Phase 7).
+ * Event Dashboard → Certificates → Generate (D-355, Phase 7).
  *
  * A page of its own rather than a panel on the designs list: generating is a multi-step flow with an
  * approval in the middle of it, and burying that inside a list is how someone approves a run they meant

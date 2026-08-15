@@ -88,6 +88,12 @@ class TrustCapabilitiesDto with _$TrustCapabilitiesDto {
     @JsonKey(name: 'bank_verified') @Default(false) bool bankVerified,
     /// D-307. Closed position on absence — a missing capability must never read as permission.
     @JsonKey(name: 'can_create_public_event') @Default(false) bool canCreatePublicEvent,
+
+    /// D-353/D-352 — whether a PUBLIC event must name a verified organisation. True in Production,
+    /// always; false only under the dev bypass, where no admin-approved organisation exists to name.
+    /// Defaulted **true**: a gate that stops demanding a requirement because a field went missing is
+    /// the wrong failure.
+    @JsonKey(name: 'requires_representation') @Default(true) bool requiresRepresentation,
     /// Defaults true so an older backend does not accidentally block Private.
     @JsonKey(name: 'can_create_private_event') @Default(true) bool canCreatePrivateEvent,
   }) = _TrustCapabilitiesDto;
@@ -104,6 +110,7 @@ class TrustCapabilitiesDto with _$TrustCapabilitiesDto {
         bankVerified: bankVerified,
         canCreatePublicEvent: canCreatePublicEvent,
         canCreatePrivateEvent: canCreatePrivateEvent,
+        requiresRepresentation: requiresRepresentation,
       );
 }
 

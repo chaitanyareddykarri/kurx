@@ -4,7 +4,7 @@ import {
 } from "@/lib/certificate-detection";
 
 /**
- * The client half of the OCR boundary (D-344, Phase 12).
+ * The client half of the OCR boundary (D-355, Phase 12).
  *
  * OCR is deferred, so what is asserted here is that the *absence* of an engine is a shape the editor can
  * render rather than an error it has to survive — and that "unavailable" is never mistaken for "this

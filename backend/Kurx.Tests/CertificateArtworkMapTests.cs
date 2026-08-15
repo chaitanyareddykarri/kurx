@@ -6,7 +6,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Finding where a design already has something printed on it (D-344).
+/// Finding where a design already has something printed on it (D-355).
 ///
 /// <para>This exists to warn a creator before they place a field over their own artwork's text — the
 /// mistake that renders <c>[Recipient's Full Name] John Doe</c> on a finished certificate, where the
@@ -153,7 +153,7 @@ public class CertificateArtworkMapTests
 
 /// <summary>
 /// Sampling the paper colour behind a region, so a field can cover printed text without leaving a patch
-/// (D-344).
+/// (D-355).
 ///
 /// <para>The failure this guards against is subtle and ugly: sampling the middle of the region averages
 /// in the very ink being covered, producing a grey box over black text — a defect placed exactly where

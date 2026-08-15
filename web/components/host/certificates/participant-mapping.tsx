@@ -9,7 +9,7 @@ import {
 } from "@/lib/certificate-mapping";
 
 /**
- * Upload a participant list and confirm what each column means (D-344, Phase 6).
+ * Upload a participant list and confirm what each column means (D-355, Phase 6).
  *
  * The mapping is the step this screen exists for. Getting it wrong is not a rendering bug someone
  * catches in a preview — it prints the wrong words on every certificate in the run, correctly and

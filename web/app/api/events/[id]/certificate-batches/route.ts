@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentSession } from "@/lib/session";
 import { siteConfig } from "@/lib/site";
 
-/// Forwards a run's creation to `POST /v1/events/{id}/certificate-batches` (D-344, Phase 7).
+/// Forwards a run's creation to `POST /v1/events/{id}/certificate-batches` (D-355, Phase 7).
 ///
 /// Same reasoning as the participant preview alongside it: this carries a file, and a file goes through a
 /// route handler rather than a Server Action. The run's name, design and column mapping ride as query

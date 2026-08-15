@@ -178,7 +178,7 @@ public static class DependencyInjection
         services.AddScoped<IWalkInService, Events.WalkInService>();                        // V3 §7.6 walk-in (Phase 13)
         services.AddScoped<ISeatBlockService, Events.SeatBlockService>();                  // V3 §7.5 delegated/SeatBlock (Phase 13)
         services.AddScoped<IApprovalService, Events.ApprovalService>();                    // V3 §14.3 approval chains (Phase 14)
-        // The certificate module (D-344). Scoped: it writes through the request's DbContext.
+        // The certificate module (D-355). Scoped: it writes through the request's DbContext.
         services.AddScoped<ICertificateIdAllocator, Certificates.CertificateIdAllocator>();
         services.AddScoped<ICertificateTemplateService, Certificates.CertificateTemplateService>();
         services.AddScoped<ICertificateIssuingService, Certificates.CertificateIssuingService>();
@@ -357,13 +357,13 @@ public static class DependencyInjection
         AddProvider<IPaymentGateway, MockPaymentGateway>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IRouteClient, MockRouteClient>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IKycProvider, MockKycProvider>(services, config, "KYC_PROVIDER", "mock");
-        // Certificate OCR (D-344 Phase 12). Deferred by decision: the editor places every field by hand and
+        // Certificate OCR (D-355 Phase 12). Deferred by decision: the editor places every field by hand and
         // must keep working with no engine at all. Registered through AddProvider precisely because that
         // helper REFUSES every value but the development one — so TEXT_DETECTOR=tesseract fails loudly at
         // boot rather than silently resolving to a detector that detects nothing.
         AddProvider<ITextDetector, Certificates.UnavailableTextDetector>(
             services, config, "TEXT_DETECTOR", "none");
-        // Object storage (D-344 Phase 2). Hand-registered rather than through AddProvider, which exists
+        // Object storage (D-355 Phase 2). Hand-registered rather than through AddProvider, which exists
         // to REFUSE every value but the development one — there are now two real choices.
         switch ((config["STORAGE_PROVIDER"] ?? "localdisk").Trim().ToLowerInvariant())
         {

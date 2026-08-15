@@ -5,7 +5,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// What happened to an event's certificates (D-344, Phase 11).
+/// What happened to an event's certificates (D-355, Phase 11).
 ///
 /// <para>The two surfaces sit behind different permissions on purpose. The dashboard is counts, and needs
 /// <c>ViewAnalytics</c>. The export carries participant names and email addresses — it is the personal

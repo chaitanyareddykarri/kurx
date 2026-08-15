@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 namespace Kurx.Infrastructure.Providers;
 
 /// <summary>
-/// S3-compatible object storage (D-344, Phase 2). Works against real AWS S3 and against any
+/// S3-compatible object storage (D-355, Phase 2). Works against real AWS S3 and against any
 /// S3-compatible server (MinIO, Ceph, Garage) through <c>S3_ENDPOINT</c>.
 ///
 /// <para><b>Two clients, and that is the whole design.</b> The server and the browser do not necessarily
@@ -168,7 +168,7 @@ public class S3Storage : IStorage, IDisposable
 }
 
 /// <summary>
-/// Validated S3 configuration (D-344, Phase 2).
+/// Validated S3 configuration (D-355, Phase 2).
 ///
 /// <para>Separated from the adapter so the rules are testable without constructing an S3 client, and so a
 /// misconfiguration fails at startup with a sentence naming the variable rather than at the first upload

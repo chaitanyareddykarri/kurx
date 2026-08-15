@@ -6,13 +6,13 @@ India-focused event-ticketing platform. .NET 10 API (Clean Architecture), Postgr
 - **Web**: `web/` — Next.js 14 App Router, public marketing site + OTP login + attendee/host app shell
 - **Admin**: `admin/` — Next.js staff console on `:3001` (verification queue, event approval, staff & roles, users, orgs, blacklist, risk, reports, audit log, analytics live; finance pending — see [`admin/STATUS.md`](admin/STATUS.md))
 - **Mobile**: `mobile/` — Flutter attendee app (auth, discovery, orders, certificates, gamification, social screens; per-screen wiring status in [`docs/roadmap/README.md`](docs/roadmap/README.md); payments blocked on backend — D-019)
-- **Infra**: root `docker-compose.yml` — Postgres, Redis, API, web, admin containers; `infra/` holds the API Dockerfile and Terraform
+- **Infra**: root `docker-compose.yml` — Postgres, Redis, ClamAV, API, web, admin containers; `infra/` holds the API Dockerfile and Terraform
 
 See [`docs/DECISIONS.md`](docs/DECISIONS.md) for the authoritative record of every non-obvious implementation choice, and [`docs/README.md`](docs/README.md) for the documentation index (architecture, deployment, security, API, roadmap).
 
 > **Architecture: user-first and event-first ([`D-074`](docs/DECISIONS.md) / [`D-267`](docs/DECISIONS.md) / [`D-268`](docs/DECISIONS.md)).** Kurx has **Users**, **Events** and **Representations** — and no organization accounts, organizer accounts, or personal organizations. **Users own events** (`Event.CreatedBy`, enforced from there). A representation is an **attribute of an event** — branding, verification, trust, permissions, payout destination — never its owner. The primary relation is always **User → Event**, never Organization → Event: Workspace lists your own events, Create Event is reachable directly, and choosing who you represent (**Personal** by default) is a step *inside* the creation form. Entry flow: [`docs/architecture/event-creation.md`](docs/architecture/event-creation.md).
 
-**Current state.** The backend has been through a 13-module production re-architecture (**M0–M13 / D-039–D-052**): live trust & verification (person identity, organization registry + verification, membership claims, a live capability matrix), an event-approval + paid-checkout gate, the ledger write-path, an admin verification console, and fraud prevention — backed by the integration suite (**1296 passing / 1 skipped of 1297 as of 2026-08-05**). Event Architecture V3 (all 18 phases) and the Professional Identity System have since landed, followed by a zero-trust production-readiness audit and remediation (D-240…D-246, D-250…D-259) that closed two reproduced P0 races — wallet balance lost updates and non-single-use refresh-token rotation — and added the API contract as a generated, committed, CI-gated artifact. The frontier is swapping the still-mocked network providers (Razorpay, SES, WhatsApp Cloud, FCM, S3, DigiLocker) for real ones, and giving the ~380 endpoints that answer with hand-written anonymous objects named response DTOs so the contract can describe them. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/roadmap/README.md`](docs/roadmap/README.md) for exactly what's built, and [`docs/architecture/diagrams.md`](docs/architecture/diagrams.md) for ER / sequence / state diagrams.
+**Current state.** The backend has been through a 13-module production re-architecture (**M0–M13 / D-039–D-052**): live trust & verification (person identity, organization registry + verification, membership claims, a live capability matrix), an event-approval + paid-checkout gate, the ledger write-path, an admin verification console, and fraud prevention — backed by the integration suite (**1824 passing / 1 skipped of 1825 as of 2026-08-15**). Event Architecture V3 (all 18 phases) and the Professional Identity System have since landed, followed by a zero-trust production-readiness audit and remediation (D-240…D-246, D-250…D-259) that closed two reproduced P0 races — wallet balance lost updates and non-single-use refresh-token rotation — and added the API contract as a generated, committed, CI-gated artifact. **Six provider boundaries now ship real adapters** — SES (email), SNS (SMS), Firebase (push), ClamAV (malware scanning), KMS (signing-key protection) and AWS Secrets Manager — plus Redis-backed presence. The frontier is the four that are still mocked (Razorpay + Route, DigiLocker/KYC, S3 storage, WhatsApp Cloud) and the 39 of 535 operations that still answer with hand-written anonymous objects rather than named response DTOs the contract can describe. See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/roadmap/README.md`](docs/roadmap/README.md) for exactly what's built, and [`docs/architecture/diagrams.md`](docs/architecture/diagrams.md) for ER / sequence / state diagrams.
 
 ## Local setup (no Docker)
 
@@ -55,7 +55,7 @@ cp .env.example .env   # docker compose auto-loads a root .env if present
 docker compose up --build
 ```
 
-This starts Postgres, Redis, the API (`:5080` → container `:8080`), the web app (`:3000`), and the admin app (`:3001`). All four services have real healthchecks; `depends_on: condition: service_healthy` means the API won't start serving until Postgres/Redis report healthy, and web/admin wait on the API.
+This starts Postgres, Redis, the API (`:5080` → container `:8080`), the web app (`:3000`), and the admin app (`:3001`), plus ClamAV (`:3310`). All six services have real healthchecks; `depends_on: condition: service_healthy` means the API won't start serving until Postgres/Redis report healthy, and web/admin wait on the API.
 
 ## Environment variables
 
@@ -95,7 +95,7 @@ cd backend
 dotnet test
 ```
 
-Integration tests (`Kurx.Tests`) boot the real API in-process against a Postgres database — each test class gets its own, cloned from a migrated template — so a reachable Postgres is required. **1297 tests; 1296 passing, 1 skipped as of 2026-08-05** (measured on an isolated worktree; a branch carrying concurrent work runs higher).
+Integration tests (`Kurx.Tests`) boot the real API in-process against a Postgres database — each test class gets its own, cloned from a migrated template — so a reachable Postgres is required. **1825 tests; 1824 passing, 1 skipped, 0 failing as of 2026-08-15** (measured in the SDK container with clamd up, 29m23s). Green is the standard — a red test is a defect, not "the environment".
 
 > **On Windows, run the suite in a container, not on the host.** Windows Application Control blocks the
 > test host from loading `Kurx.Infrastructure.dll` (`0x800711C7`), which fails *every* test for a reason
@@ -132,5 +132,5 @@ kurx/
 ├── packages/ui/             # Shared @kurx/ui design system (consumed by web + admin)
 ├── infra/                   # API Dockerfile (built by compose, push-ecr.sh and CD) + Terraform
 ├── docs/                    # Architecture, deployment, security, API, roadmap docs + DECISIONS.md
-└── docker-compose.yml       # Full-stack compose: postgres, redis, backend, web, admin
+└── docker-compose.yml       # Full-stack compose: postgres, redis, clamav, backend, web, admin
 ```

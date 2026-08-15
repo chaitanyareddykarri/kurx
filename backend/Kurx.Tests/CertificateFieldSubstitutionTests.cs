@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// A dynamic field renders its value, once, and nothing else (D-344).
+/// A dynamic field renders its value, once, and nothing else (D-355).
 ///
 /// <para>Written after a report of doubled text on a finished certificate — the resolved name appearing
 /// alongside a <c>[Recipient's Full Name]</c> placeholder. The pipeline turned out to be correct: one
@@ -150,7 +150,7 @@ public class CertificateFieldSubstitutionTests
         Assert.NotEqual(john, other);    // and actually driven by the value
     }
 
-    /// <summary>A long name is shrunk to fit its box (D-344 Phase 4) rather than overflowing into a
+    /// <summary>A long name is shrunk to fit its box (D-355 Phase 4) rather than overflowing into a
     /// second line of ink that could read as duplication.</summary>
     [Fact]
     public async Task A_very_long_value_still_produces_one_rendered_field()

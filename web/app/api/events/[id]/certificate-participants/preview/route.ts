@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentSession } from "@/lib/session";
 import { siteConfig } from "@/lib/site";
 
-/// Forwards a participant list to `POST /v1/events/{id}/certificate-participants/preview` (D-344, Phase 6).
+/// Forwards a participant list to `POST /v1/events/{id}/certificate-participants/preview` (D-355, Phase 6).
 ///
 /// A route handler rather than a Server Action, deliberately. Actions were tried first and failed in a way
 /// that produced **no entry in either server log** — the call never reached application code, so nothing

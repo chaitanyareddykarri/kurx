@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Hands out the next certificate id for an event (D-344).
+/// Hands out the next certificate id for an event (D-355).
 ///
 /// <para><b>Why this is its own boundary.</b> Allocation is the one part of issuing a certificate that
 /// cannot be done correctly in application code: it is a contended counter, and every obvious

@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// How the person named on a certificate reaches it (D-344, Phase 10).
+/// How the person named on a certificate reaches it (D-355, Phase 10).
 ///
 /// <para>Two security properties carry this phase, and both are asserted rather than assumed.</para>
 ///

@@ -8,7 +8,7 @@ using SixLabors.ImageSharp.Processing;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Certificate designs (D-344, Phase 3).
+/// Certificate designs (D-355, Phase 3).
 ///
 /// <para>See <see cref="ICertificateTemplateService"/> for the authority model. In short: an event
 /// template is event content and resolves through <c>IEventAuthority</c>; a library template belongs to

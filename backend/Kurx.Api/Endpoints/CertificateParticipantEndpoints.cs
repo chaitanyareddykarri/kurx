@@ -5,7 +5,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// How the person named on a certificate reaches it (D-344, Phase 10).
+/// How the person named on a certificate reaches it (D-355, Phase 10).
 ///
 /// <para>The capability endpoint is anonymous on purpose: holding the token IS the authorisation, which is
 /// the only way someone who was on a spreadsheet and never had an account can collect what was issued to

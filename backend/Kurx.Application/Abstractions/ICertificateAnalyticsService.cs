@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// What happened to an event's certificates (D-344, Phase 11).
+/// What happened to an event's certificates (D-355, Phase 11).
 ///
 /// <para><b>Telemetry counts events, not people.</b> A <c>certificate_events</c> row carries a certificate,
 /// a type, a time and the request's correlation id — no user, no address, no device, no IP. That is

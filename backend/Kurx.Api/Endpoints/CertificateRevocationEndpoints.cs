@@ -5,7 +5,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// Withdrawing a certificate, and correcting one (D-344, Phase 9).
+/// Withdrawing a certificate, and correcting one (D-355, Phase 9).
 ///
 /// <para>Revoke and reissue are separate verbs because they are separate public claims. Revoking says
 /// "this should not be honoured"; reissuing says "a corrected one exists, here it is". Offering one

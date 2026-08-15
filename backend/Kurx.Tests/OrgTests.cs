@@ -62,6 +62,35 @@ public class OrgTests : IClassFixture<KurxApiFactory>
         Assert.Equal("none", detail.GetProperty("payout_account_status").GetString());
     }
 
+    /// <summary>D-350 — `is_verified` is the ORGANIZATION's registry status, not the caller's standing
+    /// over it (`authority`). Both travel because a paid event may represent only a verified org, and a
+    /// staged representation request is a legitimate `PendingReview` row in this same list. Without the
+    /// field the client cannot tell them apart and offers a choice the server refuses at submission.</summary>
+    [Fact]
+    public async Task Representations_report_whether_the_organization_itself_is_verified()
+    {
+        var (client, userId, _) = await CreateOrgAsync("9100000021", "Verified Fest Co");
+
+        // A staged representation request — a real PendingReview org the caller may represent, which is
+        // exactly the row that must NOT read as verified.
+        await client.PostAsJsonAsync("/v1/orgs/representation-requests",
+            new { name = "Pending Institute", type = "Educational" });
+
+        var list = (await Json(await client.GetAsync("/v1/me/representations"))).EnumerateArray().ToList();
+
+        var verified = list.Single(o => o.GetProperty("name").GetString() == "Verified Fest Co");
+        Assert.True(verified.GetProperty("is_verified").GetBoolean());
+        // Authority is about the person; is_verified is about the organization. Both are owner here,
+        // which is the case that would hide a bug if only one were asserted.
+        Assert.Equal("owner", verified.GetProperty("authority").GetString());
+
+        var pending = list.SingleOrDefault(o => o.GetProperty("name").GetString() == "Pending Institute");
+        if (pending.ValueKind is not JsonValueKind.Undefined)
+            Assert.False(pending.GetProperty("is_verified").GetBoolean());
+
+        _ = userId;
+    }
+
     [Fact]
     public async Task Non_member_cannot_view_org()
     {

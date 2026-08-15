@@ -17,7 +17,7 @@ import {
 } from "@/lib/certificate-api";
 
 /**
- * Certificate module writes (D-344).
+ * Certificate module writes (D-355).
  *
  * Every action returns `{ ok }` or `{ error }` rather than throwing: these run behind buttons inside an
  * editor, and an unhandled throw replaces the whole page with an error boundary — losing the layout
@@ -120,7 +120,7 @@ export async function archiveTemplateAction(templateId: string, eventId?: string
   }
 }
 
-/** Reads an uploaded participant list (D-344, Phase 6). The file goes through the Next server rather
+/** Reads an uploaded participant list (D-355, Phase 6). The file goes through the Next server rather
  *  than to storage, because it is parsed and thrown away — nothing is persisted until the organiser has
  *  confirmed the mapping. */
 export async function previewParticipantsAction(eventId: string, file: File) {
@@ -139,7 +139,7 @@ export async function previewParticipantsAction(eventId: string, file: File) {
   }
 }
 
-/** Certificate run actions (D-344, Phase 7). Each returns `{ ok }` or `{ error }` rather than throwing:
+/** Certificate run actions (D-355, Phase 7). Each returns `{ ok }` or `{ error }` rather than throwing:
  *  these run behind buttons in a multi-step flow, and an unhandled throw would replace the page with an
  *  error boundary, losing an upload and a mapping someone has just finished confirming. */
 export async function createBatchAction(
@@ -216,7 +216,7 @@ function batchErrorMessage(err: unknown) {
   return message ?? fail(err).error;
 }
 
-/** Queues a run's certificates for emailing (D-344, Phase 8). */
+/** Queues a run's certificates for emailing (D-355, Phase 8). */
 export async function sendBatchAction(eventId: string, batchId: string) {
   const session = await requireSession();
   try {
@@ -243,7 +243,7 @@ export async function getDeliveriesAction(batchId: string) {
   }
 }
 
-/** Certificate corrections and withdrawals (D-344, Phase 9). */
+/** Certificate corrections and withdrawals (D-355, Phase 9). */
 export async function revokeCertificateAction(eventId: string, certificateRowId: string, reason: string) {
   const session = await requireSession();
   try {
@@ -302,7 +302,7 @@ function revocationErrorMessage(err: unknown) {
   return message ?? fail(err).error;
 }
 
-/** Capability links for participants without accounts (D-344, Phase 10). */
+/** Capability links for participants without accounts (D-355, Phase 10). */
 export async function createAccessLinkAction(recipientId: string) {
   const session = await requireSession();
   try {
@@ -331,7 +331,7 @@ export async function revokeAccessLinkAction(recipientId: string, linkId: string
   }
 }
 
-/** Asks whether this deployment can find text on the artwork (D-344, Phase 12).
+/** Asks whether this deployment can find text on the artwork (D-355, Phase 12).
  *
  *  Returns "unavailable" rather than an error for every failure, including a network one. Detection is an
  *  assist that no build currently provides; an editor must never be blocked, or even interrupted, by the
@@ -345,7 +345,7 @@ export async function detectTemplateTextAction(templateId: string): Promise<Text
   }
 }
 
-/** Design reuse (D-344, Phase 13). */
+/** Design reuse (D-355, Phase 13). */
 export async function copyToLibraryAction(eventId: string, templateId: string, name?: string) {
   const session = await requireSession();
   try {
@@ -377,7 +377,7 @@ function reuseErrorMessage(err: unknown) {
   return message ?? fail(err).error;
 }
 
-/** Where the design already has something printed (D-344). Returns an unanalysed map on any failure —
+/** Where the design already has something printed (D-355). Returns an unanalysed map on any failure —
  *  a warning that cannot be computed must never render as "your design is clear here". */
 export async function getArtworkMapAction(templateId: string): Promise<ArtworkMap> {
   try {

@@ -3,7 +3,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// The text detector every build ships with today (D-344, Phase 12).
+/// The text detector every build ships with today (D-355, Phase 12).
 ///
 /// <para>It detects nothing, and says so. OCR is deferred by decision; the editor's requirement is that
 /// manual placement works without it, and it does — this exists so the boundary is real rather than

@@ -13,7 +13,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Uploading a participant list over HTTP (D-344, Phase 6).
+/// Uploading a participant list over HTTP (D-355, Phase 6).
 ///
 /// <para>The parsing itself is covered exhaustively in <see cref="SpreadsheetReaderTests"/>. What is
 /// asserted here is everything the reader cannot see: that the upload is <b>authorized against the

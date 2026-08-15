@@ -7,7 +7,7 @@ import {
 import type { CertificateLineage } from "@/lib/certificate-api";
 
 /**
- * Withdrawing a certificate, and correcting one (D-344, Phase 9).
+ * Withdrawing a certificate, and correcting one (D-355, Phase 9).
  *
  * These are two different public claims and the UI keeps them apart at every step. **Withdraw** says
  * "this should not be honoured" — permanent, and the reason typed here is shown to anyone who checks the

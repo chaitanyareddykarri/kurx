@@ -1,7 +1,7 @@
 import type { CertificateDashboard } from "@/lib/certificate-api";
 
 /**
- * Certificate activity for an event (D-344, Phase 11).
+ * Certificate activity for an event (D-355, Phase 11).
  *
  * Two things this panel is careful about. **Live is the headline, not total** — counting withdrawn and
  * replaced certificates alongside good ones would tell an organiser they have three hundred valid

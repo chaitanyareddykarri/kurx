@@ -9,6 +9,15 @@ COPY Kurx.Api/Kurx.Api.csproj ./Kurx.Api/
 COPY Kurx.Application/Kurx.Application.csproj ./Kurx.Application/
 COPY Kurx.Domain/Kurx.Domain.csproj ./Kurx.Domain/
 COPY Kurx.Infrastructure/Kurx.Infrastructure.csproj ./Kurx.Infrastructure/
+# Directory.Build.props travels WITH the manifests, not with the sources below. D-345 set
+# `ArtifactsPath=/tmp/kurx-artifacts` for non-Windows builds; without this line `restore` ran before the
+# file arrived and wrote assets to the default `obj/`, then `publish --no-restore` — which now saw the
+# property — looked in /tmp and failed with NETSDK1004. The two halves have to agree on where assets live,
+# so the file that decides it must be present for both.
+#
+# This is not a CI-only concern: `docker build` does not inherit the daemon host's environment, so D-345's
+# `'$(GITHUB_ACTIONS)' != 'true'` guard is false inside the image and the redirect applies in CD too.
+COPY Directory.Build.props ./
 RUN dotnet restore Kurx.Api/Kurx.Api.csproj
 COPY . .
 RUN dotnet publish Kurx.Api/Kurx.Api.csproj -c Release -o /app --no-restore /p:UseAppHost=false

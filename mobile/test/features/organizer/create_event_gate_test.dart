@@ -7,17 +7,18 @@ import 'package:kurx_mobile/features/auth/presentation/providers/auth_providers.
 import 'package:kurx_mobile/features/events/domain/entities/event_category.dart';
 import 'package:kurx_mobile/features/organizer/presentation/pages/create_event_gate_page.dart';
 
-/// D-305 — the Create-Event gate, mirroring `web/test/create-event-gate.test.tsx`.
+/// D-305 — the Create-Event gate. D-343 — the two verification tiers.
+/// Mirrors `web/test/create-event-gate.test.tsx`.
 ///
-/// The same two properties are pinned on both clients, because the same two regressions are possible
-/// on both:
+/// The same properties are pinned on both clients, because the same regressions are possible on both:
 ///
 ///   1. **The form cannot be reached without passing the gate.** On Flutter this is a routing property
 ///      — the form lives at `/events/create/form`, behind `/events/create` — so what is asserted here
-///      is that the gate does not navigate until a product is chosen.
-///   2. **The gate never blocks a free event.** `canOrganizeFree` is true for any account; gating
-///      creation on identity would lock out every unverified organiser from something the platform
-///      explicitly allows.
+///      is that the gate does not navigate until the questions are answered.
+///   2. **A free public event must not be asked for bank details.** That was the D-307 behaviour and
+///      D-343 removed it: bank ownership answers "whose account receives money", which a free event
+///      never asks.
+///   3. **Paid stays behind the financial tier**, and a Private event can never reach it at all.
 ///
 /// The Type-filtering rule is asserted against `EventCategory.allowsProduct` — the same predicate web
 /// tests as `typesFor`. If the two ever disagree, one client offers a catalogue the other refuses.
@@ -34,6 +35,8 @@ CurrentUser _user({
   required bool canOrganizePaid,
   bool canCreatePublicEvent = false,
   bool canCreatePrivateEvent = true,
+  bool identityVerified = false,
+  bool bankVerified = false,
 }) =>
     CurrentUser(
       id: 'u1',
@@ -44,113 +47,151 @@ CurrentUser _user({
         canOrganizePaid: canOrganizePaid,
         canCreatePublicEvent: canCreatePublicEvent,
         canCreatePrivateEvent: canCreatePrivateEvent,
+        identityVerified: identityVerified,
+        bankVerified: bankVerified,
       ),
     );
 
+/// Product step → pricing step.
+Future<void> _chooseProduct(WidgetTester tester, String which) async {
+  await tester.tap(find.text(which));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Continue'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('CreateEventGatePage', () {
-    testWidgets('opens on eligibility, not on the form', (tester) async {
+    testWidgets('opens on the product question, not on the form', (tester) async {
       await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: false)));
       await tester.pumpAndSettle();
 
-      expect(find.text('Before you start'), findsOneWidget);
-      expect(find.text('What kind of event is this?'), findsNothing);
+      expect(find.text('Who is this event for?'), findsOneWidget);
+      expect(find.text('Are you charging for tickets?'), findsNothing);
     });
 
-    testWidgets('lets an unverified account through — a free event needs no verification',
-        (tester) async {
+    testWidgets('does not leave the product step until a product is chosen', (tester) async {
       await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: false)));
       await tester.pumpAndSettle();
 
-      // The load-bearing assertion, identical to web's. If this fails, creation has been gated on
-      // identity and every unverified organiser is locked out.
+      // Continue is inert with no product selected.
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
-      expect(find.text('What kind of event is this?'), findsOneWidget);
+      expect(find.text('Who is this event for?'), findsOneWidget);
     });
 
-    testWidgets('says paid hosting is what needs verification, not creation', (tester) async {
-      await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: false)));
-      await tester.pumpAndSettle();
+    // ── D-343 · the identity tier gates Public ──────────────────────────────
 
-      expect(find.textContaining("don't need any of this to create a free event"), findsOneWidget);
+    testWidgets('asks a free public event for identity only, never for bank details', (tester) async {
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: false, canCreatePublicEvent: true, identityVerified: true)));
+      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
+
+      // Free is the default answer, so this is the state the person lands in.
+      expect(find.textContaining('What a free public event needs'), findsOneWidget);
+      expect(find.textContaining('Government ID or PAN approved'), findsOneWidget);
+      expect(find.textContaining('penny drop'), findsNothing);
+      expect(find.textContaining('Bank account approved'), findsNothing);
     });
 
-    testWidgets('shows paid hosting as available once the account is paid-capable', (tester) async {
-      await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: true)));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Identity, PAN and bank account are verified'), findsOneWidget);
-      expect(find.textContaining("don't need any of this"), findsNothing);
-    });
-
-    testWidgets('does not leave the gate until a product is chosen', (tester) async {
-      await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: false)));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-
-      // Continue is inert with no product selected: tapping it must leave us on the product step
-      // rather than pushing the form route.
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('What kind of event is this?'), findsOneWidget);
-    });
-
-    // D-307 — Public requires the full set, free or paid. Mirrors web's block of the same name.
-
-    testWidgets('blocks Public when the account is not verified, and names what is missing',
-        (tester) async {
+    testWidgets('blocks Public when identity is not verified', (tester) async {
       await tester.pumpWidget(_host(const CreateEventGatePage(),
           user: _user(canOrganizePaid: false, canCreatePublicEvent: false)));
       await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
+
+      // Still on the gate — Continue is inert, so nothing was pushed.
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Public'));
+      expect(find.text('Are you charging for tickets?'), findsOneWidget);
+      expect(find.textContaining('Complete verification'), findsOneWidget);
+    });
+
+    // ── D-343 · the financial tier gates Paid ───────────────────────────────
+
+    testWidgets('names the bank-ownership links only once Paid is chosen', (tester) async {
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: true, canCreatePublicEvent: true, identityVerified: true)));
+      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
+      await tester.tap(find.text('Paid'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Verify your identity to host public events'), findsOneWidget);
-      // Penny drop is named because it is the bank-OWNERSHIP link, not a separate predicate.
+      expect(find.textContaining('What selling tickets needs'), findsOneWidget);
+      // Penny drop and name match are the bank-OWNERSHIP links inside bankVerified.
       expect(find.textContaining('penny drop'), findsOneWidget);
     });
+
+    testWidgets('does not let Paid past the gate without the financial tier, even when Public is open',
+        (tester) async {
+      // The exact D-343 shape: identity cleared, bank not. Public is allowed; selling is not.
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: false, canCreatePublicEvent: true, identityVerified: true)));
+      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
+      await tester.tap(find.text('Paid'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(find.text('Are you charging for tickets?'), findsOneWidget);
+    });
+
+    // ── Private ─────────────────────────────────────────────────────────────
 
     testWidgets('lets a completely unverified account choose PRIVATE', (tester) async {
       await tester.pumpWidget(_host(const CreateEventGatePage(),
           user: _user(canOrganizePaid: false, canCreatePublicEvent: false)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Private'));
-      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Private');
 
-      expect(find.textContaining('Private events need no financial verification'), findsOneWidget);
+      expect(find.textContaining('Nothing to verify'), findsOneWidget);
     });
 
-    testWidgets('never asks a Private host for penny drop', (tester) async {
+    testWidgets('never asks a Private host for identity or bank details', (tester) async {
       await tester.pumpWidget(_host(const CreateEventGatePage(),
           user: _user(canOrganizePaid: false, canCreatePublicEvent: false)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Private'));
-      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Private');
 
-      // A private event cannot take payment, so a bank requirement would be proof of something that
-      // can never happen.
       expect(find.textContaining('penny drop'), findsNothing);
+      expect(find.textContaining('Government ID or PAN approved'), findsNothing);
     });
 
-    testWidgets('can go back from the product step', (tester) async {
-      await tester.pumpWidget(_host(const CreateEventGatePage(), user: _user(canOrganizePaid: false)));
+    testWidgets('cannot sell tickets on a Private event', (tester) async {
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: true, canCreatePublicEvent: true)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
+      await _chooseProduct(tester, 'Private');
+
+      // The card is present but inert — a missing card answers nothing.
+      expect(find.textContaining('Not available for a private event'), findsOneWidget);
+    });
+
+    // ── D-323 · the bypass must not be restated as a verification ───────────
+
+    testWidgets('does not claim a verification that never happened when the gate is merely bypassed',
+        (tester) async {
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: true, canCreatePublicEvent: true, identityVerified: false)));
       await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
+
+      expect(find.textContaining('Enabled without verification'), findsOneWidget);
+      expect(find.textContaining('Nothing about your identity has been confirmed'), findsOneWidget);
+    });
+
+    testWidgets('can go back from the pricing step', (tester) async {
+      await tester.pumpWidget(_host(const CreateEventGatePage(),
+          user: _user(canOrganizePaid: false, canCreatePublicEvent: true, identityVerified: true)));
+      await tester.pumpAndSettle();
+      await _chooseProduct(tester, 'Public');
       await tester.tap(find.text('Back'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Before you start'), findsOneWidget);
+      expect(find.text('Who is this event for?'), findsOneWidget);
     });
   });
 

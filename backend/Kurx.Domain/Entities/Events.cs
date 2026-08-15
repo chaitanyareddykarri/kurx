@@ -348,6 +348,13 @@ public class Event
     public DateTime? PublishedAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
+
+    /// <summary>Field-for-field copy, used by event cloning (D-340). The caller then resets the fields
+    /// that must not travel — the inverse of the allowlist this replaced, which copied 47 of 110 columns
+    /// and silently blanked the rest because every D-265/D-266 batch that added a column forgot to extend
+    /// it. Copy-by-default fails loudly (a wrong value someone reports) instead of quietly (config loss
+    /// nobody sees). Safe as a shallow copy: <c>Event</c> declares no navigation collections.</summary>
+    public Event ShallowCopy() => (Event)MemberwiseClone();
 }
 
 public class TicketType

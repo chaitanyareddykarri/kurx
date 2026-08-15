@@ -10,7 +10,7 @@ import { CertificateDashboardPanel } from "@/components/host/certificates/certif
 import { Card } from "@kurx/ui";
 
 /**
- * Event Dashboard → Certificates (D-344).
+ * Event Dashboard → Certificates (D-355).
  *
  * `requireEventOrg` is the same gate every other host page uses; the server refuses independently, so
  * this only decides what to render.
@@ -28,7 +28,7 @@ export default async function EventCertificatesPage({ params }: { params: { id: 
   const [templates, dashboard, library] = await Promise.all([
     section(listEventTemplates(session.accessToken, params.id)),
     section(getCertificateDashboard(session.accessToken, params.id)),
-    // The creator's own saved designs (D-344, Phase 13). Through `section` like the rest, so a failure to
+    // The creator's own saved designs (D-355, Phase 13). Through `section` like the rest, so a failure to
     // read the library degrades to "no reuse offered" rather than taking the page down.
     section(listLibraryTemplates(session.accessToken)),
   ]);

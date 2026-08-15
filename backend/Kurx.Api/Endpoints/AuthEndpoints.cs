@@ -182,7 +182,7 @@ public static class AuthEndpoints
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
                 ?? throw new ApiException(StatusCodes.Status401Unauthorized, "invalid_token");
 
-            // D-343 — the key has to be one this caller was actually issued.
+            // D-354 — the key has to be one this caller was actually issued.
             //
             // It was persisted as an arbitrary string: nothing checked it began with this caller's own
             // prefix, so anyone could PATCH `users/{someone-else}/avatar/{guid}` onto their own profile,
@@ -205,7 +205,7 @@ public static class AuthEndpoints
             if (await scanGate.RejectAsync(body.CoverKey, userId, "users", userId, ct) is { } coverScanError)
                 return ProblemResults.Problem(coverScanError, StatusCodes.Status400BadRequest);
 
-            // D-343 — and it has to point at something.
+            // D-354 — and it has to point at something.
             //
             // Last, because a real scanner already covers this: `ClamAvFileScanner` reads the bytes
             // through IStorage, so an absent key comes back ScanFailed and is refused above with the
@@ -388,7 +388,7 @@ public static class AuthEndpoints
             kv => ProfileVisibilityResolver.SectionKey(kv.Key),
             kv => ProfileVisibilityResolver.TierKey(kv.Value)));
 
-    /// <summary>Whether a claimed profile-image key sits under this caller's own presign prefix (D-343).
+    /// <summary>Whether a claimed profile-image key sits under this caller's own presign prefix (D-354).
     ///
     /// <para>A null or blank key is "leave it alone" / "remove it" and passes — the partial-update
     /// convention every other field on this body follows.</para></summary>
@@ -396,7 +396,7 @@ public static class AuthEndpoints
         string.IsNullOrWhiteSpace(key)
         || key.Trim().StartsWith($"users/{userId}/{slot}/", StringComparison.Ordinal);
 
-    /// <summary>Whether a claimed key points at a stored object (D-343). Vacuously true when no key was
+    /// <summary>Whether a claimed key points at a stored object (D-354). Vacuously true when no key was
     /// claimed, for the same partial-update reason as <see cref="OwnsKey"/>.</summary>
     private static async Task<bool> ExistsIfClaimedAsync(string? key, IStorage storage, CancellationToken ct) =>
         string.IsNullOrWhiteSpace(key) || await storage.ExistsAsync(key.Trim(), ct);

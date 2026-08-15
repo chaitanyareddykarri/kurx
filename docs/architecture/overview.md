@@ -145,7 +145,7 @@
 | Database | Postgres 17 |
 | Real-time | ASP.NET Core SignalR (5 hubs); Redis backplane via `REDIS_CONNECTION` — optional in dev, **required in Production** ([D-217](../DECISIONS.md)) |
 | Background jobs | Hangfire 1.8 + PostgreSQL storage (schema `hangfire`, 12 tables, inside the `kurx` database); **18 recurring jobs** (counted live from `hangfire.set`, 2026-08-14) — seat-hold and waitlist expiry, ledger settlement, inventory / registration / **wallet** reconciliation, database health probe, leaderboard and search-index refresh, notification cleanup, event reminders, signing-key maintenance, outbox dispatch, chat-room locking, chat-attachment and post-media cleanup, account deletion, and the convergence backfill moved off the boot path ([D-250](../DECISIONS.md)). Two further jobs (`ChatNotificationJob`, `PhoneE164BackfillJob`) are enqueue-driven and carry no schedule. It is the **only** background-work mechanism — the unused n8n service was deleted in [D-337](../DECISIONS.md). A Hangfire server runs on **every replica**, so each recurring job carries `[DisableConcurrentExecution]` + a cadence-matched `[AutomaticRetry]` ([D-243](../DECISIONS.md)); per-message jobs deliberately do not. Dashboard at `/hangfire` (dev-only) |
-| API contract | OpenAPI generated from the running API, committed at `docs/api/openapi.json`, and **gated in CI** — a surface change that skips `scripts/generate-openapi.sh` fails the build ([D-259](../DECISIONS.md)). Responses are snake_case, requests camelCase. Response bodies are declared on **480 of 518 operations** (439 JSON + 35 `204` + 6 binary downloads as `format: binary`), ratcheted upward ([D-246](../DECISIONS.md), [D-313](../DECISIONS.md)) and enforced by `scripts/openapi-response-check.mjs`, which fails CI on a new undeclared response. A response DTO **must** be declared in `Kurx.Application.Abstractions` or `SnakeCaseResponseConverter` skips it and it silently emits camelCase. `required` is derived by `RequiredFromNonNullableSchemaFilter` because the pinned Swashbuckle 6.6.2 predates the switch for it |
+| API contract | OpenAPI generated from the running API, committed at `docs/api/openapi.json`, and **gated in CI** — a surface change that skips `scripts/generate-openapi.sh` fails the build ([D-259](../DECISIONS.md)). Responses are snake_case, requests camelCase. Response bodies are declared on **496 of 535 operations** (461 JSON + 32 `204` + 3 binary downloads as `format: binary`; re-measured 2026-08-14 with `scripts/openapi-response-check.mjs`), ratcheted upward ([D-246](../DECISIONS.md), [D-313](../DECISIONS.md)) and enforced by `scripts/openapi-response-check.mjs`, which fails CI on a new undeclared response. A response DTO **must** be declared in `Kurx.Application.Abstractions` or `SnakeCaseResponseConverter` skips it and it silently emits camelCase. `required` is derived by `RequiredFromNonNullableSchemaFilter` because the pinned Swashbuckle 6.6.2 predates the switch for it |
 | Frontend | Next.js 14 (`web/`), next-intl 3.26.3 for i18n |
 | Mobile | Flutter (`mobile/`) — attendee slices only |
 | Admin | Next.js (`admin/`) — internal staff console, 20+ modules live (verification, event approval, users/orgs, blacklist/fraud, staff & roles, audit, analytics, categories, certificates, broadcast, health); premium UI redesign D-185. Current status: `admin/STATUS.md` |
@@ -248,21 +248,21 @@ backend/
                         Events.cs, EventManagement.cs, Orders.cs, Money.cs, Design.cs,
                         Operational.cs, Invitations.cs, Chat.cs, Fraud.cs
     Enums/              All enum definitions
-  Kurx.Tests/           Integration test suite (WebApplicationFactory<Program>), ~1,500 [Fact]/[Theory]
-                        across 145 classes. Last full run measured 1,572 executed / 1,571 passed /
-                        1 skipped (2026-08-08). "166" stood here from M13 and was ~9x low; quote a
-                        measured run, never this line.
+  Kurx.Tests/           Integration test suite (WebApplicationFactory<Program>), 1,695 [Fact]/[Theory]
+                        across 175 files. Last full run measured 1,820 executed / 1,819 passed /
+                        1 skipped / 0 failed (2026-08-14, SDK container, 16m48s, clamd up).
+                        Quote a measured run, never this line — it has been stale twice.
 ```
 
 ## Request pipeline (`Kurx.Api/Program.cs`)
 
 In order:
 
-1. **Startup gate**: `db.Database.MigrateAsync()` runs once at boot. A connection failure or a migration that can't apply aborts the host instead of serving traffic.
+1. **Startup gate**: `db.Database.MigrateAsync()` runs once at boot. A connection failure or a migration that can't apply aborts the host instead of serving traffic. The **nine reference-data seeders** that follow it run inside one transaction holding `pg_advisory_xact_lock` ([D-344](../DECISIONS.md)): EF Core's own migration lock ends with the migration, and the seeders are read-then-insert, so two replicas of a rolling deploy would both find a catalog slug missing and the loser would take a `23505` on `event_kinds."Slug"` — inside this gate, i.e. a boot crash. The lock also makes seeding atomic; a failure now rolls back rather than leaving the next replica a half-seeded database.
 2. `CorrelationIdMiddleware` — generates/echoes `X-Correlation-Id`, pushes it into Serilog's `LogContext`.
 3. `UseExceptionHandler()` — `GlobalExceptionHandler` catches anything unhandled and returns an RFC7807 `ProblemDetails` response.
 4. `UseSerilogRequestLogging` — one structured log line per request, enriched with `CorrelationId`/`UserId`/`OrgId`.
-5. `UseCors()`.
+5. `UseCors()`. **Correctly after the exception handler**, not before: `CorsMiddleware` registers a `Response.OnStarting` callback on the way in, and `ExceptionHandlerMiddleware.ClearHttpContext()` clears headers but not those callbacks — so a 500 still carries `Access-Control-Allow-Origin`. Verified against a minimal app reproducing this exact order ([D-344](../DECISIONS.md)); this is also the framework's documented ordering, so do not "fix" it by moving CORS earlier.
 6. `UseRequestLocalization` — detects locale from `Accept-Language` header or `NEXT_LOCALE` cookie; supports `en` (default) and `hi`.
 7. `UseRateLimiter()` — global per-user/per-IP sliding window + named policies (`"otp"`, `"heavy"`).
 8. `UseAuthentication()` → `UseAuthorization()`.

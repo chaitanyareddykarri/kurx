@@ -3,7 +3,7 @@ import { resolveCertificateAccess } from "@/lib/certificate-api";
 import { ParticipantCertificateList } from "@/components/certificates/participant-certificates";
 
 /**
- * A participant's certificates, reached by capability link (D-344, Phase 10).
+ * A participant's certificates, reached by capability link (D-355, Phase 10).
  *
  * Public and unauthenticated by design: the token in the URL is the credential. That is what lets someone
  * who was on a spreadsheet and never had a Kurx account collect what was issued to them — requiring

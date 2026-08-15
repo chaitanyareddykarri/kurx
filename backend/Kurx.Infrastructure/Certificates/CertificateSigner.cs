@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// ES256 certificate signing (D-344, Phase 5).
+/// ES256 certificate signing (D-355, Phase 5).
 ///
 /// <para><b>Reuses the platform's key protection, not its key lifecycle.</b> The private half is wrapped
 /// by the existing <see cref="ISigningKeyProtector"/> — so on a production deployment it is sealed by KMS

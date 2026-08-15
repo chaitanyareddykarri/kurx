@@ -1,7 +1,7 @@
 using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
-// PropertySaveBehavior — used to make IssuedCertificate.CertificateId immutable after insert (D-344).
+// PropertySaveBehavior — used to make IssuedCertificate.CertificateId immutable after insert (D-355).
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Kurx.Infrastructure.Persistence;
@@ -177,7 +177,7 @@ public class KurxDbContext : DbContext
     public DbSet<Certificate> Certificates => Set<Certificate>();
     public DbSet<IdCard> IdCards => Set<IdCard>();
 
-    // ── The certificate module (D-344). New tables; the three dormant ones above are untouched. ──
+    // ── The certificate module (D-355). New tables; the three dormant ones above are untouched. ──
     public DbSet<CertificateTemplate> CertificateTemplates => Set<CertificateTemplate>();
     public DbSet<CertificateTemplateField> CertificateTemplateFields => Set<CertificateTemplateField>();
     public DbSet<CertificateIdRule> CertificateIdRules => Set<CertificateIdRule>();
@@ -1787,7 +1787,7 @@ public class KurxDbContext : DbContext
             e.HasOne<DesignTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        // ── The certificate module (D-344) ──────────────────────────────────────────────────────
+        // ── The certificate module (D-355) ──────────────────────────────────────────────────────
         //
         // Configured with NO navigation properties, matching the convention used throughout this file.
         // That is load-bearing here rather than stylistic: it is what lets these tables reference Event
@@ -1906,7 +1906,7 @@ public class KurxDbContext : DbContext
             e.HasIndex(x => x.RecipientId);
             e.HasIndex(x => x.BatchId);
 
-            // What makes a batch retry safe (D-344, Phase 7). The run skips rows it has already issued,
+            // What makes a batch retry safe (D-355, Phase 7). The run skips rows it has already issued,
             // but a skip-list read at the top of a loop stops being true the moment two workers pick up
             // the same job — so one certificate per (batch, recipient) is enforced here, where concurrency
             // cannot get around it. Filtered, because a hand-issued certificate has no batch and several

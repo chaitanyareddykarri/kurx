@@ -81,6 +81,7 @@ class TrustCapabilities {
     this.bankVerified = false,
     this.canCreatePublicEvent = false,
     this.canCreatePrivateEvent = true,
+    this.requiresRepresentation = true,
   });
 
   final String level;
@@ -98,6 +99,10 @@ class TrustCapabilities {
   /// [canOrganizePaid] (*may they take money*) even though the predicates are identical today.
   /// Defaults **false**: the closed position, so a response that omits it never reads as permission.
   final bool canCreatePublicEvent;
+
+  /// D-353/D-352 — whether a PUBLIC event must name a verified organisation. True in Production,
+  /// always; false only under the dev bypass. Defaults true, the closed position.
+  final bool requiresRepresentation;
 
   /// Constant true server-side — a Private event cannot be Listed, take payment, or reach any
   /// discovery surface, so there is nothing to verify. Defaults true so an older backend does not

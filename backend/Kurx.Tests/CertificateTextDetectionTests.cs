@@ -11,7 +11,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// The OCR boundary, with no engine behind it (D-344, Phase 12).
+/// The OCR boundary, with no engine behind it (D-355, Phase 12).
 ///
 /// <para>OCR is deferred by decision. What this phase ships is the seam and nothing else, so the property
 /// under test is mostly <b>absence</b>: no engine runs, no regions are invented, and every path that

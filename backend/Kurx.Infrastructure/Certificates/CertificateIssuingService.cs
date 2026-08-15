@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Producing one certificate (D-344, Phase 4).
+/// Producing one certificate (D-355, Phase 4).
 ///
 /// <para><b>One assembly path, two callers.</b> <see cref="BuildDocumentAsync"/> turns a template into a
 /// renderable document, and both preview and issue go through it. Nothing else may assemble a document —

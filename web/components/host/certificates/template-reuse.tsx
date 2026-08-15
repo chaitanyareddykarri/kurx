@@ -7,7 +7,7 @@ import { copyToEventAction, copyToLibraryAction } from "@/lib/certificate-action
 import type { CertificateTemplate } from "@/lib/certificate-api";
 
 /**
- * Reusing a design across events (D-344, Phase 13).
+ * Reusing a design across events (D-355, Phase 13).
  *
  * Both directions are described to the creator as *copying*, never as linking or sharing, because that is
  * what actually happens and the difference matters to them: a design used on last year's event and edited

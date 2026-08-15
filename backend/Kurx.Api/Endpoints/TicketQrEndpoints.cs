@@ -8,7 +8,7 @@ namespace Kurx.Api.Endpoints;
 using Kurx.Api.ExceptionHandling;
 
 /// <summary>
-/// The scannable QR image for a ticket (D-343).
+/// The scannable QR image for a ticket (D-354).
 ///
 /// <para><b>Why this file exists.</b> This route used to live in <c>CertificateEndpoints</c>, which is an
 /// accident of history rather than a grouping: a ticket QR has nothing to do with certificates, and it was

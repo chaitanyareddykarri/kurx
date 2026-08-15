@@ -6,7 +6,7 @@ using QuestPDF.Infrastructure;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Renders a certificate with QuestPDF (D-344, Phase 4).
+/// Renders a certificate with QuestPDF (D-355, Phase 4).
 ///
 /// <para><b>Percentages become points here, once.</b> The document carries no resolution; this is where a
 /// page size is chosen and every coordinate multiplied by it. Nothing upstream knows about points and

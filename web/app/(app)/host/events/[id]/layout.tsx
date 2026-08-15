@@ -50,7 +50,7 @@ export default async function EventWorkspaceLayout({
     ...(canEdit
       ? [
           { key: "checkin", label: "Check-in", href: `${base}/checkin` },
-          // D-344 — the certificate module. Issuance lives with the event it certifies.
+          // D-355 — the certificate module. Issuance lives with the event it certifies.
           { key: "certificates", label: "Certificates", href: `${base}/certificates` },
           { key: "announcements", label: "Announcements", href: `${base}/announcements` },
           { key: "invitations", label: "Invitations", href: `${base}/invitations` },

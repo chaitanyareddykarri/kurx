@@ -4,7 +4,7 @@ import type { DraftField } from "@/lib/certificate-editor";
 import { PAGE_ASPECT } from "@/lib/certificate-editor";
 
 /**
- * The uploaded design with its fields drawn on top (D-344, Phase 3).
+ * The uploaded design with its fields drawn on top (D-355, Phase 3).
  *
  * **This is a layout surface, not the output.** The server is the only renderer, so the *type* here is an
  * approximation — the browser's fonts and line breaking, not QuestPDF's. The uploaded artwork, however,

@@ -17,7 +17,8 @@ namespace Kurx.Infrastructure.Orgs;
 /// + Route linked account: D-016. T1 schedule defaults: D-007/D-016.
 /// </summary>
 public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient route, IFraudService fraud,
-    Providers.UploadScanGate scanGate, ILogger<OrgService> log, IStorage storage)
+    Providers.UploadScanGate scanGate, Configuration.IdentityVerificationOptions identityOptions,
+    IStorage storage, ILogger<OrgService> log)
     : IOrgService
 {
     public const int Tier1AdvancePct = 50;
@@ -194,7 +195,14 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
             // yourself is not an organization, so it must never surface as one — filtering here rather
             // than in each client is what keeps the concept out of the API entirely.
             .Join(db.Organizations.Where(o => o.DeletedAt == null && !o.IsPersonal), m => m.OrgId, o => o.Id,
-                (m, o) => new RepresentableOrganization(o.Id, o.Name, o.Slug, o.LogoKey, m.Role.ToString()))
+                // IsVerified is the ORG's registry status, not the caller's standing (that is Role). A
+                // staged representation request is a PendingReview row that belongs in this list — the
+                // caller may well represent it once approved — but a paid event may only represent a
+                // verified one (D-350), so both facts travel or the client guesses.
+                (m, o) => new RepresentableOrganization(o.Id, o.Name, o.Slug, o.LogoKey, m.Role.ToString(),
+                    o.VerificationStatus == OrgVerificationStatus.Verified,
+                    // D-352 — the capability, which the bypass may open; the fact above never moves.
+                    identityOptions.Bypass || o.VerificationStatus == OrgVerificationStatus.Verified))
             .ToListAsync(ct);
 
     public async Task<ServiceResult<OrgDetail>> GetAsync(Guid userId, Guid orgId, bool isAdmin = false, CancellationToken ct = default)
@@ -218,7 +226,16 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
     // queries over the current page only, never per-row (same discipline as D-186/D-188's batch counts).
     public async Task<(IReadOnlyList<AdminOrgView> Items, int Total)> ListForAdminAsync(AdminOrgListFilter filter, CancellationToken ct = default)
     {
-        var q = db.Organizations.AsNoTracking().Where(o => o.DeletedAt == null);
+        // D-353 — the self-representation row is not an organization and is excluded here as it already is
+        // from `/v1/me/representations`, registry search and the public profile. Admin was the one surface
+        // still listing it, labelled "Self-representation" — which was defensible while Personal was a
+        // product concept and is not now: a reviewer scanning the registry sees a row named after a person,
+        // with an Unverified status they cannot action and a wallet that can never receive money.
+        //
+        // Excluded rather than filterable: there is no reviewer task it belongs to. It stays reachable by
+        // id for support (`GetAsync` with isAdmin), so nothing becomes un-debuggable — it just stops
+        // appearing in a registry it was never a member of.
+        var q = db.Organizations.AsNoTracking().Where(o => o.DeletedAt == null && !o.IsPersonal);
         if (!string.IsNullOrWhiteSpace(filter.Q))
         {
             var like = $"%{filter.Q.Trim()}%";

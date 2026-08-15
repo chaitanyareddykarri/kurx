@@ -10,7 +10,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Withdrawing a certificate, and correcting one (D-344, Phase 9).
+/// Withdrawing a certificate, and correcting one (D-355, Phase 9).
 ///
 /// <para>The property everything else rests on: <b>the original is never edited</b>. Its certificate id,
 /// its field values, its signature and its rendered files come out of a correction byte-identical to how

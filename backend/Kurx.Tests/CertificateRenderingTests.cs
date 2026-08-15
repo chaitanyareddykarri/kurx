@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Rendering and single-certificate issuance (D-344, Phase 4).
+/// Rendering and single-certificate issuance (D-355, Phase 4).
 ///
 /// <para><b>How rendering is asserted without reading a PDF.</b> Parsing the output would test a PDF
 /// library, not this code. What matters is <i>observable difference</i>: a document rendered with a name

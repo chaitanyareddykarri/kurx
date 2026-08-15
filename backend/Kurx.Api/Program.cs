@@ -119,11 +119,14 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
             var keys = scope.ServiceProvider.GetRequiredService<ISigningKeyService>();
             var published = keys.GetValidationKeysAsync().GetAwaiter().GetResult();
             var match = published.FirstOrDefault(k => k.KeyId == kid);
-            if (match is null) return [];    // unknown or compromised kid => token rejected
+            if (match is null) return [];    // unknown, retired or compromised kid => token rejected
 
-            var ecdsa = System.Security.Cryptography.ECDsa.Create();
-            ecdsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(match.PublicKeySpki), out _);
-            return [new ECDsaSecurityKey(ecdsa) { KeyId = match.KeyId }];
+            // D-355: parse once per key, not once per request. This line used to call ECDsa.Create()
+            // inline and never dispose it — ECDsaSecurityKey does not take ownership — so every
+            // authenticated request abandoned a native handle to the finalizer and re-ran the same
+            // base64 decode and SPKI import. The lookup above stays the authority: a key that is no
+            // longer published never reaches the cache, so retirement and compromise are unaffected.
+            return [ValidationKeyCache.Get(match.KeyId, match.PublicKeySpki)];
         };
     });
 
@@ -282,7 +285,7 @@ builder.Services.AddRateLimiter(o =>
         return RateLimitPartitions.Window(ctx, key, postsPerMin, TimeSpan.FromMinutes(1));
     });
 
-    // Public certificate verification (D-344): per IP, because it is anonymous and certificate ids are
+    // Public certificate verification (D-355): per IP, because it is anonymous and certificate ids are
     // sequential — enumerable by design, since the mitigation for a guessable id is a minimal public
     // payload rather than secrecy. Generous enough that an organiser checking a stack of printed
     // certificates by hand never trips it, low enough that scraping the id space is not practical.
@@ -425,6 +428,25 @@ using (var scope = app.Services.CreateScope())
         throw;
     }
 
+    // D-355: one advisory lock around the whole seeding block, because every replica of a rolling deploy
+    // runs it at once. EF Core 9 takes its own lock for MigrateAsync above, but that lock ends with the
+    // migration and the seeders are outside it. They are read-then-insert — KindRegistrySeeder SELECTs the
+    // existing slugs, diffs the catalog, then inserts the difference — so two replicas booting together
+    // both observe the same slug missing and both insert it, and the unique index on event_kinds.Slug
+    // turns the loser into a 23505 inside this try block, which refuses to start that replica. Narrow (it
+    // needs a cold database or a deploy that adds catalog rows) but a bad failure: a boot crash mid-deploy.
+    //
+    // Serialising is the fix rather than making nine seeders individually conflict-tolerant: the hazard is
+    // "N replicas run this block concurrently", not any one seeder, so the lock also covers seeders added
+    // later. The second replica then finds everything present and its already-populated checks correctly
+    // do nothing. Transaction-scoped, so it releases on commit or on throw — no leak if a seeder fails.
+    // Same pg_advisory_xact_lock idiom as SeatBlockService and OrderService.
+    const int seedLockNamespace = 0x53_45_45_44;    // "SEED"
+    const int seedLockKey = 1;                      // one block, one key
+    await using var seedTx = await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"SELECT pg_advisory_xact_lock({seedLockNamespace}, {seedLockKey})");
+
     // Reference-data seeders only (D-250). These write a fixed, bounded set of platform rows — the taxonomy,
     // the Kind/Capability/ParticipantRole registries, the system + design templates — that the API cannot
     // serve a single request without, so they stay on the boot path and stay fail-closed. Each is guarded by
@@ -462,6 +484,11 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<IPlatformRoleService>(),
         app.Configuration,
         startupLogger);
+
+    // Releases the advisory lock as well as publishing the rows. Anything thrown above leaves this
+    // unreached, so the transaction rolls back and the next replica seeds from a clean state rather
+    // than inheriting a half-seeded one — the startup catch already refuses to serve traffic either way.
+    await seedTx.CommitAsync();
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -696,7 +723,7 @@ jobs.AddOrUpdate<AccountDeletionJob>(
     "account-deletion",
     job => job.RunAsync(CancellationToken.None),
     Cron.Daily());
-// Drains queued certificate emails (D-344, Phase 8). Minutely: the queue is written the moment an
+// Drains queued certificate emails (D-355, Phase 8). Minutely: the queue is written the moment an
 // organiser presses send, and a certificate arriving a minute later is fine — one arriving an hour later
 // looks broken.
 jobs.AddOrUpdate<CertificateDeliveryJob>(

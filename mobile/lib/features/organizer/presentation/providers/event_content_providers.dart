@@ -15,6 +15,11 @@ import '../../data/models/event_content_dto.dart';
 final eventContentSourceProvider =
     Provider((ref) => EventContentRemoteDataSource(ref.watch(dioProvider)));
 
+/// D-266 M5 — the closed representative-role vocabulary, from the server that validates it (D-351).
+/// A copy held in the client is how a role gets offered here and refused by the API.
+final representativeRolesProvider = FutureProvider.autoDispose<List<String>>(
+    (ref) => ref.watch(eventContentSourceProvider).representativeRoles());
+
 /// Identifies an org-scoped event. Records give value equality for free, which is what makes
 /// `family` caching work — two identical `(orgId, eventId)` pairs share one cache entry.
 typedef OrgEventRef = ({String orgId, String eventId});

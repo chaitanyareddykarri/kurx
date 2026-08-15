@@ -11,7 +11,7 @@ import type { CertificateTemplate } from "@/lib/certificate-api";
 import { UseSavedDesign } from "@/components/host/certificates/template-reuse";
 
 /**
- * An event's certificate designs (D-344, Phase 3).
+ * An event's certificate designs (D-355, Phase 3).
  *
  * Creating a design and uploading artwork are two steps rather than one, because the upload needs a
  * template to be keyed under — the storage prefix is what authorises the object, so there has to be
@@ -21,7 +21,7 @@ export function CertificateTemplateList({ eventId, templates, canManage, library
   eventId: string;
   templates: CertificateTemplate[];
   canManage: boolean;
-  /** The creator's own saved designs (D-344, Phase 13). Empty when they have none, which is when the
+  /** The creator's own saved designs (D-355, Phase 13). Empty when they have none, which is when the
    *  reuse control does not render at all. */
   library?: CertificateTemplate[];
 }) {

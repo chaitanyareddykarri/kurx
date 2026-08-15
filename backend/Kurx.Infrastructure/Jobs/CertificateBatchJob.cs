@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Kurx.Infrastructure.Jobs;
 
-// Renders an approved certificate batch (D-344, Phase 7).
+// Renders an approved certificate batch (D-355, Phase 7).
 //
 // Enqueued once, at approval. Rendering hundreds of PDFs cannot happen inside a request: the organiser
 // would sit on a spinner for minutes, and a dropped connection would leave the run half-finished with

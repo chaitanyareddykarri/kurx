@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Turns a certificate design plus one recipient's values into a document (D-344, Phase 4).
+/// Turns a certificate design plus one recipient's values into a document (D-355, Phase 4).
 ///
 /// <para><b>One renderer, used by everything.</b> The preview an organiser inspects and the certificate a
 /// recipient receives come through here, differing only in the values handed in. That is what makes

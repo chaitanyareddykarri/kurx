@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Where the uploaded design already has something printed on it (D-344).
+ * Where the uploaded design already has something printed on it (D-355).
  *
  * Its own pure module — no API client — so the overlap arithmetic can be tested directly. The editor
  * fetches the map once when a design opens and consults it locally as a field is dragged: a request per

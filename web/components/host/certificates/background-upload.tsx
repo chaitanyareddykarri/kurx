@@ -5,7 +5,7 @@ import { presignBackgroundAction, setBackgroundAction } from "@/lib/certificate-
 import type { CertificateTemplate } from "@/lib/certificate-api";
 
 /**
- * Upload the certificate artwork (D-344, Phase 3): presign → PUT → record.
+ * Upload the certificate artwork (D-355, Phase 3): presign → PUT → record.
  *
  * Nothing is written to the template until the PUT succeeds, so a failed upload leaves the design
  * pointing at whatever it pointed at before. The accepted set is narrower than the browser's idea of an

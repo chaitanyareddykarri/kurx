@@ -81,6 +81,16 @@ public class EventAudienceAuthorizationTests : IClassFixture<KurxApiFactory>
 
     // ── helpers ────────────────────────────────────────────────────────────────
 
+    /// D-353 — a real seeded Private Type, so a self-hosted event is a legal shape.
+    private async Task<Guid> PrivateTypeIdAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        return await db.EventCategories
+            .Where(c => c.Level == CategoryLevel.Type && c.ProductClass == EventProduct.Private)
+            .Select(c => c.Id).FirstAsync();
+    }
+
     private static async Task<JsonElement> Json(HttpResponseMessage res) => await res.Content.ReadFromJsonAsync<JsonElement>();
     private string NextPhone() => $"9183{Interlocked.Increment(ref _phoneSeq):D6}";
 
@@ -270,9 +280,13 @@ public class EventAudienceAuthorizationTests : IClassFixture<KurxApiFactory>
     public async Task An_event_creator_keeps_full_audience_standing_with_no_membership_row_at_all()
     {
         var (creator, creatorId) = await LoginAsync();
+        // D-353 — self-hosting is Private-only now. The subject is the creator's audience standing with no
+        // Membership row, which is unchanged; the product axis simply has to be stated.
+        var privateTypeId = await PrivateTypeIdAsync();
         var created = await Json(await creator.CreateEventAsync(null, new
         {
             title = "Solo Meetup",
+            typeId = privateTypeId,
             description = "An event with plenty of detail for validation.",
             categoryId = _categoryId,
             venueName = "Main Hall",

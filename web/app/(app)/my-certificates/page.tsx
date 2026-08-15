@@ -5,7 +5,7 @@ import { ParticipantCertificateList } from "@/components/certificates/participan
 import { Card } from "@kurx/ui";
 
 /**
- * The signed-in user's own certificates (D-344, Phase 10).
+ * The signed-in user's own certificates (D-355, Phase 10).
  *
  * The server claims any recipient rows matching this account's *verified* email as part of answering, so
  * a certificate issued before someone signed up appears the first time they look rather than after some

@@ -341,8 +341,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               final product = s.uri.queryParameters['product'];
               return product == 'Public' || product == 'Private' ? null : '/events/create';
             },
+            // `pricing` carries the gate's free/paid answer (D-354) — the pair that selected the
+            // verification tier the caller just cleared. Unlike `product` it is not enforced in the
+            // redirect: a missing value falls back to 'free', which is the closed position (the Paid
+            // card in the form stays gated on canOrganizePaid regardless).
             pageBuilder: (_, s) => _fadePage(
-              CreateEventPage(product: s.uri.queryParameters['product']!),
+              CreateEventPage(
+                product: s.uri.queryParameters['product']!,
+                initialPricing:
+                    s.uri.queryParameters['pricing'] == 'paid' ? 'paid' : 'free',
+              ),
               s,
             ),
           ),

@@ -755,6 +755,13 @@ mixin _$TrustCapabilitiesDto {
   @JsonKey(name: 'can_create_public_event')
   bool get canCreatePublicEvent => throw _privateConstructorUsedError;
 
+  /// D-353/D-352 — whether a PUBLIC event must name a verified organisation. True in Production,
+  /// always; false only under the dev bypass, where no admin-approved organisation exists to name.
+  /// Defaulted **true**: a gate that stops demanding a requirement because a field went missing is
+  /// the wrong failure.
+  @JsonKey(name: 'requires_representation')
+  bool get requiresRepresentation => throw _privateConstructorUsedError;
+
   /// Defaults true so an older backend does not accidentally block Private.
   @JsonKey(name: 'can_create_private_event')
   bool get canCreatePrivateEvent => throw _privateConstructorUsedError;
@@ -784,6 +791,7 @@ abstract class $TrustCapabilitiesDtoCopyWith<$Res> {
     @JsonKey(name: 'identity_verified') bool identityVerified,
     @JsonKey(name: 'bank_verified') bool bankVerified,
     @JsonKey(name: 'can_create_public_event') bool canCreatePublicEvent,
+    @JsonKey(name: 'requires_representation') bool requiresRepresentation,
     @JsonKey(name: 'can_create_private_event') bool canCreatePrivateEvent,
   });
 }
@@ -813,6 +821,7 @@ class _$TrustCapabilitiesDtoCopyWithImpl<
     Object? identityVerified = null,
     Object? bankVerified = null,
     Object? canCreatePublicEvent = null,
+    Object? requiresRepresentation = null,
     Object? canCreatePrivateEvent = null,
   }) {
     return _then(
@@ -845,6 +854,10 @@ class _$TrustCapabilitiesDtoCopyWithImpl<
                 ? _value.canCreatePublicEvent
                 : canCreatePublicEvent // ignore: cast_nullable_to_non_nullable
                       as bool,
+            requiresRepresentation: null == requiresRepresentation
+                ? _value.requiresRepresentation
+                : requiresRepresentation // ignore: cast_nullable_to_non_nullable
+                      as bool,
             canCreatePrivateEvent: null == canCreatePrivateEvent
                 ? _value.canCreatePrivateEvent
                 : canCreatePrivateEvent // ignore: cast_nullable_to_non_nullable
@@ -872,6 +885,7 @@ abstract class _$$TrustCapabilitiesDtoImplCopyWith<$Res>
     @JsonKey(name: 'identity_verified') bool identityVerified,
     @JsonKey(name: 'bank_verified') bool bankVerified,
     @JsonKey(name: 'can_create_public_event') bool canCreatePublicEvent,
+    @JsonKey(name: 'requires_representation') bool requiresRepresentation,
     @JsonKey(name: 'can_create_private_event') bool canCreatePrivateEvent,
   });
 }
@@ -897,6 +911,7 @@ class __$$TrustCapabilitiesDtoImplCopyWithImpl<$Res>
     Object? identityVerified = null,
     Object? bankVerified = null,
     Object? canCreatePublicEvent = null,
+    Object? requiresRepresentation = null,
     Object? canCreatePrivateEvent = null,
   }) {
     return _then(
@@ -929,6 +944,10 @@ class __$$TrustCapabilitiesDtoImplCopyWithImpl<$Res>
             ? _value.canCreatePublicEvent
             : canCreatePublicEvent // ignore: cast_nullable_to_non_nullable
                   as bool,
+        requiresRepresentation: null == requiresRepresentation
+            ? _value.requiresRepresentation
+            : requiresRepresentation // ignore: cast_nullable_to_non_nullable
+                  as bool,
         canCreatePrivateEvent: null == canCreatePrivateEvent
             ? _value.canCreatePrivateEvent
             : canCreatePrivateEvent // ignore: cast_nullable_to_non_nullable
@@ -949,6 +968,8 @@ class _$TrustCapabilitiesDtoImpl extends _TrustCapabilitiesDto {
     @JsonKey(name: 'identity_verified') this.identityVerified = false,
     @JsonKey(name: 'bank_verified') this.bankVerified = false,
     @JsonKey(name: 'can_create_public_event') this.canCreatePublicEvent = false,
+    @JsonKey(name: 'requires_representation')
+    this.requiresRepresentation = true,
     @JsonKey(name: 'can_create_private_event')
     this.canCreatePrivateEvent = true,
   }) : super._();
@@ -980,6 +1001,14 @@ class _$TrustCapabilitiesDtoImpl extends _TrustCapabilitiesDto {
   @JsonKey(name: 'can_create_public_event')
   final bool canCreatePublicEvent;
 
+  /// D-353/D-352 — whether a PUBLIC event must name a verified organisation. True in Production,
+  /// always; false only under the dev bypass, where no admin-approved organisation exists to name.
+  /// Defaulted **true**: a gate that stops demanding a requirement because a field went missing is
+  /// the wrong failure.
+  @override
+  @JsonKey(name: 'requires_representation')
+  final bool requiresRepresentation;
+
   /// Defaults true so an older backend does not accidentally block Private.
   @override
   @JsonKey(name: 'can_create_private_event')
@@ -987,7 +1016,7 @@ class _$TrustCapabilitiesDtoImpl extends _TrustCapabilitiesDto {
 
   @override
   String toString() {
-    return 'TrustCapabilitiesDto(level: $level, canOrganizeFree: $canOrganizeFree, canOrganizePaid: $canOrganizePaid, canReceivePayout: $canReceivePayout, identityVerified: $identityVerified, bankVerified: $bankVerified, canCreatePublicEvent: $canCreatePublicEvent, canCreatePrivateEvent: $canCreatePrivateEvent)';
+    return 'TrustCapabilitiesDto(level: $level, canOrganizeFree: $canOrganizeFree, canOrganizePaid: $canOrganizePaid, canReceivePayout: $canReceivePayout, identityVerified: $identityVerified, bankVerified: $bankVerified, canCreatePublicEvent: $canCreatePublicEvent, requiresRepresentation: $requiresRepresentation, canCreatePrivateEvent: $canCreatePrivateEvent)';
   }
 
   @override
@@ -1008,6 +1037,8 @@ class _$TrustCapabilitiesDtoImpl extends _TrustCapabilitiesDto {
                 other.bankVerified == bankVerified) &&
             (identical(other.canCreatePublicEvent, canCreatePublicEvent) ||
                 other.canCreatePublicEvent == canCreatePublicEvent) &&
+            (identical(other.requiresRepresentation, requiresRepresentation) ||
+                other.requiresRepresentation == requiresRepresentation) &&
             (identical(other.canCreatePrivateEvent, canCreatePrivateEvent) ||
                 other.canCreatePrivateEvent == canCreatePrivateEvent));
   }
@@ -1023,6 +1054,7 @@ class _$TrustCapabilitiesDtoImpl extends _TrustCapabilitiesDto {
     identityVerified,
     bankVerified,
     canCreatePublicEvent,
+    requiresRepresentation,
     canCreatePrivateEvent,
   );
 
@@ -1053,6 +1085,7 @@ abstract class _TrustCapabilitiesDto extends TrustCapabilitiesDto {
     @JsonKey(name: 'identity_verified') final bool identityVerified,
     @JsonKey(name: 'bank_verified') final bool bankVerified,
     @JsonKey(name: 'can_create_public_event') final bool canCreatePublicEvent,
+    @JsonKey(name: 'requires_representation') final bool requiresRepresentation,
     @JsonKey(name: 'can_create_private_event') final bool canCreatePrivateEvent,
   }) = _$TrustCapabilitiesDtoImpl;
   const _TrustCapabilitiesDto._() : super._();
@@ -1082,6 +1115,14 @@ abstract class _TrustCapabilitiesDto extends TrustCapabilitiesDto {
   @override
   @JsonKey(name: 'can_create_public_event')
   bool get canCreatePublicEvent;
+
+  /// D-353/D-352 — whether a PUBLIC event must name a verified organisation. True in Production,
+  /// always; false only under the dev bypass, where no admin-approved organisation exists to name.
+  /// Defaulted **true**: a gate that stops demanding a requirement because a field went missing is
+  /// the wrong failure.
+  @override
+  @JsonKey(name: 'requires_representation')
+  bool get requiresRepresentation;
 
   /// Defaults true so an older backend does not accidentally block Private.
   @override

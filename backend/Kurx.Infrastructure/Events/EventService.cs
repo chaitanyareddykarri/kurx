@@ -24,7 +24,8 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
     IApprovalService approvals, ITemplateService templates, ISearchService search,
     INotificationService notifications, IAnalyticsFactSource analytics, IPlatformRoleService roles,
     WorkspaceComposer workspace, IEventAuthority authority, IEventPolicyService policy,
-    IEventReviewChecklistService checklist, IStorage storage) : IEventService
+    IEventReviewChecklistService checklist, IStorage storage,
+    Configuration.IdentityVerificationOptions identityOptions) : IEventService
 {
     // V3 §15 (Phase 16): the discovery index is outbox-fed — an event write enqueues a reindex message in its OWN
     // transaction (never a synchronous dual-write); OutboxDispatchJob projects it. Enqueued on the document-affecting
@@ -331,6 +332,45 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
                 return ServiceResult<EventDetail>.Fail("forbidden");
         }
 
+        /*
+         * D-353 — a PUBLIC event must represent a real organization. Self-hosting is a Private-only
+         * affordance now.
+         *
+         * The axis is public exposure, the same one D-307 established and D-343 refined: a public event
+         * carries the platform's name into discovery whether or not money moves, so there must be a
+         * named, admin-verified institution answerable for it. A private event reaches no discovery
+         * surface and can never sell, so there is nobody to be answerable TO and self-hosting stands.
+         *
+         * Resolved from the Type's ProductClass here rather than trusting a client field — `Product` is
+         * derived and snapshotted (D-266 M1), and the taxonomy read is hoisted from its old position
+         * further down so this refusal happens BEFORE any row is written. `taxonomy` is reused there.
+         *
+         * Enforced server-side because §11 of the requirement is explicit: the client filtering the
+         * Personal card away is presentation, and presentation is not a security boundary.
+         */
+        var taxonomy = await ResolveArchetypeAsync(input.TypeId, ct);
+        // D-352 — lifted outside Production, because satisfying it needs an admin-approved organization
+        // and no such thing exists in dev: without this the whole public/paid flow is untestable, which is
+        // the same reason the identity proofs and the consent blockers are bypassable. `RequiresRepresentation`
+        // on the trust payload tells the clients the same thing, so the gate stops adding a condition the
+        // server has already lifted.
+        if (taxonomy.Product == EventProduct.Public && !identityOptions.Bypass)
+        {
+            // Two ways to arrive with no institution behind a public event, and the second is the one a
+            // client can forge. Omitting `representingOrgId` is the honest case. NAMING the caller's own
+            // self-representation row is the attack: they are its Owner, so `ResolveOrgAsync(...).CanManage`
+            // above returns true and a non-null id sails through a null check. Verified against the live
+            // API — the request reached category validation, meaning it had already passed the guard.
+            //
+            // `IsPersonal` is read here rather than trusted from the client, and the two refusals share one
+            // error code because to the organiser they are one rule: a public event needs a real
+            // organization.
+            if (representingOrgId is not { } named)
+                return ServiceResult<EventDetail>.Fail("representation_required");
+            if (await db.Organizations.AsNoTracking().AnyAsync(o => o.Id == named && o.IsPersonal, ct))
+                return ServiceResult<EventDetail>.Fail("representation_required");
+        }
+
         // Bind the representation to a row. `events.OrgId` is a non-null FK (D-055/D-075 weighed making it
         // nullable and rejected it — 300+ read sites across 30 services), so representing yourself still
         // needs something to point at. See ResolveSelfRepresentationAsync: that row is a persistence
@@ -418,8 +458,8 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
         ev.KindSlug = await kinds.ResolveKindSlugAsync(ev.TypeId, ev.CategoryId, ct);
 
         // D-266 M1: snapshot the behaviour axis from the chosen Type. Snapshot, not resolved-on-read, so a
-        // later taxonomy edit can never change how a live event behaves.
-        var taxonomy = await ResolveArchetypeAsync(ev.TypeId, ct);
+        // later taxonomy edit can never change how a live event behaves. Resolved at the top of this method
+        // (D-353) so the public-representation rule can refuse before anything is written; reused here.
         ev.ArchetypeSlug = taxonomy.Slug;
         ev.Product = taxonomy.Product;
 
@@ -491,61 +531,53 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
         // Same org → same root unit; ensure it even if the source predates the Phase-4 backfill (V3 §4.1).
         var orgUnitId = src.OrgUnitId ?? await orgUnits.EnsureRootAsync(src.RepresentingOrgId, ct);
 
-        // A clone is always a fresh Draft with its own identity. Runtime state is deliberately NOT inherited:
-        // no PublishedAt, ViewCount, IsFeatured — and no tickets/orders/attendees/analytics (those hang off
-        // the source event id and belong to the event that actually ran).
-        var clone = new Event
-        {
-            RepresentingOrgId = src.RepresentingOrgId,
-            OrgUnitId = orgUnitId,                         // V3 §4.1 (Phase 4)
-            ParentEventId = src.ParentEventId,             // a clone is a sibling of src → same composition depth (already valid)
-            ListedStandalone = src.ListedStandalone,       // §3.4 rule 2 — mirror the source's discoverability
-            CreatedBy = userId,
-            Title = title,
-            Slug = await UniqueEventSlugAsync(title, ct),
-            ShortCode = await UniqueEventShortCodeAsync(ct),
-            Subtitle = src.Subtitle,
-            Description = src.Description,
-            Language = src.Language,
-            AudienceLevelId = src.AudienceLevelId,
-            CategoryId = src.CategoryId,
-            TypeId = src.TypeId,
-            TemplateId = src.TemplateId,
-            KindSlug = src.KindSlug,
-            // D-266: the behaviour axis must travel with the clone. Without these the copy resolves no
-            // capabilities at all — an archetype-less event is Unsupported for everything by design.
-            ArchetypeSlug = src.ArchetypeSlug,
-            Product = src.Product,
-            SettlementCurrency = src.SettlementCurrency,   // V3 §9.1 — same org, same currency
-            VenueId = src.VenueId,
-            VenueName = src.VenueName,
-            VenueAddress = src.VenueAddress,
-            City = src.City,
-            Country = src.Country,
-            State = src.State,
-            District = src.District,
-            PostalCode = src.PostalCode,
-            Lat = src.Lat,
-            Lng = src.Lng,
-            StartsAt = src.StartsAt,
-            EndsAt = src.EndsAt,
-            Timezone = src.Timezone,
-            Capacity = src.Capacity,
-            Visibility = src.Visibility,
-            Status = EventStatus.Draft,
-            EventMode = src.EventMode,
-            OnlineUrl = src.OnlineUrl,
-            ContactEmail = src.ContactEmail,
-            ContactPhone = src.ContactPhone,
-            Website = src.Website,
-            SocialLinksJson = src.SocialLinksJson,
-            BannerKey = src.BannerKey,
-            IsPaid = src.IsPaid,
-            CertificatesEnabled = src.CertificatesEnabled,
-            CertificateTemplateId = src.CertificateTemplateId,
-            InviteTemplateId = src.InviteTemplateId,
-            TransfersEnabled = src.TransfersEnabled,
-        };
+        // D-340: the organiser's configuration travels by DEFAULT and the exceptions are named below.
+        // The allowlist this replaced copied 47 of 110 columns; every column D-265 and D-266 added
+        // after it was written — the legal terms, the consent gate, the age/gender limits, the tax
+        // treatment, RegistrationPolicy — silently landed on its C# default in the copy. The reset list
+        // is asserted by EventCloneTests, which enumerates Event's properties by reflection, so a new
+        // column is inherited unless someone deliberately adds it here.
+        var clone = src.ShallowCopy();
+
+        // Fresh identity — a clone is its own event, in Draft, owned by whoever asked for it (D-268).
+        clone.Id = Guid.NewGuid();
+        clone.CreatedBy = userId;
+        clone.Title = title;
+        clone.Slug = await UniqueEventSlugAsync(title, ct);
+        clone.ShortCode = await UniqueEventShortCodeAsync(ct);
+        clone.Status = EventStatus.Draft;
+        clone.OrgUnitId = orgUnitId;                       // V3 §4.1 (Phase 4)
+
+        // Runtime state belongs to the event that actually ran — as do its tickets, orders, attendees
+        // and analytics, which hang off the source event id and are never carried across.
+        clone.CreatedAt = clone.UpdatedAt = DateTime.UtcNow;
+        clone.PublishedAt = null;
+        clone.DeletedAt = null;
+        clone.ViewCount = 0;
+        clone.IsFeatured = false;
+        clone.RefundWindowEndsAt = null;                   // V3 §14.5 — opened by a change to the SOURCE
+
+        // Admin moderation is a judgement about the source, not about a draft nobody has seen (D-186).
+        clone.IsSuspended = false;
+        clone.SuspendedReason = null;
+        clone.IsHidden = false;
+        clone.HiddenReason = null;
+
+        // Review outcomes are the source's (D-266 M4/M7). A copy re-enters the queue unreviewed and
+        // unclaimed; inheriting a Passed financial review would clear a publish blocker nobody checked.
+        clone.FinancialReviewStatus = null;
+        clone.FinancialReviewedBy = null;
+        clone.FinancialReviewedAt = null;
+        clone.FinancialReviewNotes = null;
+        clone.ReviewClaimedBy = null;
+        clone.ReviewClaimedAt = null;
+
+        // Lineage: a clone is a new root, not another edition of the source's series (V3 §3.4 rule 5).
+        // Adding it to a series is a later, explicit act.
+        clone.SeriesId = null;
+        clone.EditionOrdinal = null;
+        clone.EditionLabel = null;
+
         db.Events.Add(clone);
 
         foreach (var tagId in await db.EventTags.AsNoTracking().Where(t => t.EventId == eventId).Select(t => t.TagId).ToListAsync(ct))
@@ -1105,7 +1137,13 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
                 .FirstOrDefaultAsync(ct);
             if (orgVerification is { IsPersonal: false })
             {
-                if (orgVerification.VerificationStatus != OrgVerificationStatus.Verified)
+                // D-352 — the last publish gate the bypass did not reach, because it reads
+                // `VerificationStatus` straight off the row instead of going through `TrustService`. In dev
+                // nobody has an admin-approved organization, so a staged one could be selected and the event
+                // created, then publish refused — the bypass opened three doors and left the fourth shut.
+                // Same flag, same Production guard; the stored status is untouched.
+                if (!identityOptions.Bypass
+                    && orgVerification.VerificationStatus != OrgVerificationStatus.Verified)
                     return ServiceResult<EventDetail>.Fail("pending_org_verification");
 
                 // D-101 (M7): representation vacancy — derived live, never stored (same discipline as the

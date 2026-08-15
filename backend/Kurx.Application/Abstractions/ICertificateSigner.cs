@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Signs and verifies certificates (D-344, Phase 5).
+/// Signs and verifies certificates (D-355, Phase 5).
 ///
 /// <para><b>What the signature is actually for.</b> Verification is online, against our own database, so
 /// the signature does not prove the certificate exists — the row does. What it proves is that the row has
@@ -38,7 +38,7 @@ public sealed record CertificateSignature(string KeyId, string Signature);
 public sealed record CertificateSignatureVerdict(bool Matches, bool KeyKnown, bool KeyCompromised);
 
 /// <summary>
-/// Builds the exact bytes that get signed (D-344, Phase 5).
+/// Builds the exact bytes that get signed (D-355, Phase 5).
 ///
 /// <para><b>Determinism is the whole requirement.</b> The payload is rebuilt from the stored row at every
 /// verification, so any variation — dictionary ordering, culture-dependent date formatting, a changed

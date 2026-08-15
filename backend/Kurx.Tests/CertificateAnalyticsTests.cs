@@ -10,7 +10,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// What happened to an event's certificates (D-344, Phase 11).
+/// What happened to an event's certificates (D-355, Phase 11).
 ///
 /// <para>Two properties carry this phase, and both are about restraint rather than capability.</para>
 ///

@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Public certificate verification (D-344, Phase 5).
+/// Public certificate verification (D-355, Phase 5).
 ///
 /// <para><b>No authentication.</b> This page exists so a stranger holding a printed certificate can check
 /// it. Requiring an account would defeat the entire purpose.</para>

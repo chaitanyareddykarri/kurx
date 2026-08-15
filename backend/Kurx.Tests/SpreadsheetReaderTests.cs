@@ -7,7 +7,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Participant-list parsing, CSV and XLSX (D-344, Phase 6).
+/// Participant-list parsing, CSV and XLSX (D-355, Phase 6).
 ///
 /// <para>Every case here is a real spreadsheet export, not a grammar exercise: Excel's UTF-8 BOM, CRLF, a
 /// comma inside a quoted organisation name, a doubled quote inside a nickname, a blank line someone left

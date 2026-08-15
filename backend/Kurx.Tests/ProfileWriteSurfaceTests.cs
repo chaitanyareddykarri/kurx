@@ -348,7 +348,7 @@ public class ProfileWriteSurfaceTests : IClassFixture<KurxApiFactory>
         }));
         var key = presigned.GetProperty("key").GetString();
 
-        // Actually upload the bytes (D-343). This test used to presign and then patch the key straight
+        // Actually upload the bytes (D-354). This test used to presign and then patch the key straight
         // through without ever PUTting anything — a sequence no real client performs, and one the
         // endpoint now refuses, because a key that points at nothing renders as a broken image the
         // clients cannot tell apart from "no picture".

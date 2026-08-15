@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Withdrawing a certificate, and correcting one (D-344, Phase 9).
+/// Withdrawing a certificate, and correcting one (D-355, Phase 9).
 ///
 /// <para><b>Nothing is ever edited in place.</b> A certificate is a signed claim that someone already
 /// holds a copy of and may already have shown to an employer. Changing its values would leave that copy

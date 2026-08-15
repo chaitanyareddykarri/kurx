@@ -20,7 +20,7 @@ import {
 } from "@/lib/certificate-editor";
 
 /**
- * The certificate editor (D-344, Phase 3).
+ * The certificate editor (D-355, Phase 3).
  *
  * **Simple by default, advanced on demand.** The default surface is a list of details to add and a canvas
  * to place them on. Everything finer — exact coordinates, rotation, z-order, masking — lives behind
@@ -47,7 +47,7 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [localBackground, setLocalBackground] = useState<string | null>(null);
-  // The OCR extension point (D-344, Phase 12). No build registers an engine today, so this stays false
+  // The OCR extension point (D-355, Phase 12). No build registers an engine today, so this stays false
   // and nothing extra renders. Probed rather than assumed so that turning one on is a server-side change
   // with no edit here — which is the entire reason the boundary exists.
   const [canDetectText, setCanDetectText] = useState(false);

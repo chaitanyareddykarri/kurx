@@ -10,7 +10,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Certificate signing and public verification (D-344, Phase 5).
+/// Certificate signing and public verification (D-355, Phase 5).
 ///
 /// <para>Four properties carry the weight, and each corresponds to a way this surface can lie:</para>
 /// <list type="bullet">

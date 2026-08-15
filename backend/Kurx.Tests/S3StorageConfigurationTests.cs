@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// S3 storage configuration and presigned-URL behaviour (D-344, Phase 2).
+/// S3 storage configuration and presigned-URL behaviour (D-355, Phase 2).
 ///
 /// <para><b>What these can and cannot prove.</b> Presigning is a local HMAC computation — the SDK
 /// contacts nothing — so the URL a real deployment would hand a browser is fully assertable here without

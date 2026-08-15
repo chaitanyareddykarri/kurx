@@ -3,7 +3,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// Public certificate verification (D-344, Phase 5).
+/// Public certificate verification (D-355, Phase 5).
 ///
 /// <para><b>Deliberately anonymous.</b> This is what a QR resolves to and what a shared link opens. Anyone
 /// holding a printed certificate must be able to check it without an account — requiring one would defeat

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * The OCR boundary's shape, on the client (D-344, Phase 12).
+ * The OCR boundary's shape, on the client (D-355, Phase 12).
  *
  * Its own module, with no dependency on `lib/api.ts`, for the same reason `lib/certificate-editor.ts` is
  * separate: this is a contract, and a contract should be testable without booting the API client that

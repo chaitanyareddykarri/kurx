@@ -6,7 +6,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// Generating certificates for a whole participant list (D-344, Phase 7).
+/// Generating certificates for a whole participant list (D-355, Phase 7).
 ///
 /// <para>The shape of this surface is the confirmed flow: create → preview → approve → (background run) →
 /// poll. Approval is its own call because it is the irreversible one, and a separate verb is what lets it

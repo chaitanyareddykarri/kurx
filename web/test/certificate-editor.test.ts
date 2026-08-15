@@ -11,7 +11,7 @@ import {
 } from "@/lib/certificate-editor";
 
 /**
- * The certificate editor's arithmetic and history (D-344, Phase 3).
+ * The certificate editor's arithmetic and history (D-355, Phase 3).
  *
  * Everything here is pure, which is the point: the canvas component owns pointer capture and CSS, and
  * neither is assertable in jsdom. What IS assertable — that a field cannot be dragged off its page, that

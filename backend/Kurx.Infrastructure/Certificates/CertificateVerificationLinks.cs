@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Builds verification URLs from the configured public origin (D-344, Phase 5).
+/// Builds verification URLs from the configured public origin (D-355, Phase 5).
 ///
 /// <para><c>CERTIFICATE_VERIFICATION_BASE_URL</c> is the browser-facing web origin, which is deliberately
 /// NOT <c>KURX_API_BASE</c>: that is the API's address, used for presigned storage URLs, and a QR pointing

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// How the person named on a certificate reaches it (D-344, Phase 10).
+/// How the person named on a certificate reaches it (D-355, Phase 10).
 ///
 /// <para><b>The token is the credential, and it is never stored.</b> Only a SHA-256 hash is kept, so a
 /// dump of this table cannot be turned back into working links — the same reason a password is not stored

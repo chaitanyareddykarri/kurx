@@ -9,11 +9,14 @@ Amounts are always in **paise** (₹1 = 100 paise). Timestamps are UTC.
 > `SELECT "Id" FROM users` works. Table names *are* snake_case as written. Sections added from 2026-08-12
 > onward use the real column names. Verify against `information_schema.columns` before writing raw SQL.
 >
-> **Coverage, measured 2026-08-12:** the database has **158 tables**
+> **Coverage, re-measured 2026-08-14:** the database has **162 tables**
 > (`grep -c 'b.ToTable(' backend/Kurx.Infrastructure/Migrations/KurxDbContextModelSnapshot.cs`). Ten were
-> undocumented until that date — the allies, gamification, chat-reaction and search-index tables added
-> below. Some remaining tables are covered by group prose rather than an individual entry; a missing
-> heading is not proof a table does not exist.
+> undocumented as of 2026-08-12 — the allies, gamification, chat-reaction and search-index tables added
+> below. **Seven more carry no entry here:** `coupons` and `coupon_redemptions` (D-265 discount codes,
+> which have no order-path consumer — see [D-341](../DECISIONS.md)), `entitlement_products`,
+> `entitlement_grants` and `entitlement_redemptions`, `id_cards`, and `registration_consents` (the
+> evidence rows behind `events."RequiresConsent"`). Some remaining tables are covered by group prose
+> rather than an individual entry; a missing heading is not proof a table does not exist.
 
 ---
 

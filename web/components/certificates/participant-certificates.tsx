@@ -1,7 +1,7 @@
 import type { ParticipantCertificates } from "@/lib/certificate-api";
 
 /**
- * A participant's own certificates (D-344, Phase 10).
+ * A participant's own certificates (D-355, Phase 10).
  *
  * Shared by the capability-link page and the signed-in list, because they show the same thing to the same
  * person — one just happens to have proved who they are and the other is holding a secret URL.

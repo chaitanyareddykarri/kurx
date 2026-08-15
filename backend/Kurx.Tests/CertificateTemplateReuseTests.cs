@@ -9,7 +9,7 @@ using Xunit;
 namespace Kurx.Tests;
 
 /// <summary>
-/// Reusing a design across events (D-344, Phase 13).
+/// Reusing a design across events (D-355, Phase 13).
 ///
 /// <para><b>A copy, never a reference.</b> That is the property everything here defends. Two designs that
 /// shared artwork could not be independently archived, would put an object under <c>events/{id}/…</c>

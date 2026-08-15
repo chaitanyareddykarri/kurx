@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// What happened to an event's certificates (D-344, Phase 11).
+/// What happened to an event's certificates (D-355, Phase 11).
 ///
 /// <para><b>Counting events, not people.</b> Nothing written here identifies who did anything. An organiser
 /// needs to know their certificates are being checked; they do not need to know who is checking a

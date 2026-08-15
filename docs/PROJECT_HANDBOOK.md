@@ -10,18 +10,18 @@ If something here conflicts with `docs/DECISIONS.md`, the decision log wins; fil
 >
 > This is **[D-267](DECISIONS.md)**, the current source of truth. The org-first navigation it removed (`Workspace → Organizations → Organization → Events → Create Event`, `Profile → My Organizations`, the routes `/orgs`, `/org/create`, `/org/:id/events/create`, and the "current organization" cookie) no longer exists on any surface. Any section below that says "Create Organization", "Owner/Organizer", or describes an "org → verify → create" journey is **retired history**, not the target.
 >
-> ⚠️ **Documentation status (numbers re-measured 2026-08-12).** The backend completed a 13-module production re-architecture (**M0–M13 / D-039–D-052**), then the full 18-phase Event Architecture V3 program (all phases complete 2026-07-29), and has run past both since. Every figure below is a measured run, not a documented one — quoting a documented number is what produced each of the errors this banner has had to correct twice now.
+> ⚠️ **Documentation status (numbers re-measured 2026-08-15).** The backend completed a 13-module production re-architecture (**M0–M13 / D-039–D-052**), then the full 18-phase Event Architecture V3 program (all phases complete 2026-07-29), and has run past both since. Every figure below is a measured run, not a documented one — quoting a documented number is what produced each of the errors this banner has had to correct three times now.
 >
-> | Fact | Measured 2026-08-12 | What this file used to say |
+> | Fact | Measured 2026-08-15 | What this file used to say |
 > |---|---|---|
-> | Test suite | **1743 total / 1737 passed / 1 skipped / 5 failed** (1 h 21 m, real Postgres) | "1,572 executed / 1,571 passed" |
-> | Decisions in `DECISIONS.md` | **277** | "all 38 to date" (§15) |
-> | Database tables | **158** | "66+-table schema" (§3) |
+> | Test suite | **1825 total / 1824 passed / 1 skipped / 0 failed** (29 m 23 s, SDK container, clamd up, 2026-08-15) | "1743 total / 5 failed" (2026-08-12) |
+> | Decisions in `DECISIONS.md` | **294 entries / 276 distinct numbers**, highest D-345 | "277" (2026-08-12) |
+> | Database tables | **162** | "158" (2026-08-12) |
 > | Admin console modules | **20 of 20 live, none disabled**; 24 console pages, 27 total | "12 live modules" (§8/§9/§10) |
-> | API surface | **427 paths / 518 operations** | — |
+> | API surface | **441 paths / 535 operations**, 496 with declared responses | "427 paths / 518 operations" |
 > | Provider boundaries with real adapters | **6** (SES, SNS, Firebase, ClamAV, KMS, AWS Secrets Manager) + Redis presence | "all mocked" (§3/§9/§13) |
 >
-> The 5 failing tests are environmental, not defects: 4 `ClamAvUploadPathTests` need a clamd that the compose file only starts under `--profile scanning`, and 1 `NoContentDeclarationTests` is an artifact of the `-p:ArtifactsPath` container test recipe.
+> **Green is the standard now — a failing test is a defect, not "the environment."** The five failures this banner used to excuse were all fixed rather than tolerated: the `ClamAvUploadPathTests` needed clamd, which the root compose now starts by default (profiles were removed, [D-339](DECISIONS.md)), and `NoContentDeclarationTests`/`OpenApiCoverageTests` were resolving the repo from `AppContext.BaseDirectory`, which cannot work under `-p:ArtifactsPath`.
 >
 > **§13 and §15 are current**; the product-narrative prose in earlier sections predates all of this and may lag. Authoritative current sources: [`docs/DECISIONS.md`](DECISIONS.md), [`CHANGELOG.md`](../CHANGELOG.md), [`docs/database/DATABASE_TABLES.md`](database/DATABASE_TABLES.md), [`.claude/memory/trust-verification.md`](../.claude/memory/trust-verification.md), [`docs/architecture/overview.md`](architecture/overview.md), [`docs/api/README.md`](api/README.md), [`docs/roadmap/README.md`](roadmap/README.md).
 >
@@ -495,9 +495,9 @@ date.
    [`architecture/CAPABILITY_ENGINE.md`](architecture/CAPABILITY_ENGINE.md) and
    [`architecture/REVIEW_LIFECYCLE.md`](architecture/REVIEW_LIFECYCLE.md) — the three flows most likely to be
    your first task.
-7. [`api/README.md`](api/README.md) — the contract (427 paths / 518 operations), plus the camelCase-in /
+7. [`api/README.md`](api/README.md) — the contract (441 paths / 535 operations), plus the camelCase-in /
    snake_case-out rule that has bitten more than one client.
-8. [`database/DATABASE_TABLES.md`](database/DATABASE_TABLES.md) — all 158 tables.
+8. [`database/DATABASE_TABLES.md`](database/DATABASE_TABLES.md) — all 162 tables.
 9. [`security/overview.md`](security/overview.md) — security posture and the invariants that must not be
    broken.
 10. [`EXTERNAL_SERVICES_AND_PROVIDERS.md`](EXTERNAL_SERVICES_AND_PROVIDERS.md) — which provider boundaries

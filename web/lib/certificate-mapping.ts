@@ -1,5 +1,5 @@
 /**
- * Column mapping — pure, so it can be tested without a DOM (D-344, Phase 6).
+ * Column mapping — pure, so it can be tested without a DOM (D-355, Phase 6).
  *
  * The mapping decides which spreadsheet column feeds which placeholder on the design. Getting it wrong
  * is not a rendering bug the organiser notices in a preview: it prints the wrong words on every

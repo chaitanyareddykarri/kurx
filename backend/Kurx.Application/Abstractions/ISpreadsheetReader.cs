@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Reads a participant list (D-344, Phase 6).
+/// Reads a participant list (D-355, Phase 6).
 ///
 /// <para><b>Deliberately unhelpful.</b> No delimiter sniffing, no type coercion, no locale handling, no
 /// formula evaluation. Every cell reaches the renderer as the string the organiser sees in their
@@ -38,7 +38,7 @@ public sealed record SpreadsheetTable(
 public class SpreadsheetFormatException(string message) : Exception(message);
 
 /// <summary>
-/// Chooses a reader by file name and applies the limits that protect the server (D-344, Phase 6).
+/// Chooses a reader by file name and applies the limits that protect the server (D-355, Phase 6).
 /// </summary>
 public interface ISpreadsheetService
 {

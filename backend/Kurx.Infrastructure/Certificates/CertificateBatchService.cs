@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Kurx.Infrastructure.Certificates;
 
 /// <summary>
-/// Generating certificates for a whole participant list (D-344, Phase 7).
+/// Generating certificates for a whole participant list (D-355, Phase 7).
 ///
 /// <para><b>The approval gate is the design.</b> Everything before it is cheap and reversible — a parsed
 /// file, some recipient rows, three sample renders. Everything after it is two hundred PDFs in object

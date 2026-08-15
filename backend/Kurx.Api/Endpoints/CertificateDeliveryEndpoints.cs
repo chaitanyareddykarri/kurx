@@ -5,7 +5,7 @@ using Kurx.Application.Abstractions;
 namespace Kurx.Api.Endpoints;
 
 /// <summary>
-/// Sending certificates to the people they were issued to (D-344, Phase 8).
+/// Sending certificates to the people they were issued to (D-355, Phase 8).
 ///
 /// <para>Sending QUEUES; it does not send. The response says what was queued, and the summary endpoint is
 /// how the organiser watches it drain. A request that tried to send four hundred emails inline would time

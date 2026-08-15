@@ -6,7 +6,7 @@ import type { MappableField } from "@/lib/certificate-mapping";
 import { BatchRunner } from "./batch-runner";
 
 /**
- * Picks the design, then runs the flow (D-344, Phase 7).
+ * Picks the design, then runs the flow (D-355, Phase 7).
  *
  * Only designs with artwork are offered. A design with no background cannot render a certificate, and
  * discovering that after uploading a participant list and confirming a mapping wastes the two steps that

@@ -91,9 +91,14 @@ SuperAdmin implies all. Org roles (Owner/Manager/Staff/Finance) are separate (D-
   L0–L5 are labels. Gates read component flags, not coarse Level. Fraud no-op until M13
   (only tightens CanOrganizePaid). Surfaced on `/v1/me` + `/v1/orgs/{id}/my-capabilities`.
   **M8 event-approval and M10 payouts call this instead of re-deriving rules.**
-  **The identity PROOFS are bypassable outside Production** (D-323, `IDENTITY_VERIFICATION_BYPASS`):
-  `proofsSatisfied = bypass || (identityVerified && panVerified && bankVerified)` feeds
-  `CanOrganizePaid`, `CanReceivePayout` and `CanCreatePublicEvent`. It exists because all three
+  **The proofs are TWO tiers (D-343), split by what each one establishes:**
+  `identityProofs = bypass || identityVerified` (govt ID **or** PAN — *who is behind this event*) feeds
+  `CanCreatePublicEvent`; `financialProofs = bypass || (identityVerified && panVerified && bankVerified)`
+  (*whose account receives the money*) feeds `CanOrganizePaid` and `CanReceivePayout`. They were one lump,
+  which made a **free** public event prove ownership of a bank account it can never use. PAN is deliberately
+  off the public bar: it is a tax identity and a free event reports no income. D-307's reasoning is why
+  identity still gates Public at all — the over-application was the financial half, not the principle.
+  **Both tiers are bypassable outside Production** (D-323, `IDENTITY_VERIFICATION_BYPASS`). It exists because all three
   proofs are answered by `MockKycProvider` today, so enforcing them establishes nothing while
   blocking every public-event and paid-checkout test. Three properties make it safe and none of
   them is optional: **`fraudClear` is outside it** and is still ANDed into all three (blacklist and

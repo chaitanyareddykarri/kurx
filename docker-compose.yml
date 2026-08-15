@@ -63,7 +63,7 @@ services:
       start_period: 120s
 
 
-  # ── Object storage (D-344 Phase 2) — OPT-IN ───────────────────────────────────────────────────
+  # ── Object storage (D-355 Phase 2) — OPT-IN ───────────────────────────────────────────────────
   # S3-compatible storage, which is what the certificate module targets in production. Behind the `s3`
   # profile because a default `up` should not need a trusted certificate authority to upload a file:
   # presigned URLs are always https, so browser-direct uploads to a local MinIO require TLS, and an XHR
@@ -167,6 +167,13 @@ services:
       JWT_AUDIENCE: kurx-app
       TICKET_HMAC_SECRET: ${TICKET_HMAC_SECRET:-dev-only-ticket-hmac-change-me}
       OTP_PEPPER: ${OTP_PEPPER:-dev-only-otp-pepper-change-me}
+      # The OTP shields exist to stop one anonymous host enumerating phone numbers (D-005/D-038). A local
+      # stack has no anonymous traffic — it has one developer signing in repeatedly, and the production
+      # defaults (20/min per IP, 10/hour per IP) block that within minutes, which makes the sign-in flow
+      # itself untestable. Overridable per-environment exactly so this can be relaxed where the threat
+      # does not exist; unset in staging and production, where the defaults stand.
+      RATE_LIMIT_OTP_PER_MIN: ${RATE_LIMIT_OTP_PER_MIN:-200}
+      RATE_LIMIT_OTP_IP_PER_HOUR: ${RATE_LIMIT_OTP_IP_PER_HOUR:-500}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
       # D-302. The host LocalDiskStorage stamps into every presigned URL. The browser is what follows
       # these URLs, so it must be the *published host* port — not the container port, and not a port
@@ -177,7 +184,7 @@ services:
       # number is PII and this file is committed. No-op unless set AND the platform has no SuperAdmin yet,
       # and it only grants the role to an account that already registered through the real OTP flow.
       SUPERADMIN_BOOTSTRAP_PHONE: ${SUPERADMIN_BOOTSTRAP_PHONE:-}
-      # D-344. Object storage. `localdisk` is the dev default and the API REFUSES to start with it when
+      # D-355. Object storage. `localdisk` is the dev default and the API REFUSES to start with it when
       # ASPNETCORE_ENVIRONMENT=Production, because container-local storage is destroyed by a redeploy
       # while the rows referencing it survive.
       #

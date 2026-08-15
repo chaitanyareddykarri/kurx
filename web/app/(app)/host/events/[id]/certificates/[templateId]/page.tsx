@@ -6,7 +6,7 @@ import { getTemplate } from "@/lib/certificate-api";
 import { CertificateTemplateEditor } from "@/components/host/certificates/certificate-template-editor";
 import { SaveToLibrary } from "@/components/host/certificates/template-reuse";
 
-/** The certificate editor (D-344, Phase 3). A template belonging to another event answers 404 on the
+/** The certificate editor (D-355, Phase 3). A template belonging to another event answers 404 on the
  *  server; this only turns that into Next's not-found rather than an error page. */
 export default async function CertificateTemplatePage(
   { params }: { params: { id: string; templateId: string } }

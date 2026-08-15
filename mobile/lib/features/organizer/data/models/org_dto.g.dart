@@ -120,6 +120,8 @@ _$RepresentationDtoImpl _$$RepresentationDtoImplFromJson(
   slug: json['slug'] as String?,
   logoKey: json['logo_key'] as String?,
   authority: json['authority'] as String,
+  isVerified: json['is_verified'] as bool? ?? false,
+  canBackPaidEvent: json['can_back_paid_event'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$$RepresentationDtoImplToJson(
@@ -130,4 +132,6 @@ Map<String, dynamic> _$$RepresentationDtoImplToJson(
   'slug': instance.slug,
   'logo_key': instance.logoKey,
   'authority': instance.authority,
+  'is_verified': instance.isVerified,
+  'can_back_paid_event': instance.canBackPaidEvent,
 };

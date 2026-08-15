@@ -1,7 +1,7 @@
 namespace Kurx.Application.Abstractions;
 
 /// <summary>
-/// Where the certificate module's objects live, and what it will accept back (D-344, Phase 2).
+/// Where the certificate module's objects live, and what it will accept back (D-355, Phase 2).
 ///
 /// <para><b>The prefix is the authorization.</b> Every key is scoped to one event, and
 /// <see cref="BelongsToEvent"/> is checked before any caller-supplied key is stored on a template or

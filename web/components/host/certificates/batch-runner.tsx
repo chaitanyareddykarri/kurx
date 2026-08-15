@@ -12,7 +12,7 @@ import { BatchWithdrawal } from "./certificate-corrections";
 import { ParticipantMapping } from "./participant-mapping";
 
 /**
- * The generation flow, end to end (D-344, Phase 7): upload → map → preview → approve → watch.
+ * The generation flow, end to end (D-355, Phase 7): upload → map → preview → approve → watch.
  *
  * Approval is deliberately its own step with its own button and its own warning. Everything before it is
  * cheap and undoable — a parsed file, some rows, three sample renders. Everything after it is hundreds of

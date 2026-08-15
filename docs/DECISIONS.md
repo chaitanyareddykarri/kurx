@@ -13278,9 +13278,34 @@ This was found while building the studio and has nothing to do with it — the h
 endpoint and predates the feature by months. Reverting it alongside the studio would have traded a
 removed convenience for a reintroduced vulnerability.
 
+### Certificates and ID cards are withdrawn too
+
+Removing the designer left the features it authored for, so both follow it. **Certificates**: the
+endpoints, service and tests; the web, admin-console and mobile surfaces; the four dangling nav links.
+**ID cards** (D-331/D-335): the endpoints, service, renderer and tests; the `/id-cards` pages, editor and
+nav entry. The public `/verify/{code}` page goes with them — it resolved a certificate, and the endpoint
+behind it no longer exists.
+
+`GET /v1/tickets/{code}/qr.png` moved to `TicketQrEndpoints`. It had been living in
+`CertificateEndpoints` because both needed `IQrCodeGenerator` — an accident of history, not a grouping —
+so removing that file silently took the ticket QR with it and broke the gate flow. `TicketTransferTests`
+caught it, which is the argument for the repo's insistence that only a full-suite run is evidence.
+
+**No schema change, deliberately and consistently.** The `certificates`, `id_cards` and `design_templates`
+tables stay, as do `Event.CertificatesEnabled`, `User.ShowCertificates` and the certificate and card
+enums. Nothing is dropped and no destructive migration is written, so the decision is reversible by
+restoring code alone. The profile, achievement, resume and metrics engines still read whatever rows
+exist; with nothing issuing new ones they go quiet by themselves. `IdCard.VerifyCode` survives as the
+shape `EntitlementService` documents its own QR against.
+
+A profile still shows a "Certificate" badge for someone historically issued one — that remains a true
+fact about them — but it is no longer a link, because the page it pointed at is gone.
+
 ### Consequences
 - No schema change, no migration, no data touched.
-- Backend suite loses the studio's own tests; the avatar-key tests in `UploadScanCoverageTests` and
-  `ProfileWriteSurfaceTests` remain and now cite this entry.
+- Backend suite loses the studio's, certificates' and ID cards' own tests; the avatar-key tests in
+  `UploadScanCoverageTests` and `ProfileWriteSurfaceTests` remain and now cite this entry.
+- `EventAuthorizationTests` drops two surface assertions it can no longer make, and `NotificationCertTests`
+  loses its roster test while keeping its notification coverage. Neither was weakened to pass.
 - `web/lib/api.ts` keeps its exported `authHeaders` — the sibling chat, posts and account API modules use
   it; only the comment naming the studio was corrected.

@@ -138,15 +138,7 @@ function EventsList({ events }: { events: PublicEventCard[] }) {
           <div className="mt-2 flex flex-wrap gap-1.5">
             {e.roles.map((r) => <Chip key={r}>{r}</Chip>)}
             {e.is_achievement && <Badge tone="accent">Achievement</Badge>}
-            {e.certificate_verify_code && (
-              <a
-                href={`/verify/${e.certificate_verify_code}`}
-                aria-label={`Verify the certificate for ${e.title}`}
-                className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <Badge tone="success">Certificate</Badge>
-              </a>
-            )}
+            {e.certificate_verify_code && <Badge tone="success">Certificate</Badge>}
           </div>
         </Card>
       ))}
@@ -186,11 +178,7 @@ function CertificatesList({ certificates }: { certificates: PublicCertificateCar
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {certificates.map((c) => (
-        <a
-          key={c.id}
-          href={`/verify/${c.verify_code}`}
-          className="rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
+        <div key={c.id}>
           <Card className="transition duration-fast hover:border-accent/50">
             <div className="flex items-center gap-1.5">
               <Medal size={16} className="text-accent" />
@@ -198,7 +186,7 @@ function CertificatesList({ certificates }: { certificates: PublicCertificateCar
             </div>
             <p className="mt-1 text-xs text-muted">Issued {formatDate(c.issued_at)}</p>
           </Card>
-        </a>
+        </div>
       ))}
     </div>
   );

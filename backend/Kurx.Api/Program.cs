@@ -569,7 +569,6 @@ app.MapAllyEndpoints();
 app.MapWebhookEndpoints();
 app.MapInvitationEndpoints();
 app.MapAnnouncementEndpoints();
-app.MapIdCardEndpoints();
 app.MapEntitlementEndpoints();
 app.MapChatEndpoints();
 app.MapPostEndpoints();

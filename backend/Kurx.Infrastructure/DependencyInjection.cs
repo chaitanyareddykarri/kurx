@@ -176,7 +176,6 @@ public static class DependencyInjection
         services.AddScoped<IWalkInService, Events.WalkInService>();                        // V3 §7.6 walk-in (Phase 13)
         services.AddScoped<ISeatBlockService, Events.SeatBlockService>();                  // V3 §7.5 delegated/SeatBlock (Phase 13)
         services.AddScoped<IApprovalService, Events.ApprovalService>();                    // V3 §14.3 approval chains (Phase 14)
-        services.AddScoped<IIdCardService, Cards.IdCardService>();
         services.AddScoped<IEntitlementService, Events.EntitlementService>();   // D-334
         services.AddScoped<Analytics.IAnalyticsFactSource, Analytics.LeafFactSource>();   // V3 §16 (Phase 17) internal fact source
         services.AddScoped<IAnalyticsService, Analytics.AnalyticsService>();
@@ -393,7 +392,6 @@ public static class DependencyInjection
         services.AddSingleton<IQrCodeGenerator, QrCodeGenerator>();
         AddProvider<IDocumentRasterizer, DocumentRasterizerStub>(services, config, "DOCUMENT_RASTERIZER", "stub");
         services.AddSingleton<ICertificateRenderer, CertificateRenderer>();
-        services.AddSingleton<IIdCardRenderer, Cards.IdCardRenderer>();
         // D-199: pays the renderer's one-time SkiaSharp/QuestPDF font-resolution cost (~26.7s, measured)
         // at startup instead of on a real user's first certificate request.
         services.AddHostedService<CertificateRendererWarmupService>();

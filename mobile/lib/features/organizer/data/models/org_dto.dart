@@ -113,6 +113,18 @@ class RepresentationDto with _$RepresentationDto {
     @JsonKey(name: 'logo_key') String? logoKey,
     /// The caller's authority to act for this organization, lowercased — not a role over events.
     required String authority,
+
+    /// The ORGANIZATION's registry status (D-350), distinct from [authority], which is the caller's
+    /// standing over it. A staged representation request is a real `PendingReview` row in this list —
+    /// legitimate for a free event, never for a paid one, because ticket money settles into the
+    /// organization's account. Defaulted so an older server that omits the field reads as "not
+    /// verified", which is the closed position.
+    @JsonKey(name: 'is_verified') @Default(false) bool isVerified,
+
+    /// D-352 — the CAPABILITY the client gates on; [isVerified] is the FACT it displays. They differ
+    /// only under the dev bypass, which opens the gate without forging the status. Defaulted false so an
+    /// older server that omits it lands on the closed position.
+    @JsonKey(name: 'can_back_paid_event') @Default(false) bool canBackPaidEvent,
   }) = _RepresentationDto;
 
   factory RepresentationDto.fromJson(Map<String, dynamic> json) =>

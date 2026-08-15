@@ -16,6 +16,7 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
 {
     private readonly KurxApiFactory _factory;
     private static Guid _categoryId;
+    private static Guid _privateTypeId;
 
     public EventFirstTests(KurxApiFactory factory)
     {
@@ -29,8 +30,20 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
                 var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
                 var cat = new EventCategory { Level = CategoryLevel.Category, Name = "EF Cat", Slug = "ef-cat" };
                 db.EventCategories.Add(cat);
+                // D-353 — a Type-less event resolves Public (D-326's documented fallback), and a Public
+                // event now requires a verified organization. Self-hosting survives only on the Private
+                // side, so exercising it at all needs a Type that actually classifies Private. Without
+                // this every "personal event" test below would be testing an impossible shape.
+                var privateType = new EventCategory
+                {
+                    Level = CategoryLevel.Type, ParentId = cat.Id,
+                    Name = "EF Private Type", Slug = "ef-private-type",
+                    ProductClass = EventProduct.Private,
+                };
+                db.EventCategories.Add(privateType);
                 db.SaveChanges();
                 _categoryId = cat.Id;
+                _privateTypeId = privateType.Id;
                 _reset = true;
             }
         }
@@ -69,6 +82,68 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
 
     private static Task<HttpResponseMessage> Transition(HttpClient client, Guid orgId, Guid eventId, string action) =>
         client.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action });
+
+    // ── D-353 · a public event must represent a real organization ──────────────────────────────
+    //
+    // Both refusals are pinned because the second is the one a client can forge: naming the caller's own
+    // self-representation row passes the authority check (they are its Owner) and passes a null check
+    // (the id is non-null). Verified against the live API before the guard existed — the request reached
+    // category validation, which is downstream of it.
+
+    [Fact]
+    public async Task Public_event_without_a_representation_is_refused()
+    {
+        var user = await LoginAsync("9960000090");
+
+        var res = await user.CreateEventAsync(null, new
+        {
+            title = "Unrepresented Fest",
+            description = "A great event with plenty of detail.",
+            categoryId = _categoryId, venueName = "Main Hall", city = "Vizag",
+            startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        Assert.Equal("representation_required", (await Json(res)).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Naming_your_own_self_representation_row_does_not_satisfy_the_rule()
+    {
+        var user = await LoginAsync("9960000091");
+
+        // Create a PRIVATE-shaped event first so the self-representation row exists to be named. It is
+        // minted on first creation and is never surfaced, so this is the only way to obtain its id — which
+        // is also why a real attacker would have to read it out of a response that never carries it.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var me = await Json(await user.GetAsync("/v1/me"));
+        var userId = me.GetProperty("id").GetGuid();
+        var selfOrg = new Domain.Entities.Organization
+        {
+            Name = "Self Row", Slug = "self-" + Guid.NewGuid().ToString("N"),
+            NormalizedName = "self row", IsPersonal = true,
+        };
+        selfOrg.CanonicalOrgId = selfOrg.Id;
+        db.Organizations.Add(selfOrg);
+        db.Memberships.Add(new Domain.Entities.Membership
+        {
+            OrgId = selfOrg.Id, UserId = userId, Role = Domain.Enums.OrgRole.Owner,
+        });
+        await db.SaveChangesAsync();
+
+        var res = await user.CreateEventAsync(selfOrg.Id, new
+        {
+            title = "Forged Representation Fest",
+            description = "A great event with plenty of detail.",
+            categoryId = _categoryId, venueName = "Main Hall", city = "Vizag",
+            startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
+        });
+
+        // The same code as the omitted case: to the organiser it is one rule, not two.
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        Assert.Equal("representation_required", (await Json(res)).GetProperty("error").GetString());
+    }
 
     [Fact]
     public async Task Representation_request_stages_a_hidden_pending_org()
@@ -144,15 +219,22 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
     // The client never enumerates organizations to find a person's events, and never picks one to
     // reach event creation. These three cover the endpoints that make that true.
 
+    /// <summary>Self-hosting survives D-353 on the PRIVATE side, and carries no organization on the wire.
+    ///
+    /// <para>This asserted the same thing for a Public event, which is exactly what D-353 removed. The
+    /// subject was never the product axis — it is that a self-hosted event reports
+    /// <c>representation.kind = "personal"</c> with no organization id or name, and that the
+    /// FK-satisfying row is never offered as something to represent. All of that still holds; only the
+    /// product it holds for narrowed.</para></summary>
     [Fact]
-    public async Task Create_without_an_org_files_the_event_under_the_callers_personal_org()
+    public async Task Create_without_an_org_files_a_private_event_that_carries_no_organization()
     {
         // This user has never onboarded, so `Users.Name` is "" — the case that made the resolver fail
         // `invalid_name` and take event creation down with it.
         var user = await LoginAsync("9960000010");
 
-        await user.CreateEventAsync(null, NewEventBody("Solo Gig"));
-        await user.CreateEventAsync(null, NewEventBody("Solo Gig Two"));
+        await user.CreateEventAsync(null, NewSelfHostedEventBody("Solo Gig"));
+        await user.CreateEventAsync(null, NewSelfHostedEventBody("Solo Gig Two"));
 
         var mine = await Json(await user.GetAsync("/v1/me/events"));
         var rows = mine.GetProperty("items").EnumerateArray().ToList();
@@ -176,7 +258,7 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
     public async Task The_owner_manages_their_own_event_without_any_organization_membership()
     {
         var user = await LoginAsync("9960000015");
-        var eventId = (await Json(await user.CreateEventAsync(null, NewEventBody("Owned By Me"))))
+        var eventId = (await Json(await user.CreateEventAsync(null, NewSelfHostedEventBody("Owned By Me"))))
             .GetProperty("id").GetGuid();
 
         // Ownership alone authorizes the event surface. Before D-268 every one of these resolved to
@@ -204,11 +286,11 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
 
         // One event as themselves, one representing an institution they staged — two different orgs,
         // one flat list. The caller supplies no org id at all.
-        await user.CreateEventAsync(null, NewEventBody("Personal Meetup"));
+        await user.CreateEventAsync(null, NewSelfHostedEventBody("Personal Meetup"));
         var orgId = (await Json(await SubmitRequest(user, "Two Hats Institute"))).GetProperty("id").GetGuid();
         await user.CreateEventAsync(orgId, NewEventBody("Institute Summit"));
 
-        await stranger.CreateEventAsync(null, NewEventBody("Not Yours"));
+        await stranger.CreateEventAsync(null, NewSelfHostedEventBody("Not Yours"));
 
         var mine = (await Json(await user.GetAsync("/v1/me/events"))).GetProperty("items").EnumerateArray().ToList();
         var titles = mine.Select(r => r.GetProperty("title").GetString()).ToList();
@@ -234,7 +316,7 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
     {
         var user = await LoginAsync("9960000013");
         var stranger = await LoginAsync("9960000014");
-        var eventId = (await Json(await user.CreateEventAsync(null, NewEventBody("Id Addressed")))).GetProperty("id").GetGuid();
+        var eventId = (await Json(await user.CreateEventAsync(null, NewSelfHostedEventBody("Id Addressed")))).GetProperty("id").GetGuid();
 
         var mine = await user.GetAsync($"/v1/events/{eventId}");
         Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
@@ -249,6 +331,18 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
         title,
         description = "A great event with plenty of detail.",
         categoryId = _categoryId, venueName = "Main Hall", city = "Vizag",
+        startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
+    };
+
+    /// <summary>A self-hosted event. Since D-353 that means a PRIVATE one: a Public event must name a
+    /// verified organization, so `representingOrgId: null` is legal only on the Private side. The tests
+    /// below are about ownership, visibility and listing — not about representation — so they carry the
+    /// Private Type rather than acquiring an organization they were never testing.</summary>
+    private static object NewSelfHostedEventBody(string title) => new
+    {
+        title,
+        description = "A great event with plenty of detail.",
+        categoryId = _categoryId, typeId = _privateTypeId, venueName = "Main Hall", city = "Vizag",
         startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
     };
 }

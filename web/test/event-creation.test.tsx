@@ -39,12 +39,20 @@ const CATEGORIES = [
 function renderWizard(over: Record<string, unknown> = {}) {
   return render(
     <CreateEventWizard
-      representations={[]}
+      // D-353 — a Public wizard now requires a verified representation to leave step 1. The walkthrough
+      // below exercises the LATER steps, so it is seeded with one rather than asserting the block here
+      // (that rule has its own tests in create-event-gate.test.tsx).
+      representations={[{
+        organization_id: "org-1", name: "Verified Fest Co", slug: "verified-fest-co",
+        logo_key: null, authority: "owner", is_verified: true, can_back_paid_event: true
+      }]}
       canHostPaid={false}
       // Both required since D-305: the gate chooses the product before the form opens, and the
-      // Representing step titles the personal option with the host's own name, never "Personal".
+      // D-353 — a Public event represents a verified organization; there is no personal option, and
+      // representing one appends the D-351 Authorization step, making the flow 12 steps rather than 11.
       product="Public"
-      hostName="Test Host"
+      requiresRepresentation
+      representativeRoles={["Principal", "Other"]}
       categories={CATEGORIES}
       subcategories={[]}
       presets={[]}
@@ -57,19 +65,24 @@ describe("the wizard's single-select steps are real groups", () => {
   it("names the group and exposes each option as a radio", () => {
     renderWizard();
     // Five grids of plain <button>s announced as unrelated controls with no selected state.
-    const group = screen.getByRole("group", { name: /Who are you hosting this event as\?/ });
-    expect(within(group).getByRole("radio", { name: /Test Host/ })).toBeChecked();
+    // D-353 — no personal card. A Public event opens preselected on its first verified representation.
+    const group = screen.getByRole("group", { name: /Who are you hosting this event on behalf of\?/ });
+    expect(within(group).getByRole("radio", { name: /Verified Fest Co/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /Test Host/ })).not.toBeInTheDocument();
   });
 
   it("carries the choice on the input, not on a border colour", async () => {
     renderWizard({
-      representations: [{ organization_id: "o1", name: "IIT Madras", authority: "Owner" }] as never[],
+      representations: [
+        { organization_id: "o1", name: "Verified Fest Co", authority: "owner", is_verified: true, can_back_paid_event: true },
+        { organization_id: "o2", name: "IIT Madras", authority: "owner", is_verified: true, can_back_paid_event: true },
+      ] as never[],
     });
     const org = screen.getByRole("radio", { name: /IIT Madras/ });
     expect(org).not.toBeChecked();
     await userEvent.click(org);
     expect(org).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Test Host/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Verified Fest Co/ })).not.toBeChecked();
   });
 
   it("marks an option the caller may not choose as disabled, not merely dimmed", async () => {
@@ -85,7 +98,7 @@ describe("the wizard's single-select steps are real groups", () => {
 describe("the wizard says where you are and why you are stuck", () => {
   it("announces the current step", () => {
     renderWizard();
-    expect(screen.getByText(/Step 1 of 11: Representing\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 12: Representing\./)).toBeInTheDocument();
   });
 
   it("marks the active step programmatically", () => {
@@ -148,7 +161,7 @@ describe("a step refuses its own required fields", () => {
     renderWizard();
     await walkToDetails();
 
-    expect(screen.getByText(/Step 6 of 11: Details\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 6 of 12: Details\./)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
     expect(screen.getByText("Add a title of at least 2 characters.")).toBeInTheDocument();
 
@@ -179,7 +192,7 @@ describe("a step refuses its own required fields", () => {
     renderWizard();
     for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(screen.getByText(/Step 3 of 11: Pricing\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 3 of 12: Pricing\./)).toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText("Ticket name"));
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
     expect(screen.getByText("Name the ticket people will book.")).toBeInTheDocument();
@@ -191,21 +204,36 @@ describe("a step refuses its own required fields", () => {
 });
 
 describe("the last step lists what is still missing", () => {
-  it("names each unmet requirement instead of refusing silently", async () => {
+  it("refuses to leave Legal with consent required but unwritten", async () => {
     renderWizard();
     await walkToDetails();
     await fillDetails("Hack Day");
     // Details -> Content -> Location -> Windows -> Eligibility -> Legal.
     for (let i = 0; i < 5; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
-    // Consent is the one requirement still reachable at the end, because it is set ON the last step —
-    // every other entry in `missingForSubmit` is now caught by the step that asks for it. The list
-    // stays as the backstop it always was; this proves it still speaks.
+    /*
+     * This asserted the SUBMIT list, because Legal used to be the terminal step and consent was the one
+     * requirement set on it. D-351's Authorization step made Legal non-terminal, so consent is now caught
+     * by the step that asks for it — which is D-327's rule working, not a regression. The backstop list
+     * is still asserted below; this half moved one step earlier because the field did.
+     */
     await userEvent.click(screen.getByRole("checkbox", { name: /Require registrants to accept/ }));
 
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(screen.getByText(/Write the statement registrants must accept/)).toBeInTheDocument();
+  });
+
+  it("still names each unmet requirement on the submit step", async () => {
+    renderWizard();
+    await walkToDetails();
+    await fillDetails("Hack Day");
+    for (let i = 0; i < 6; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    // Authorization is the terminal step for an event representing an institution, and its evidence is
+    // unfilled — so the backstop list speaks, which is the property this block exists to pin.
     expect(screen.getByRole("button", { name: /Create draft event/ })).toBeDisabled();
     expect(screen.getByText(/Still needed before this can be created:/)).toBeInTheDocument();
-    expect(screen.getByText(/Write the statement registrants must accept/)).toBeInTheDocument();
+    expect(screen.getByText(/Attach the authorization letter/)).toBeInTheDocument();
   });
 });
 

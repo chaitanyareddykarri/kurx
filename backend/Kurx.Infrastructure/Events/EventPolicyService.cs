@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Kurx.Application.Abstractions;
 using Kurx.Domain.Enums;
+using Kurx.Infrastructure.Configuration;
 using Kurx.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +20,8 @@ namespace Kurx.Infrastructure.Events;
 ///
 /// <para>Performs no authorization. Who may read or edit this event is D-269's concern; the endpoint does
 /// the event read first and this service is only reached once that succeeded.</para></summary>
-public class EventPolicyService(KurxDbContext db) : IEventPolicyService
+public class EventPolicyService(KurxDbContext db, IdentityVerificationOptions identityOptions)
+    : IEventPolicyService
 {
     public async Task<ServiceResult<PolicyRequirementsView>> GetForEventAsync(Guid eventId, CancellationToken ct = default)
     {
@@ -58,7 +60,10 @@ public class EventPolicyService(KurxDbContext db) : IEventPolicyService
                 .AnyAsync(a => a.EventId == ev.Id && a.Status == EventAuthorizationStatus.Approved, ct),
             ArchetypeRequiresRepresentation: archetype?.RequiresRepresentation ?? false,
             ArchetypeRequiresFinancialReview: archetype?.RequiresFinancialReview ?? false,
-            FinancialReviewPassed: ev.FinancialReviewStatus == FinancialReviewStatus.Passed);
+            FinancialReviewPassed: ev.FinancialReviewStatus == FinancialReviewStatus.Passed,
+            // D-352 — dev/test only, refused at startup in Production. Lifts the consent blockers
+            // without touching the facts the checklists report.
+            AuthorizationBypassed: identityOptions.Bypass);
 
         var r = PolicyResolver.Resolve(ev.Product, allowList, ev.RegistrationPolicy, ev.Visibility, ev.IsPaid, facts);
 

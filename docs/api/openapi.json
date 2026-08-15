@@ -11172,6 +11172,12 @@
           "authority": {
             "type": "string"
           },
+          "can_back_paid_event": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
           "logo_key": {
             "nullable": true,
             "type": "string"
@@ -11189,6 +11195,8 @@
         },
         "required": [
           "authority",
+          "can_back_paid_event",
+          "is_verified",
           "name",
           "organization_id",
           "slug"

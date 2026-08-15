@@ -29,7 +29,16 @@ public record TrustCapabilities(
     ///
     /// <para>Carried as a real flag rather than assumed, so both clients render one uniform gate instead
     /// of special-casing a branch, and so a future non-financial requirement has an obvious home.</para></summary>
-    bool CanCreatePrivateEvent = true);
+    bool CanCreatePrivateEvent = true,
+
+    /// <summary>Whether a PUBLIC event must name a verified organization (D-353). True in Production,
+    /// always. False only under D-352's bypass, where no admin-approved organization exists to name and
+    /// the whole public/paid flow would otherwise be untestable.
+    ///
+    /// <para>Carried as a server statement rather than left for each client to assume, because the
+    /// clients cannot see the flag and were adding a requirement the server had already lifted — the
+    /// gate refused Paid while <c>CreateAsync</c> would have accepted it.</para></summary>
+    bool RequiresRepresentation = true);
 
 /// <summary>A user's trust capabilities *in the context of a specific org* (M7). Composes membership
 /// verification (M6) with org verification (M5).</summary>

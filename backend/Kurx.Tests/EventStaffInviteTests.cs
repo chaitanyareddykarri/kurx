@@ -186,10 +186,15 @@ public class EventStaffInviteTests : IClassFixture<KurxApiFactory>
     };
 
     /// <summary>Passing a null representing org exercises the Personal path, which resolves the internal
-    /// self-representation row rather than naming an institution.</summary>
+    /// self-representation row rather than naming an institution.
+    ///
+    /// <para>D-353 narrowed that path to PRIVATE products, so the taxon moved from `hackathon` (Public) to
+    /// `birthday-party` — a real seeded Private Type, not a fixture invented for the test. The subject here
+    /// is staff invitations on a self-hosted event; the product axis was incidental and now has to be
+    /// stated rather than defaulted.</para></summary>
     private async Task<Guid> CreateSelfRepresentedEventAsync(HttpClient host)
     {
-        var res = await host.CreateEventAsync(null, EventBody(await TaxonAsync("hackathon")));
+        var res = await host.CreateEventAsync(null, EventBody(await TaxonAsync("birthday-party")));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var id = (await Json(res)).GetProperty("id").GetGuid();
         _factory.SeedApprovedEventAuthorization(id);

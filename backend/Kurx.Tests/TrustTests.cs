@@ -60,11 +60,19 @@ public class TrustTests : IClassFixture<KurxApiFactory>
         Assert.Equal("L1", trust.GetProperty("level").GetString());
     }
 
-    // ── D-307 · public event creation requires the full verification gate ──────────────────────
+    // ── D-307 + D-343 · the two verification tiers ─────────────────────────────────────────────
     //
-    // The rule these pin is a PRODUCT decision that reverses the platform's previous behaviour: a free
-    // public event used to require nothing. It now requires the same set as taking money, because a
-    // free public event still carries the platform's name and reaches every user through discovery.
+    // D-307 established that a free public event is not free of verification: it carries the platform's
+    // name into discovery, so the harm is not bounded by whether money moved.
+    //
+    // D-343 then split WHICH proofs, by what each one establishes:
+    //
+    //   identity  (govt ID or PAN)                              → gates PUBLIC
+    //   financial (PAN + bank + penny drop + name match)        → gates PAID
+    //
+    // The old rule demanded both for both, so a FREE public event had to prove ownership of a bank
+    // account that would never receive a rupee. PAN is deliberately absent from the public bar: it is a
+    // tax identity, and a free event reports no income.
     //
     // These assert the CAPABILITY LOGIC, deliberately independent of the KYC provider: `MockKycProvider`
     // approves unconditionally, so a passing bank submission here proves the state machine, never that
@@ -83,19 +91,46 @@ public class TrustTests : IClassFixture<KurxApiFactory>
         Assert.True(trust.GetProperty("can_organize_free").GetBoolean());
     }
 
+    /// <summary>D-343, the tier split stated as an assertion. This test previously asserted the exact
+    /// opposite — identity without bank could not create a public event — and the inversion is the
+    /// decision, not a relaxation of the test: bank ownership answers "whose account receives money", a
+    /// question a free event never asks.</summary>
     [Fact]
-    public async Task Identity_without_bank_still_cannot_create_a_public_event()
+    public async Task Identity_without_bank_can_create_a_public_event_but_cannot_take_money()
     {
         var (client, _) = await LoginAsync("9940000011");
         await client.PostAsJsonAsync("/v1/me/identity/pan", new { pan = "ABCDE1234F", name = "Riya Nair" });
 
         var trust = await Trust(client);
         Assert.True(trust.GetProperty("identity_verified").GetBoolean());
-        // Bank ownership — the penny-drop chain — is part of the public bar, so PAN alone is not enough.
         Assert.False(trust.GetProperty("bank_verified").GetBoolean());
-        Assert.False(trust.GetProperty("can_create_public_event").GetBoolean());
+
+        // The identity tier is satisfied, so publishing publicly is open...
+        Assert.True(trust.GetProperty("can_create_public_event").GetBoolean());
+        // ...while every capability that moves money stays shut, because the financial tier is not.
+        Assert.False(trust.GetProperty("can_organize_paid").GetBoolean());
+        Assert.False(trust.GetProperty("can_receive_payout").GetBoolean());
+        // Level tracks the money tier, not the publishing one.
+        Assert.Equal("L1", trust.GetProperty("level").GetString());
+
         // Private is unaffected by anything financial.
         Assert.True(trust.GetProperty("can_create_private_event").GetBoolean());
+    }
+
+    /// <summary>The other half of the split: a government ID alone — no PAN at all — reaches the public
+    /// bar. PAN is a tax identity and a free event reports no income, so requiring it would lock out
+    /// every passport or Aadhaar holder for a non-taxable act (D-343).</summary>
+    [Fact]
+    public async Task Government_id_without_pan_can_create_a_public_event()
+    {
+        var (client, _) = await LoginAsync("9940000014");
+        await client.PostAsJsonAsync("/v1/me/identity/government-id",
+            new { kind = "digilocker", idNumber = "123456789012", name = "Ishaan Bose" });
+
+        var trust = await Trust(client);
+        Assert.True(trust.GetProperty("identity_verified").GetBoolean());
+        Assert.True(trust.GetProperty("can_create_public_event").GetBoolean());
+        Assert.False(trust.GetProperty("can_organize_paid").GetBoolean());
     }
 
     [Fact]
@@ -114,10 +149,10 @@ public class TrustTests : IClassFixture<KurxApiFactory>
     [Fact]
     public async Task Public_creation_and_paid_organizing_stay_separate_fields()
     {
-        // They share a predicate today and that is a coincidence of current requirements, not an
-        // identity. This exists so that a future change to either is forced to be deliberate: whoever
-        // widens one and not the other will see this test, rather than discovering the coupling in
-        // OrderService.
+        // They no longer share a predicate at all (D-343) — the field separation D-307 kept "in case"
+        // is now load-bearing. This pins the OTHER direction from the tier-split test above: once the
+        // financial tier is satisfied too, both are open and payout follows. Whoever re-merges them will
+        // fail one of these two tests rather than discovering the coupling in OrderService.
         var (client, _) = await LoginAsync("9940000013");
         await client.PostAsJsonAsync("/v1/me/identity/pan", new { pan = "ABCDE1234F", name = "Meera Iyer" });
         await client.PostAsJsonAsync("/v1/me/identity/bank",

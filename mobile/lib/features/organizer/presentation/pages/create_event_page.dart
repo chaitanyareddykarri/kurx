@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,9 +38,15 @@ class CreateEventPage extends ConsumerStatefulWidget {
   /// Chosen in the gate before this form opened (D-305). Selects which Types are offered — it is never
   /// sent to the server, which derives `Event.Product` from the Type itself (D-266 M1). Web passes the
   /// same value into `CreateEventWizard`.
-  const CreateEventPage({super.key, this.product = 'Public'});
+  const CreateEventPage({super.key, this.product = 'Public', this.initialPricing = 'free'});
 
   final String product;
+
+  /// Already answered in the gate (D-343): the free/paid pair is what selected the verification tier
+  /// the caller just cleared. Carried in as the starting value rather than re-asked from scratch, and
+  /// still changeable here — the Paid card stays gated on `canOrganizePaid`, so moving to Paid after
+  /// entering as Free cannot escape the financial tier.
+  final String initialPricing;
 
   @override
   ConsumerState<CreateEventPage> createState() => _CreateEventPageState();
@@ -52,7 +59,11 @@ class CreateEventPage extends ConsumerStatefulWidget {
 /// here.
 enum _Step {
   representing, visibility, pricing, category, type, details,
-  content, location, windows, eligibility, legal
+  content, location, windows, eligibility, legal,
+  /// D-351 — the represented institution's written consent, asked in-flow rather than on a separate
+  /// screen after the draft exists. Appended last so every earlier step keeps its position, and only
+  /// present for a Public event that represents an institution (see `_steps`).
+  authorization
 }
 
 const _stepTitles = <_Step, String>{
@@ -67,6 +78,7 @@ const _stepTitles = <_Step, String>{
   _Step.windows: 'Key dates',
   _Step.eligibility: 'Who can join',
   _Step.legal: 'Terms',
+  _Step.authorization: 'Authorization',
 };
 
 class _CreateEventPageState extends ConsumerState<CreateEventPage> {
@@ -140,6 +152,42 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   bool _requiresConsent = false;
   final _consentText = TextEditingController();
 
+  // ── Authorization (D-351) ─────────────────────────────────────────────────
+  /// The institution's written consent, collected in-flow. The letter is held as bytes until the event
+  /// exists, because both presign and submit are keyed on an eventId that only the create call
+  /// produces — so abandoning the wizard uploads nothing.
+  final _headName = TextEditingController();
+  final _headDesignation = TextEditingController();
+  final _officialEmail = TextEditingController();
+  final _officialPhone = TextEditingController();
+  String? _representativeRole;
+  final _representativeRoleOther = TextEditingController();
+  List<int>? _letterBytes;
+  String? _letterName;
+  String _letterContentType = 'application/octet-stream';
+
+  /// D-351 — Authorization is present only for a Public event that represents an institution, which is
+  /// exactly the shape `PolicyResolver` raises `event_authorization_required` for. A self-represented
+  /// event has no institution to authorise it and never sees the step.
+  bool get _needsAuthorization =>
+      widget.product == 'Public' && _representingOrgId != null;
+
+  List<_Step> get _steps => _needsAuthorization
+      ? _Step.values
+      : _Step.values.where((s) => s != _Step.authorization).toList();
+
+  /// Mirrors web's `missingForSubmit()` for this step, and the server's own refusals
+  /// (`authorization_fields_required`, `letterhead_required`, `representative_role_other_required`).
+  bool get _authorizationValid =>
+      !_needsAuthorization ||
+      (_headName.text.trim().isNotEmpty &&
+          _headDesignation.text.trim().isNotEmpty &&
+          _officialEmail.text.trim().isNotEmpty &&
+          _officialPhone.text.trim().isNotEmpty &&
+          (_representativeRole?.isNotEmpty ?? false) &&
+          (_representativeRole != 'Other' || _representativeRoleOther.text.trim().isNotEmpty) &&
+          _letterBytes != null);
+
   _Step _step = _Step.representing;
   bool _submitting = false;
   String? _error;
@@ -148,6 +196,8 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   void initState() {
     super.initState();
     _visibility = widget.product == 'Private' ? 'Unlisted' : 'Listed';
+    // A Private product can never sell, so it pins Free regardless of what arrived on the route.
+    _pricing = widget.product == 'Private' ? 'free' : widget.initialPricing;
     final now = DateTime.now();
     _startsAt = DateTime(now.year, now.month, now.day + 7, 10);
     _endsAt = _startsAt.add(const Duration(hours: 3));
@@ -205,7 +255,25 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
       (int.tryParse(_ticketQuantity.text.trim()) ?? 0) > 0 &&
       _ticketPricePaise >= 0;
 
-  bool get _canSubmit => _basicsValid && _consentOk && _ticketValid && !_submitting;
+  /// D-350 — a paid event must represent a VERIFIED organisation; hosting as yourself has no account
+  /// for the money to settle into, and the server refuses it at submit-for-review. Free events keep the
+  /// always-valid default (self). Mirrors web's `representingValid`.
+  ///
+  /// Failing CLOSED on a representation list that has not loaded: unlike the type lookup above, an
+  /// absent answer here means "we do not know that a verified organisation exists", and letting a paid
+  /// event through on that assumption is the failure this guard exists to prevent.
+  bool get _representingValid =>
+      widget.product == 'Private' ||
+      // D-352 — the server states whether an organisation is required at all.
+      !(ref.read(currentUserProvider)?.trust.requiresRepresentation ?? true) ||
+      ref.read(myRepresentationsProvider).maybeWhen(
+            data: (list) => list.any((r) =>
+                r.organizationId == _representingOrgId && (r.canBackPaidEvent || r.isVerified)),
+            orElse: () => false,
+          );
+
+  bool get _canSubmit => _basicsValid && _consentOk && _ticketValid && _representingValid
+      && _authorizationValid && !_submitting;
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
@@ -295,15 +363,48 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
         ticketError = e.userMessage;
       }
 
+      // D-351 — file the institution's consent in the same action, so the organiser never leaves the
+      // wizard to satisfy a publish blocker they were already asked about. It runs AFTER creation by
+      // necessity: presign and submit are both keyed on an eventId only the create call produces.
+      // That ordering means the event can exist while the authorization fails, so the failure is
+      // reported rather than swallowed — the event is real and its consent is still missing.
+      String? authError;
+      if (_needsAuthorization) {
+        try {
+          final content = ref.read(eventContentSourceProvider);
+          String? letterheadDocumentKey;
+          if (_letterBytes != null) {
+            final presign = await content.presignAuthorizationDoc(
+                created.id, _letterContentType, _letterBytes!.length);
+            await content.uploadToPresigned(presign, _letterBytes!, _letterContentType);
+            letterheadDocumentKey = presign.key;
+          }
+          await content.submitAuthorization(created.id, {
+            'headName': _headName.text.trim(),
+            'headDesignation': _headDesignation.text.trim(),
+            'officialEmail': _officialEmail.text.trim(),
+            'officialPhone': _officialPhone.text.trim(),
+            'representativeRole': _representativeRole ?? '',
+            'representativeRoleOther':
+                _representativeRoleOther.text.trim().isEmpty ? null : _representativeRoleOther.text.trim(),
+            'letterheadDocumentKey': letterheadDocumentKey,
+          });
+        } on ApiError catch (e) {
+          authError = e.userMessage;
+        }
+      }
+
       ref.invalidate(myEventsProvider);
       if (!mounted) return;
       // Straight into the manage screen: a fresh Draft has no tickets and cannot be published, so
       // dropping the organiser back on a list would hide the next step.
       context.go('/events/${created.id}/manage');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ticketError == null
-            ? 'Draft created with your ticket.'
-            : 'Draft created, but the ticket failed: $ticketError')),
+        SnackBar(content: Text(authError != null
+            ? 'Draft created, but its authorization was not filed: $authError'
+            : ticketError == null
+                ? 'Draft created with your ticket.'
+                : 'Draft created, but the ticket failed: $ticketError')),
       );
     } on ApiError catch (e) {
       if (!mounted) return;
@@ -333,7 +434,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
 
   @override
   Widget build(BuildContext context) {
-    final steps = _Step.values;
+    final steps = _steps;
     final index = steps.indexOf(_step);
     final isLast = index == steps.length - 1;
 
@@ -368,6 +469,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
               _Step.windows => _buildWindows(),
               _Step.eligibility => _buildEligibility(),
               _Step.legal => _buildLegal(),
+              _Step.authorization => _buildAuthorization(),
             },
             if (_error != null) ...[
               const SizedBox(height: KSpace.lg),
@@ -395,12 +497,17 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
                 child: KurxButton(
                   label: isLast ? 'Create draft' : 'Continue',
                   loading: _submitting,
-                  // Only Basics gates progress — every later field is optional, and blocking someone
-                  // inside an optional step is how a wizard gets abandoned. Representing (index 0)
-                  // never gates: Personal is always a valid answer.
+                  // Basics gates progress, and since D-350 so does Representing — but only for a PAID
+                  // event, where hosting as yourself is not a legal answer at all. Pricing re-checks it
+                  // because someone can pass Representing as themselves while Free, then switch to Paid
+                  // one step later and carry the stale answer to a submission the server refuses.
+                  // Every other step stays ungated: blocking inside an optional step is how a wizard
+                  // gets abandoned.
                   onPressed: isLast
                       ? (_canSubmit ? _submit : null)
-                      : (_step == _Step.details && !_basicsValid
+                      : ((_step == _Step.details && !_basicsValid) ||
+                              ((_step == _Step.representing || _step == _Step.pricing) &&
+                                  !_representingValid)
                           ? null
                           : () => setState(() => _step = steps[index + 1])),
                 ),
@@ -416,47 +523,225 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
 
   /// Who the event is hosted as. Personal is always available and is the default, which is the whole
   /// reason this screen no longer needs an organisation chosen before it opens (D-267).
+  /// D-353 — a PUBLIC event must represent a verified organisation; there is no self-hosting card.
+  /// A PRIVATE event reaches no discovery surface and can never sell, so it is hosted by the person —
+  /// and is deliberately NOT presented as an organisation of any kind, because self-representation is
+  /// not a concept in this model. Mirrors web's Representing step.
   Widget _buildRepresenting() {
-    final representations = ref.watch(myRepresentationsProvider);
+    final c = context.kurx;
+    if (widget.product == 'Private') {
+      return Container(
+        padding: const EdgeInsets.all(KSpace.md),
+        decoration: BoxDecoration(
+          border: Border.all(color: c.border),
+          borderRadius: BorderRadius.circular(KRadius.md),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Hosted by you', style: TextStyle(color: c.text, fontSize: 14)),
+            const SizedBox(height: KSpace.xs),
+            Text(
+              "A private event is invitation-only, never appears in search or on Home, and can't sell "
+              "tickets — so there's no organisation to name and nothing to verify.",
+              style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final reps = ref.watch(myRepresentationsProvider);
+    return reps.maybeWhen(
+      data: (list) {
+        // A PendingReview organisation is deliberately NOT selectable: a staged representation is not
+        // an approved one. Shown below so nobody re-requests something already in the queue.
+        final selectable = list.where((r) => r.canBackPaidEvent || r.isVerified).toList();
+        final pending = list.where((r) => !(r.canBackPaidEvent || r.isVerified)).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (selectable.isEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(KSpace.md),
+                decoration: BoxDecoration(
+                  border: Border.all(color: c.border, style: BorderStyle.solid),
+                  borderRadius: BorderRadius.circular(KRadius.md),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("You don't currently have an approved organisation representation.",
+                        style: TextStyle(color: c.text, fontSize: 14)),
+                    const SizedBox(height: KSpace.xs),
+                    Text(
+                      'A public event has to be hosted on behalf of an organisation Kurx has verified. '
+                      "Request representation and submit the organisation's official authorisation — an "
+                      'admin reviews it before it can be used.',
+                      style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              _label('Who are you hosting this event on behalf of?'),
+              Text('Select the organisation you are authorised to represent for this event.',
+                  style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
+              const SizedBox(height: KSpace.sm),
+              RadioGroup<String?>(
+                groupValue: _representingOrgId,
+                onChanged: (v) => setState(() => _representingOrgId = v),
+                child: Column(
+                  children: [
+                    for (final r in selectable)
+                      RadioListTile<String?>(
+                        value: r.organizationId,
+                        title: Text(r.name),
+                        subtitle: Text('Representing · your authority: ${r.authority}'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            for (final r in pending) ...[
+              const SizedBox(height: KSpace.sm),
+              Text('${r.name} — awaiting verification. It cannot host a public event until an admin '
+                  'approves it.',
+                  style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
+            ],
+            const SizedBox(height: KSpace.md),
+            Text(
+              'Representing an organisation you do not see here? Request representation from your '
+              'profile.',
+              style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
+            ),
+          ],
+        );
+      },
+      orElse: () => const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  static const _letterTypes = ['pdf', 'jpg', 'jpeg', 'png'];
+
+  Future<void> _pickLetter() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: _letterTypes,
+      withData: true,
+    );
+    final file = picked?.files.singleOrNull;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+
+    // FilePicker's extension filter is advisory on some platforms, so the check is repeated here
+    // rather than trusted.
+    final ext = file.extension?.toLowerCase();
+    if (!_letterTypes.contains(ext)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Attach a PDF or an image.')),
+        );
+      }
+      return;
+    }
+    setState(() {
+      _letterBytes = bytes;
+      _letterName = file.name;
+      _letterContentType = ext == 'pdf' ? 'application/pdf' : 'image/${ext == 'jpg' ? 'jpeg' : ext}';
+    });
+  }
+
+  /// D-351 — the institution's written consent, mirroring web's Authorization step field for field.
+  Widget _buildAuthorization() {
+    final c = context.kurx;
+    final orgName = ref.watch(myRepresentationsProvider).maybeWhen(
+          data: (list) => list
+              .where((r) => r.organizationId == _representingOrgId)
+              .map((r) => r.name)
+              .firstOrNull,
+          orElse: () => null,
+        );
+    final roles = ref.watch(representativeRolesProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Hosting as'),
-        RadioGroup<String?>(
-          groupValue: _representingOrgId,
-          onChanged: (v) => setState(() => _representingOrgId = v),
+        Text(
+          '${orgName ?? 'This organisation'} has to confirm it authorises this event. Filed once, with '
+          "the event — a reviewer reads it as part of the event's review, and the event can't publish "
+          'until it is approved.',
+          style: TextStyle(color: c.muted, fontSize: 13, height: 1.35),
+        ),
+        const SizedBox(height: KSpace.lg),
+        _field(_headName, "Signatory's name"),
+        _field(_headDesignation, 'Their designation'),
+        _field(_officialEmail, 'Official email', keyboard: TextInputType.emailAddress),
+        _field(_officialPhone, 'Official phone',
+            hint: '+919876543210', keyboard: TextInputType.phone),
+        const SizedBox(height: KSpace.md),
+        _label('Your role in this organisation'),
+        // The server's vocabulary, never a copy — a list that drifts offers a role the API refuses.
+        roles.maybeWhen(
+          data: (list) => DropdownButtonFormField<String>(
+            initialValue: _representativeRole,
+            items: [
+              for (final r in list) DropdownMenuItem(value: r, child: Text(r)),
+            ],
+            onChanged: (v) => setState(() => _representativeRole = v),
+          ),
+          orElse: () => const LinearProgressIndicator(),
+        ),
+        if (_representativeRole == 'Other') ...[
+          const SizedBox(height: KSpace.md),
+          _field(_representativeRoleOther, 'Describe your role'),
+        ],
+        const SizedBox(height: KSpace.lg),
+        _label('Authorization letter'),
+        const SizedBox(height: KSpace.xs),
+        // The letter is per-EVENT, not per-organisation: `event_authorizations` is UNIQUE on EventId, so
+        // representing the same organisation again next month needs a new letter naming that event.
+        // Web states the same four requirements, in the same words.
+        Container(
+          padding: const EdgeInsets.all(KSpace.md),
+          decoration: BoxDecoration(
+            border: Border.all(color: c.border),
+            borderRadius: BorderRadius.circular(KRadius.md),
+          ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // The host's own name, not the word "Personal". Nothing named "personal" exists in the
-              // domain — D-268 deleted the personal-organization concept and this branch attaches no
-              // organisation at all — so labelling it "Personal" invited people to read it as an
-              // account type they had to have. Web shows the same thing.
-              RadioListTile<String?>(
-                value: null,
-                title: Text(ref.watch(currentUserProvider)?.name.trim().isNotEmpty == true
-                    ? ref.watch(currentUserProvider)!.name
-                    : 'Myself'),
-                subtitle: const Text('Hosted under your own name. No organisation or proof needed.'),
-              ),
-              ...representations.maybeWhen(
-                data: (list) => list.map(
-                  (r) => RadioListTile<String?>(
-                    value: r.organizationId,
-                    title: Text(r.name),
-                    subtitle: Text('Representing · your authority: ${r.authority}'),
-                  ),
-                ),
-                orElse: () => const <Widget>[],
+              Text('The letter must be specific to this event and state:',
+                  style: TextStyle(color: c.text, fontSize: 12.5)),
+              const SizedBox(height: KSpace.xs),
+              _LetterPoint('the event by name — '
+                  '${_title.text.trim().isEmpty ? 'your event title' : _title.text.trim()}'),
+              _LetterPoint('its dates — ${DateFormat('d MMM y, h:mm a').format(_startsAt)} '
+                  'to ${DateFormat('d MMM y, h:mm a').format(_endsAt)}'),
+              const _LetterPoint(
+                  "that you are authorised to organise it on the organisation's behalf"),
+              const _LetterPoint("the signatory's name, designation and signature"),
+              const SizedBox(height: KSpace.sm),
+              Text(
+                "On the organisation's official letterhead. PDF or image, up to 10 MB. A reviewer reads it "
+                "as part of this event's review — a generic authorisation letter that does not name the "
+                'event is usually rejected.',
+                style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
               ),
             ],
           ),
         ),
-        const SizedBox(height: KSpace.md),
-        Text(
-          'Representing an organisation you do not see here? Request representation from your '
-          'profile — you can create this event personally in the meantime.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.kurx.muted),
+        const SizedBox(height: KSpace.sm),
+        KurxButton(
+          label: _letterName == null ? 'Choose file' : 'Replace file',
+          variant: KurxButtonVariant.secondary,
+          onPressed: _submitting ? null : _pickLetter,
         ),
+        if (_letterName != null) ...[
+          const SizedBox(height: KSpace.xs),
+          Text(_letterName!, style: TextStyle(color: c.text, fontSize: 12.5)),
+        ],
       ],
     );
   }
@@ -860,4 +1145,28 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             : const Icon(Icons.edit_calendar_outlined),
         onTap: _submitting ? null : () => _pickDateTime(initial: value, onPicked: onPicked),
       );
+}
+
+/// One requirement the authorization letter must state. A row rather than an embedded newline, so the
+/// bullet wraps and indents like a list instead of running under its own marker.
+class _LetterPoint extends StatelessWidget {
+  const _LetterPoint(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.kurx;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('• ', style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
+          Expanded(
+            child: Text(text, style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
+          ),
+        ],
+      ),
+    );
+  }
 }

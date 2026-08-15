@@ -38,12 +38,18 @@ leaves and the plan to retire it.
 
 ```
 👤 Profile → Create Event
-     ↓  ① eligibility check      reuse existing verification state; never re-ask a passed check
-     ↓  ② PUBLIC or PRIVATE      a capability decision, not a form field
-     ↓  ③ eligibility for that choice
-     ↓  ④ the creation form      ← only now are event details entered
+     ↓  ① PUBLIC or PRIVATE      a capability decision, not a form field
+     ↓  ② FREE or PAID           Paid is inert for Private, which can never sell
+     ↓     └─ the requirements THAT pair needs, and only those
+     ↓  ③ the creation form      ← only now are event details entered
    Draft → review/approval → 📋 User Workspace ▸ Created / Hosted → 🏗️ Event Host Workspace
 ```
+
+> **Two screens, both real questions (D-343).** There was a third screen in front of these — "Before you
+> start" — which listed *Create a free event* and *Sell tickets* as bordered cards with circled check
+> icons, the same chrome the real selectors use one screen later, while being inert list items. People
+> clicked them expecting to choose free or paid. It is deleted: the free/paid question is now asked for
+> real, and its answer is what selects the verification tier below.
 
 **Public/Private maps to `EventProduct`, and the taxonomy still decides it.** `Event.Product` is derived
 and snapshotted from the chosen Type's `EventCategory.ProductClass` (D-266 M1) and is **not** a
@@ -56,18 +62,35 @@ requires is `TrustService`'s, not this document's:
 
 | Choice | Capability | Requires |
 |---|---|---|
-| **Public** — free *or* paid | `CanCreatePublicEvent` | government ID **or** PAN approved · PAN approved · bank approved **with penny drop passed and name matched** · fraud-clear |
+| **Public** — free or paid | `CanCreatePublicEvent` | **identity tier**: government ID **or** PAN approved · fraud-clear |
 | **Private** | `CanCreatePrivateEvent` | nothing (constant `true`) |
-| Selling tickets | `CanOrganizePaid` | unchanged — the same set, asked again inside the form's Pricing step |
+| Selling tickets | `CanOrganizePaid` | **financial tier**: the identity tier **plus** PAN approved · bank approved **with penny drop passed and name matched** · fraud-clear |
 
-**A free public event requires the full gate (D-307).** Publishing to the public is itself a trust event:
-a free public event still carries the platform's name and reaches every user through discovery, and the
-harm a bad actor can do with one is not bounded by whether money moved. Bounding verification by *payment*
-was the wrong axis.
+Which the two gate answers combine into:
+
+| Product | Money | Requires |
+|---|---|---|
+| Private | Free | nothing |
+| Public | Free | identity tier only — **no bank, no penny drop** |
+| Public | Paid | identity + financial |
+| Private | Paid | impossible — a Private event can never sell |
+
+**Two tiers, split by what each proof establishes (D-343).** Identity answers *who is behind this event*;
+the financial chain answers *whose account receives the money*. They used to be one lump, so a **free**
+public event had to prove ownership of a bank account that would never receive a rupee.
+
+**D-307's reasoning is kept and is why identity still gates Public.** Publishing to the public is itself a
+trust event: a free public event still carries the platform's name and reaches every user through
+discovery, and the harm a bad actor can do with one is not bounded by whether money moved. What D-307
+over-applied was the *financial* half — nothing settles on a free event, so there is no account to own.
+
+**PAN is not on the public bar.** It is a tax identity and Indian tax reporting is keyed on it, which is why
+it stays mandatory for taking money. A free event reports no income, so requiring PAN there would ask for a
+tax document for a non-taxable act and lock out every passport or Aadhaar holder who has no PAN.
 
 **Penny Drop is not a separate requirement** — it is one link in the *bank ownership* chain and already sits
-inside `bankVerified`, beside the name-match control. The gate names both to the user; neither is a new
-predicate.
+inside `bankVerified`, beside the name-match control. The gate names both to the user when Paid is chosen;
+neither is a new predicate, and neither is shown for a free event.
 
 **Private never asks for the financial chain.** A Private event cannot be Listed, cannot take payment, and
 appears on no discovery surface — so there is no public exposure to bound and no money to settle.

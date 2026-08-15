@@ -267,6 +267,39 @@ class EventContentRemoteDataSource {
         endpoint: 'POST /v1/orgs/{orgId}/events/{eventId}/media/presign',
       );
 
+  // ── D-266 M5 / D-351 · institutional authorization ────────────────────────
+  // Collected inside event creation rather than on a separate screen. All three are keyed on an
+  // eventId, which is why the wizard files them AFTER the create call rather than before it.
+
+  /// The closed representative-role vocabulary, from the server that validates it. Never a copy held
+  /// in the client — a list that drifts offers a role the API then refuses.
+  Future<List<String>> representativeRoles() => guard(
+        () async {
+          final res = await _dio.get('/v1/events/authorization/roles');
+          return (res.data as List).map((e) => e.toString()).toList();
+        },
+        endpoint: 'GET /v1/events/authorization/roles',
+      );
+
+  Future<PresignDto> presignAuthorizationDoc(String eventId, String contentType, int maxBytes) =>
+      guard(
+        () async {
+          final res = await _dio.post(
+            '/v1/events/$eventId/authorization/presign',
+            data: {'contentType': contentType, 'maxBytes': maxBytes},
+          );
+          return PresignDto.fromJson(_map(res.data));
+        },
+        endpoint: 'POST /v1/events/{eventId}/authorization/presign',
+      );
+
+  /// Files the institution's written consent. `letterheadDocumentKey` is the key a presigned PUT
+  /// returned — document bytes never travel through the API.
+  Future<void> submitAuthorization(String eventId, Map<String, dynamic> body) => guard(
+        () => _dio.post('/v1/events/$eventId/authorization', data: body),
+        endpoint: 'POST /v1/events/{eventId}/authorization',
+      );
+
   /// Uploads bytes to a presigned URL. Deliberately uses a **bare** Dio: the presigned URL is
   /// absolute and its signature is the credential, so attaching the session bearer token would
   /// leak it to the storage host for no benefit (`StorageEndpoints` ignores it entirely).

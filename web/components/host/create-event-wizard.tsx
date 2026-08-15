@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Globe, EyeOff, Lock, Gift, Ticket, ShieldCheck, Check } from "lucide-react";
 import { Button, FormSteps, Spinner, controlClass } from "@kurx/ui";
 import { SelectCard, SelectCardGroup } from "@/components/host/select-card-group";
-import { createEventWizardAction, CreateEventValues } from "@/lib/event-actions";
+import { createEventWizardAction, CreateEventValues,
+  submitAuthorizationAction, uploadAuthorizationDocumentAction } from "@/lib/event-actions";
 import type { Category, FieldPreset, Representation } from "@/lib/api";
 import { categoriesFor, cleanGroup, toIsoUtc, typesFor } from "@/lib/event-wizard";
 
@@ -69,7 +70,9 @@ export function CreateEventWizard({
   subcategories,
   presets,
   product,
-  hostName
+  initialPricing = "free",
+  requiresRepresentation,
+  representativeRoles
 }: {
   /// Institutions the caller may represent. Empty is normal and fully functional — Personal is always
   /// available, which is what makes Create Event reachable without registering anything (D-267).
@@ -81,21 +84,38 @@ export function CreateEventWizard({
   /// Chosen in the gate before this form opened. Selects which Types are offered — never sent to the
   /// server, which derives `Product` from the Type itself.
   product: "Public" | "Private";
-  /// The caller's own display name, used as the self-representation label.
-  hostName: string;
+  /// Already answered in the gate (D-343): the free/paid pair is what selected the verification tier
+  /// the caller just cleared. Carried in as the starting value rather than re-asked from scratch, and
+  /// still changeable here — the Paid card stays gated on `canHostPaid`, so moving to Paid after
+  /// entering as Free cannot escape the financial tier.
+  initialPricing?: "free" | "paid";
+  /// The closed representative-role vocabulary from the server that validates it (D-266 M5). A copy
+  /// held here is how a role gets offered and then refused by the API.
+  /// D-353/D-352 — see the gate. False under the dev bypass, where self-hosting a Public event is
+  /// what the server will accept.
+  requiresRepresentation: boolean;
+  representativeRoles: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState(0);
   /// null = Personal — the user represents themselves. Not "an organization that is personal": there is
   /// no organization in that branch at all, and the client neither names nor creates one (D-268).
-  const [representingOrgId, setRepresentingOrgId] = useState<string | null>(null);
+  /// Null = Personal, and the right default for a free event. Entering as Paid it is not a legal answer
+  /// at all (D-350), so the first verified organization is preselected rather than opening on a choice
+  /// the Continue button would immediately refuse.
+  /// D-353 — null means "hosted by the person", which is legal ONLY for a Private event. A Public
+  /// event opens on its first selectable representation rather than on an answer Continue would refuse.
+  const [representingOrgId, setRepresentingOrgId] = useState<string | null>(
+    product === "Private"
+      ? null
+      : representations.find((r) => r.can_back_paid_event ?? r.is_verified)?.organization_id ?? null);
   const [error, setError] = useState<string | null>(null);
 
   // Unlisted is the only sane default for Private — Listed is forbidden and InviteOnly is a stronger
   // claim than the organiser has made yet.
   const [visibility, setVisibility] = useState<string>(product === "Private" ? "Unlisted" : "Listed");
-  const [pricing, setPricing] = useState<"free" | "paid">("free");
+  const [pricing, setPricing] = useState<"free" | "paid">(initialPricing);
   /// A Private product cannot take payment (`private_product_cannot_take_payment`), so Paid is not
   /// offered at all — and the price field with it.
   const canChoosePaid = product === "Public" && canHostPaid;
@@ -151,6 +171,19 @@ export function CreateEventWizard({
     requiresConsent: false,
     consentText: ""
   });
+
+  /// D-351 — the institution's written consent, collected in-flow. The letter is held as a File until
+  /// the event exists, because both presign and submit are keyed on an eventId that only the final POST
+  /// produces. Nothing is uploaded until then, so abandoning the wizard leaves no orphaned object.
+  const [authorization, setAuthorization] = useState({
+    headName: "",
+    headDesignation: "",
+    officialEmail: "",
+    officialPhone: "",
+    representativeRole: "",
+    representativeRoleOther: ""
+  });
+  const [letterFile, setLetterFile] = useState<File | null>(null);
 
   /// D-327 — the private-gathering archetype marks `scoring`, `certificates` and `teams` Unsupported,
   /// so three inputs on the Windows and Eligibility steps described capabilities the event cannot have.
@@ -212,17 +245,59 @@ export function CreateEventWizard({
    * work"), reproduced inside the form D-305 created. Steps 6, 7 and 9 are genuinely all-optional and
    * say so by returning true; that is a statement, not an omission.
    */
+  /*
+   * D-353 — a PUBLIC event must represent a real, verified organization. Self-hosting is a Private-only
+   * affordance.
+   *
+   * The axis is public exposure, not money (D-307/D-343): a public event carries the platform's name
+   * into discovery whether or not a ticket is sold, so a named institution has to be answerable for it.
+   * A private event reaches no discovery surface and can never sell, so self-hosting stands there and
+   * the organization question is not asked at all.
+   *
+   * A PendingReview organization is deliberately NOT selectable: it is a staged request, and treating a
+   * pending representation as an approved one is the exact thing §7 of the requirement forbids. The
+   * server refuses it too — this is presentation over `CreateAsync`'s `representation_required`.
+   */
+  const selectableReps = representations.filter((r) => r.can_back_paid_event ?? r.is_verified);
+  const representingValid = product === "Private" || !requiresRepresentation
+    ? true
+    : selectableReps.some((r) => r.organization_id === representingOrgId);
+
+  /*
+   * D-351 — institutional authorization, asked HERE rather than on a page after creation.
+   *
+   * `PolicyResolver` raises `event_authorization_required` for exactly this shape — a Public event that
+   * represents an institution — and it is a publish blocker. It used to be collected only on
+   * /host/events/[id]/readiness, so the organiser finished eleven steps, landed on a draft, and then
+   * discovered a twelfth requirement on a different page. That is the same "found out at the end"
+   * failure D-305 exists to remove, one screen further along.
+   *
+   * The step is appended rather than inserted so every existing index-keyed rule below is untouched;
+   * it also reads correctly last, since it is the consent that accompanies a finished proposal.
+   */
+  const needsAuthorization = product === "Public" && representingOrgId !== null;
+  const steps = needsAuthorization ? [...STEPS, "Authorization"] : STEPS;
+  const authStep = steps.length - 1;
+
   const canNext =
-    step === 0 ||                     // Representing always has a valid answer: Personal is the default.
+    (step === 0 && representingValid) ||
     (step === 1 && !!visibility) ||
-    (step === 2 && (pricing === "free" || canHostPaid) && ticketOk) ||
+    // `representingValid` is re-checked here, not only on step 0: someone can pass Representing as
+    // themselves while Free, then switch to Paid on this step, and the stale Personal answer would
+    // otherwise sail through to a submission the server refuses (D-350).
+    (step === 2 && (pricing === "free" || canHostPaid) && representingValid && ticketOk) ||
     (step === 3 && !!categoryId) ||
     // Type is required only when the category HAS types — the step itself says "This category has no
     // subcategories. Continue to details." for the empty case, and the server takes TypeId as optional.
     (step === 4 && (subs.length === 0 || !!typeId)) ||
     (step === 5 && detailsValid) ||
     (step === 8 && windowPairsOrdered) ||
-    step === 6 || step === 7 || step === 9;
+    step === 6 || step === 7 || step === 9 ||
+    // Legal (10) had NO clause because it used to be the terminal step, where Continue is never
+    // rendered. D-351's Authorization step made it non-terminal and its Continue was disabled forever.
+    // All-optional except the consent text, which `consentOk` gates at submit — the same rule the last
+    // step already applies.
+    (step === 10 && consentOk);
 
   /*
    * Why the button is disabled, in words.
@@ -237,12 +312,22 @@ export function CreateEventWizard({
    */
   const blockedReason = (() => {
     if (canNext) return null;
+    if (step === 0) {
+      return selectableReps.length > 0
+        ? "Choose the organization you are hosting this event on behalf of."
+        : "A public event has to represent an organization Kurx has verified. Request representation to continue.";
+    }
     if (step === 2) {
-      if (!(pricing === "free" || canHostPaid)) return "Paid events need a verified organization. Choose Free, or verify first.";
+      if (!(pricing === "free" || canHostPaid)) return "Paid events need identity, PAN and a verified bank account. Choose Free, or verify first.";
+      if (!representingValid) return "Go back to Representing and choose a verified organization — a paid event can't be hosted under your own name.";
       if (ticket.name.trim().length === 0) return "Name the ticket people will book.";
       if (!(Number(ticket.quantity) > 0)) return "Set how many tickets are available (at least 1).";
       return "Set a price above zero, or choose Free.";
     }
+    // D-351 made Legal non-terminal, so it needs its own named reason like every other step (D-327):
+    // falling through to the generic "Make a choice to continue." on a step whose only rule is the
+    // consent text is exactly the shrug that rule was written to remove.
+    if (step === 10) return "Write the statement registrants must accept, or turn consent off.";
     if (step === 3) return "Choose a category to continue.";
     if (step === 4) return "Choose a type to continue.";
     if (step === 5) {
@@ -277,12 +362,27 @@ export function CreateEventWizard({
     if (legal.requiresConsent && legal.consentText.trim().length === 0) {
       missing.push("Write the statement registrants must accept (Legal step).");
     }
+    /*
+     * D-351 — named per field rather than as one "authorization incomplete", because the server's own
+     * refusals are `authorization_fields_required`, `letterhead_required`, `official_phone_invalid` and
+     * `representative_role_other_required`. Mirroring them here means the wizard refuses for the same
+     * reasons the API would, while the field is still on screen.
+     */
+    if (needsAuthorization) {
+      if (!authorization.headName.trim()) missing.push("Name the signatory who authorises this event (Authorization step).");
+      if (!authorization.headDesignation.trim()) missing.push("Give the signatory's designation (Authorization step).");
+      if (!authorization.officialEmail.trim()) missing.push("Give the organization's official email (Authorization step).");
+      if (!authorization.officialPhone.trim()) missing.push("Give the organization's official phone (Authorization step).");
+      if (!authorization.representativeRole) missing.push("Choose your role in the organization (Authorization step).");
+      if (authorization.representativeRole === "Other" && !authorization.representativeRoleOther.trim()) {
+        missing.push("Describe your role, since you chose Other (Authorization step).");
+      }
+      if (!letterFile) missing.push("Attach the authorization letter (Authorization step).");
+    }
     return missing;
   }
 
-  const canSubmit =
-    details.title.trim().length >= 2 && !!details.startsAt && !!details.endsAt && !!categoryId
-    && consentOk && ticketOk;
+  const canSubmit = missingForSubmit().length === 0 && consentOk && ticketOk;
 
   function submit() {
     setError(null);
@@ -358,9 +458,49 @@ export function CreateEventWizard({
         quantity: Number(ticket.quantity) || 100
       });
       if ("id" in res) {
+        /*
+         * D-351 — file the institution's authorization now, in the same action, so the organiser never
+         * leaves the wizard to satisfy a publish blocker they were already told about.
+         *
+         * It runs AFTER creation by necessity: both presign and submit are keyed on an eventId that
+         * only this POST produces. That ordering means the event can exist while the authorization
+         * fails, so the failure is carried to the workspace rather than swallowed — the event is real
+         * and the organiser has to know its consent is still missing.
+         */
+        const createdId = res.id;
+        let authError: string | null = null;
+        if (needsAuthorization && createdId) {
+          try {
+            let letterheadDocumentKey: string | undefined;
+            if (letterFile) {
+              const presigned = await uploadAuthorizationDocumentAction(
+                createdId, letterFile.type || "application/octet-stream", letterFile.size);
+              if ("error" in presigned) throw new Error(presigned.error);
+              const put = await fetch(presigned.url, {
+                method: "PUT", body: letterFile, headers: presigned.headers
+              });
+              if (!put.ok) throw new Error("The authorization letter could not be uploaded.");
+              letterheadDocumentKey = presigned.key;
+            }
+            const filed = await submitAuthorizationAction(createdId, {
+              ...authorization,
+              representativeRoleOther: authorization.representativeRoleOther || undefined,
+              letterheadDocumentKey
+            });
+            if ("error" in filed) authError = filed.error ?? "The authorization could not be filed.";
+          } catch (err) {
+            authError = err instanceof Error ? err.message : "The authorization could not be filed.";
+          }
+        }
         // The event exists either way; a ticket failure is surfaced on the workspace it lands on
         // rather than swallowed, because "created but unbookable" is the state this change exists
         // to prevent going unnoticed.
+        if (authError) {
+          setError(`Event created, but its authorization was not filed: ${authError} `
+            + "Open the event's Readiness tab to file it.");
+          router.push(`/host/events/${res.id}/readiness`);
+          return;
+        }
         router.push(`/host/events/${res.id}${res.ticketError ? "/tickets" : ""}`);
       } else {
         setError(res.error);
@@ -384,53 +524,109 @@ export function CreateEventWizard({
         own content is not announced by most screen readers.
       */}
       <p role="status" className="sr-only">
-        {`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}.`}
+        {`Step ${step + 1} of ${steps.length}: ${steps[step]}.`}
       </p>
 
-      {/* Step 1 — Representing. Who the event is for, chosen here rather than before the form opens. */}
+      {/*
+        Step 1 — Representing (D-353).
+
+        A PUBLIC event must name a verified organization answerable for it; there is no self-hosting
+        card, because a public event carries the platform's name into discovery whether or not money
+        moves. A PRIVATE event reaches no discovery surface and can never sell, so it is hosted by the
+        person and the organization question is not asked at all — and crucially it is NOT presented as
+        an "organization" of any kind, because self-representation is not a concept in this model.
+      */}
       {step === 0 ? (
         <div className="space-y-3">
-          <SelectCardGroup
-            legend="Who are you hosting this event as?"
-            name="representing"
-            className="grid gap-3 sm:grid-cols-2"
-          >
-            {/*
-              The host's own name as the title, not the word "Personal". Nothing named "personal"
-              exists in the domain — D-268 deleted the personal-organization concept, and this branch
-              attaches no organization at all — so labelling it "Personal" invited people to read it as
-              an account type they had to have. Showing who they actually host as says the same thing
-              without inventing a noun.
-            */}
-            <SelectCard
-              name="representing"
-              value="personal"
-              checked={representingOrgId === null}
-              onSelect={() => setRepresentingOrgId(null)}
-              icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
-              title={hostName}
-              description="Hosted under your own name. No organization or proof needed."
-            />
-            {representations.map((r) => (
-              <SelectCard
-                key={r.organization_id}
+          {product === "Private" ? (
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-sm text-text">Hosted by you</p>
+              <p className="mt-1 text-xs text-muted">
+                A private event is invitation-only, never appears in search or on Home, and can&apos;t
+                sell tickets — so there&apos;s no organization to name and nothing to verify.
+              </p>
+            </div>
+          ) : selectableReps.length > 0 ? (
+            <>
+              <p className="text-sm text-muted">
+                Select the organization you are authorized to represent for this event.
+              </p>
+              <SelectCardGroup
+                legend="Who are you hosting this event on behalf of?"
                 name="representing"
-                value={r.organization_id}
-                checked={representingOrgId === r.organization_id}
-                onSelect={() => setRepresentingOrgId(r.organization_id)}
-                icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
-                title={r.name}
-                description={`Representing · your authority: ${r.authority}`}
-              />
-            ))}
-          </SelectCardGroup>
-          <p className="text-xs text-muted">
-            Representing an organization you don&apos;t see here?{" "}
-            <a href="/host/representing" className="text-accent-text hover:underline">
-              Request representation
-            </a>{" "}
-            — you can create this event personally in the meantime.
-          </p>
+                className="grid gap-3 sm:grid-cols-2"
+              >
+                {selectableReps.map((r) => (
+                  <SelectCard
+                    key={r.organization_id}
+                    name="representing"
+                    value={r.organization_id}
+                    checked={representingOrgId === r.organization_id}
+                    onSelect={() => setRepresentingOrgId(r.organization_id)}
+                    icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
+                    title={r.name}
+                    description={`Representing · your authority: ${r.authority}`}
+                  />
+                ))}
+              </SelectCardGroup>
+            </>
+          ) : !requiresRepresentation ? (
+            <div className="rounded-lg border border-dashed border-border bg-surface p-4">
+              <p className="text-sm text-text">Hosted by you</p>
+              <p className="mt-1 text-xs text-muted">
+                This environment has the verification checks switched off, so a public event can be
+                created without an organization. In production this step requires a verified one.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border bg-surface p-4">
+              <p className="text-sm text-text">
+                You don&apos;t currently have an approved organization representation.
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                A public event has to be hosted on behalf of an organization that Kurx has verified.
+                Request representation and submit the organization&apos;s official authorization —
+                an admin reviews it before it can be used.
+              </p>
+            </div>
+          )}
+
+          {/*
+            Pending and rejected requests are SHOWN but never selectable (§7, §11-C/D): a staged
+            representation is not an approved one, and hiding it entirely would leave someone
+            re-requesting something already in the queue.
+          */}
+          {product === "Public" && representations.length > selectableReps.length ? (
+            <ul className="space-y-2">
+              {representations
+                .filter((r) => !(r.can_back_paid_event ?? r.is_verified))
+                .map((r) => (
+                  <li key={r.organization_id}
+                    className="rounded-lg border border-border bg-surface px-4 py-3 text-xs text-muted">
+                    <span className="text-text">{r.name}</span> — awaiting verification. It can&apos;t
+                    host a public event until an admin approves it.
+                  </li>
+                ))}
+            </ul>
+          ) : null}
+
+          {product === "Public" ? (
+            <p className="text-xs text-muted">
+              Representing an organization you don&apos;t see here?{" "}
+              {/*
+                The dedicated request workflow (D-074/D-075), not a generic membership form: it stages a
+                HIDDEN PendingReview organization plus evidence, which an admin verifies before it joins
+                the registry or becomes selectable here. `/host/representing` is the list; `/new` is the
+                request — linking to the list left people on a page with nothing to do.
+              */}
+              <a href="/host/representing/new" className="text-accent-text hover:underline">
+                Register the organization
+              </a>{" "}
+              — an admin verifies the institution itself before it can host anything. That is a
+              one-time step per organization. This event&apos;s own authorization letter is asked for
+              later in this form, and is needed for every event.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -942,13 +1138,111 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Nav */}
+      {/*
+        D-351 — the institution's written consent, asked in-flow.
+
+        Only rendered for a Public event that represents an institution, which is exactly the shape
+        `PolicyResolver` raises `event_authorization_required` for. A self-represented event has no
+        institution to authorise it and never sees this step.
+      */}
+      {needsAuthorization && step === authStep ? (
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-muted">
+              {representations.find((r) => r.organization_id === representingOrgId)?.name ?? "This organization"}
+              {" "}has to confirm it authorises this event. Filed once, with the event — a reviewer reads
+              it as part of the event&apos;s review, and the event can&apos;t publish until it&apos;s approved.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium text-text" htmlFor="auth-head-name">Signatory&apos;s name</label>
+              <input id="auth-head-name" className={inputClass} value={authorization.headName} maxLength={160}
+                onChange={(e) => setAuthorization({ ...authorization, headName: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text" htmlFor="auth-head-designation">Their designation</label>
+              <input id="auth-head-designation" className={inputClass} value={authorization.headDesignation} maxLength={160}
+                onChange={(e) => setAuthorization({ ...authorization, headDesignation: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text" htmlFor="auth-email">Official email</label>
+              <input id="auth-email" type="email" className={inputClass} value={authorization.officialEmail}
+                onChange={(e) => setAuthorization({ ...authorization, officialEmail: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text" htmlFor="auth-phone">Official phone</label>
+              <input id="auth-phone" className={inputClass} value={authorization.officialPhone}
+                placeholder="+919876543210"
+                onChange={(e) => setAuthorization({ ...authorization, officialPhone: e.target.value })} />
+              <p className="mt-1 text-xs text-muted">International format, e.g. +919876543210.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-text" htmlFor="auth-role">Your role in this organization</label>
+            {/* The server's vocabulary, never a copy — a list that drifts offers a role the API refuses. */}
+            <select id="auth-role" className={inputClass} value={authorization.representativeRole}
+              onChange={(e) => setAuthorization({ ...authorization, representativeRole: e.target.value })}>
+              <option value="">Select a role…</option>
+              {representativeRoles.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          {authorization.representativeRole === "Other" ? (
+            <div>
+              <label className="text-sm font-medium text-text" htmlFor="auth-role-other">Describe your role</label>
+              <input id="auth-role-other" className={inputClass} value={authorization.representativeRoleOther} maxLength={80}
+                onChange={(e) => setAuthorization({ ...authorization, representativeRoleOther: e.target.value })} />
+            </div>
+          ) : null}
+
+          <div>
+            <label className="text-sm font-medium text-text" htmlFor="auth-letter">Authorization letter</label>
+            {/* Held in the browser until the event exists — presign is keyed on an eventId this wizard
+                does not have yet. Nothing is uploaded if the wizard is abandoned. */}
+            <input id="auth-letter" type="file" className={inputClass}
+              accept="application/pdf,image/png,image/jpeg"
+              onChange={(e) => setLetterFile(e.target.files?.[0] ?? null)} />
+            {/*
+              The letter is per-EVENT, not per-organization: `event_authorizations` is UNIQUE on EventId,
+              so representing the same organization again next month needs a new letter naming that event.
+              Spelling out what it must contain — and echoing the title and dates just typed — is what
+              stops a reviewer rejecting a generic "X may run events for us" letter days later.
+            */}
+            <div className="mt-2 rounded-lg border border-border bg-surface p-3">
+              <p className="text-xs text-text">The letter must be specific to this event and state:</p>
+              <ul className="mt-1 list-inside list-disc text-xs text-muted">
+                <li>the event by name — <span className="text-text">{details.title || "your event title"}</span></li>
+                <li>
+                  its dates —{" "}
+                  <span className="text-text">
+                    {details.startsAt
+                      ? `${details.startsAt.replace("T", " ")}${details.endsAt ? ` to ${details.endsAt.replace("T", " ")}` : ""}`
+                      : "set on the Details step"}
+                  </span>
+                </li>
+                <li>that you are authorized to organize it on the organization&apos;s behalf</li>
+                <li>the signatory&apos;s name, designation and signature</li>
+              </ul>
+              <p className="mt-2 text-xs text-muted">
+                On the organization&apos;s official letterhead. PDF or image, up to 10 MB. A reviewer reads
+                it as part of this event&apos;s review — a generic authorization letter that doesn&apos;t
+                name the event is usually rejected.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="border-t border-border pt-4">
         {/* The reason sits beside the control, not inside it — a disabled button cannot carry its
             own explanation, and some screen-reader navigation skips disabled controls outright. */}
-        {step < STEPS.length - 1 && blockedReason ? (
+        {step < steps.length - 1 && blockedReason ? (
           <p role="status" className="mb-3 text-sm text-muted">{blockedReason}</p>
         ) : null}
-        {step === STEPS.length - 1 && submitBlockedReason ? (
+        {step === steps.length - 1 && submitBlockedReason ? (
           <div role="status" className="mb-3 rounded-md border border-border bg-surface p-3 text-sm text-muted">
             <p className="font-medium text-text">Still needed before this can be created:</p>
             <ul className="mt-1 list-inside list-disc">
@@ -959,7 +1253,7 @@ export function CreateEventWizard({
         {error ? <p role="alert" className="mb-3 text-sm text-danger">{error}</p> : null}
         <div className="flex items-center justify-between">
           <Button variant="ghost" disabled={step === 0 || isPending} onClick={() => setStep((s) => s - 1)}>Back</Button>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button disabled={!canNext} onClick={() => setStep((s) => s + 1)}>Continue</Button>
           ) : (
             <Button disabled={!canSubmit || isPending} onClick={submit}>

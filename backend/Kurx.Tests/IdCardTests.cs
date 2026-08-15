@@ -67,9 +67,10 @@ public class IdCardTests : IClassFixture<KurxApiFactory>
 
         // The creator's verification is satisfied the way production satisfies it, not by a flag: the
         // suite runs with IDENTITY_VERIFICATION_BYPASS unset (D-323), so CanCreatePublicEvent is only
-        // true when the identity row actually carries the approved proofs TrustService reads —
-        // govt-ID/PAN for identityVerified, PAN for panVerified, and bank + a passed penny drop with a
-        // non-mismatched name for bankVerified.
+        // true when the identity row actually carries the proofs TrustService reads. Since D-343 that
+        // gate is the IDENTITY tier alone — govt-ID or PAN approved — so this fixture now proves more
+        // than issuance strictly needs. Deliberately left whole: it is the realistic shape of a verified
+        // organiser, and narrowing it would couple these tests to the exact tier boundary.
         if (creatorVerified) db.UserIdentities.Add(VerifiedIdentity(creator.Id));
 
         await db.SaveChangesAsync();

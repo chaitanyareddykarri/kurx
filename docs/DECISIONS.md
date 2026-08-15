@@ -13225,3 +13225,477 @@ compose's `backend` service, `scripts/push-ecr.sh` and `.github/workflows/cd.yml
 `docker-compose.yml` and `.claude/memory/deployment.md` that cited it as corroborating evidence for
 D-318's single 5080 port. Historical entries above that mention the file are left as written — they
 record what was true when decided.
+
+---
+
+## D-340 · Cloning an event kept 47 of its 110 columns and silently defaulted the rest (2026-08-14)
+
+**Context.** `EventService.CloneAsync` built the copy from a hand-written property list — `new Event { … }`
+naming 47 columns. `Event` has 110. Seven are runtime identity that must not travel. The remaining **56
+were never mentioned**, so they landed on their C# defaults in the copy. This was not a decision to blank
+them; it was a list nobody extended. Every column D-265 added (presentation, legal, location detail,
+lifecycle windows, eligibility, commerce) and every column D-266 added (`RegistrationPolicy`, the four
+taxonomy attributes) updated the entity and `ApplyUpdateAsync` and left `CloneAsync` alone.
+
+**Measured, not inferred.** Against the running dev API: an event created through `POST /v1/events` with all
+six D-265 input groups populated, then cloned through `POST /v1/orgs/{org}/events/{id}/clone`. Diffing the
+two rows in Postgres: **36 columns differed, 6 legitimately** (`Id`, `Slug`, `ShortCode`, `Title`,
+`CreatedAt`, `UpdatedAt`) — **30 were silent configuration loss.** The three that were dangerous rather
+than untidy:
+
+| Column | Source | Clone |
+|---|---|---|
+| `RequiresConsent` | `true` | **`false`** — the copy stops collecting consent; `registration_consents` gets no rows |
+| `GenderRestriction` | `Female` | **`Any`** — with `MinAge`/`MaxAge` null, an 18+ event's copy admits minors |
+| `TaxInclusive` | `false` | **`true`** — same rupee prices, opposite tax treatment |
+
+The damage was worse than blankness because the clone kept each dropped field's partner: ticket types copied
+verbatim while `RegistrationPolicy` reset to `Open`; every `PricePaise` copied while `TaxPercent` and
+`PlatformFeePercent` vanished; `TicketType.SaleStarts/SaleEnds` copied while the event-level window that is
+meant to bound them was dropped; `BannerKey` copied while `LogoKey`/`ThumbnailKey`/`PromoVideoKey` were not;
+`EventMode` and `OnlineUrl` copied while `MeetingPlatform` and `MeetingPassword` were not.
+
+**Decision.** Invert the default. The clone is now a `ShallowCopy()` of the source and the exceptions are
+named explicitly — 27 of them, in four groups: fresh identity (9), runtime state (5), admin moderation
+(4, D-186), review outcomes (6, D-266 M4/M7) and lineage (3, V3 §3.4 rule 5). Everything else travels.
+
+A new column is therefore inherited unless someone deliberately excludes it. That is the right failure
+mode: a column that should not have been inherited produces a visible wrong value someone reports, while a
+column that should have been produces silent config loss nobody notices for months — which is exactly what
+happened here.
+
+`CreatedFromTemplateVersion` now travels with `TemplateId`, which was already copied. A clone that claimed a
+template with no version snapshot defeated the purpose of the column (V3 §13.1).
+
+**Not changed.** No schema change, no migration, no contract change — the DTO is identical and
+`openapi.json` is unaffected; only the values are now correct. `TemplateService.CloneAsync` is a different
+method and was not touched. Web, admin and Flutter need no change: they already render these fields.
+
+**Verification.** `EventCloneTests` (3 tests, all green in the SDK container). The load-bearing one
+enumerates `Event`'s properties by **reflection** rather than listing them, probes every inheritable column
+with a non-default value straight through the DbContext (so columns with no API write path are covered),
+clones over real HTTP, and compares property by property — collecting every mismatch so a regression names
+all of them at once. Confirmed red-on-purpose: reintroducing three drops made it fail with
+`RefundPolicy: source=probe-RefundPolicy clone=null`, `MinAge: source=7 clone=null`,
+`TaxInclusive: source=False clone=True`. The reset list is asserted from the same reflection sweep, so
+adding a reset in `CloneAsync` without recording it here fails the build.
+
+---
+
+## D-341 · Coupons are a complete surface with no consumer, and stay that way for now (2026-08-14)
+
+**Context.** D-265 shipped per-event discount codes: `Coupon` and `CouponRedemption` entities, the
+`coupons`/`coupon_redemptions` tables, `ICouponService` with create/list/update/delete plus `/quote`, five
+routes under `/v1/events/{eventId}/coupons`, and `CouponTests`. `RedeemedCount` is documented on the entity
+as a shared counter mutated in SQL only (D-240/D-261).
+
+Nothing consumes any of it. `ICouponService` has exactly one non-test caller: its own endpoint file.
+`OrderService` never reads a coupon code — `CreateOrderInput` has no field for one — never writes a
+`CouponRedemption`, and never increments `RedeemedCount`. `grep -ri coupon` across `web/`, `admin/`,
+`mobile/` and `packages/ui/` returns nothing: no client has a coupon input anywhere. A quote can be
+produced; a discount can never be applied.
+
+**Decision.** Leave it. Record it here so it stops reading as a defect in every future audit — it is an
+unfinished D-265 surface, not a bug.
+
+Wiring it is a feature, not a fix: a new field on order creation (contract change → `openapi.json` regen →
+the CI contract gate), discount arithmetic inside the order total that propagates to the ledger, wallet,
+refunds and the gateway amount, a conditional-UPDATE increment for `RedeemedCount` (D-240/D-261), a
+`MaxPerUser` check that races, checkout UI on web and Flutter, and a mandatory security review under §7 of
+the operating manual because it moves money.
+
+**Finish condition.** Either that work lands under its own `D-NNN`, or the surface is deleted with a
+migration dropping both tables. Shipping a CRUD surface with no consumer is what made this ambiguous;
+whichever way it resolves, it resolves deliberately.
+
+---
+
+## D-342 · Nine phone lookups still read the legacy column, and that is deliberate for now (2026-08-14)
+
+**Context.** D-089 is replacing `users."Phone"` (bare digits, carrying `AuthService.NormalizePhone`'s
+"10 digits ⇒ India" assumption) with `users."PhoneE164"`. The migration is staged: `Phone` is non-nullable
+and still written on every path, `PhoneE164` is backfilled by `PhoneE164BackfillJob`.
+
+`AuthIdentifiers.cs:39` resolves a user by `PhoneE164 == e164 || Phone == digits`. Nine other sites match
+the legacy column alone — `EventAssignmentService`, `ParticipantService`, `InvitationService`,
+`OrgInvitationService` (three call sites), `OrgService`, `SuperAdminBootstrap`, and `AuthService`'s own
+uniqueness check.
+
+**Decision.** Leave them. There is no live symptom: `Phone` is non-null and dual-written, so every one of
+those lookups resolves correctly today.
+
+Widening them now costs more than it buys. It changes *who matches* on the authentication and invitation
+paths — an invite acceptance could resolve to a different user than it does today — and an `OR` across two
+independently indexed columns loses the index, which is the exact shape D-231 had to rewrite as a `UNION`
+after it took a query from 37.7 ms to 75× worse. Paying that on an auth path to fix debt with no symptom is
+the wrong trade.
+
+**Finish condition.** When `PhoneE164` is fully backfilled and `Phone` becomes droppable, the nine sites and
+`AuthIdentifiers` move together to a single lookup helper — one choke point, so the column can be dropped in
+one edit rather than ten. Until then this entry is the record that they are known, not overlooked.
+
+---
+
+## D-343 · Verification splits into two tiers: identity gates Public, the financial chain gates Paid (2026-08-14)
+
+**Status: ACCEPTED. Refines [D-307](#), does not reverse it.**
+
+**The question.** Why does creating a **free** public event demand a penny-dropped bank account?
+
+**What was there.** `TrustService` folded all three proofs into one predicate and handed it to both gates:
+
+```csharp
+var proofsSatisfied      = bypass || (identityVerified && panVerified && bankVerified);
+var canOrganizePaid      = proofsSatisfied && fraudClear;
+var canCreatePublicEvent = proofsSatisfied && fraudClear;   // byte-identical
+```
+
+D-307 wrote the second line deliberately and noted the two predicates were "identical today, and that is a
+coincidence of current requirements, not an identity". The coincidence was the bug. A free public event had
+to prove ownership of a bank account that would never receive a rupee — four submissions to establish a fact
+the event cannot use, and a hard block for anyone who has a passport but no bank record on file.
+
+**The split.** Each proof answers a different question, so each gates the thing that asks it:
+
+| Tier | Proof | Answers | Gates |
+|---|---|---|---|
+| **Identity** | govt ID **or** PAN approved | *who is behind this event* | `CanCreatePublicEvent` |
+| **Financial** | PAN + bank approved + penny drop passed + holder name not mismatched | *whose account receives the money* | `CanOrganizePaid`, `CanReceivePayout` |
+
+Which yields four cases, three of them reachable:
+
+| Product | Money | Requires |
+|---|---|---|
+| Private | Free | nothing |
+| Public | Free | identity tier only |
+| Public | Paid | identity + financial |
+| Private | Paid | impossible — a Private event can never sell |
+
+**D-307's reasoning is kept, not discarded.** "A free public event still carries the platform's name and
+reaches every user through discovery, and the harm a bad actor can do with one is not bounded by whether
+money moved" is exactly why the **identity** tier still gates Public. What D-307 over-applied was the
+**financial** half: nothing settles on a free event, so there is no account to own and no ownership to prove.
+Bounding *identity* by payment was the wrong axis; bounding *bank ownership* by payment is the only axis
+there is.
+
+**PAN is deliberately absent from the public bar.** PAN is a tax identity and Indian tax reporting is keyed
+on it — which is why it stays mandatory for taking money. A free event reports no income, so requiring PAN
+there asks for a tax document for a non-taxable act, and locks out every passport or Aadhaar holder who has
+no PAN. `identityVerified` is already `GovtId Approved || PAN Approved`, so either satisfies it.
+
+**The two fields stay separate.** D-307 kept `CanCreatePublicEvent` and `CanOrganizePaid` as distinct fields
+"so a future change to either is forced to be deliberate". This is that change, and the separation is what
+made it a five-line edit instead of an archaeology exercise. They are now genuinely different predicates.
+
+**One consequence, considered rather than inherited.** `IdCardService` gates issuance on
+`CanCreatePublicEvent` — "a card asserts something about its holder, so the person asserting it has to be
+someone the platform has actually checked". That concern is the identity tier exactly; the bank account was
+never related to it. The relaxation is correct there too, and the comment still reads true.
+
+**D-323 is unchanged.** `IDENTITY_VERIFICATION_BYPASS` now relaxes both tiers rather than one lump.
+`fraudClear` stays outside it and is still ANDed into all three capabilities, and the reported
+`identity_verified` / `bank_verified` facts are still never forged.
+
+**The gate UI stops lying while it is here.** The first gate screen ("Before you start") listed *Create a
+free event* and *Sell tickets* as bordered cards with circled check icons — the same chrome the real
+selectors use one screen later — but they were inert `<li>`/`_CheckRow` elements. The accessibility tree of
+that whole card exposed exactly one control, the Continue button; only the visual design misled. People
+clicked them expecting to choose free or paid. That screen is deleted. The gate is now two screens, both of
+them real questions, and the pair selects the tier:
+
+```
+① Who is this event for?      Public | Private
+② Are you charging?           Free | Paid   (Paid inert for Private)
+   → the requirements for THAT pair, and only those
+```
+
+The answer is carried into the wizard as `initialPricing` rather than asked twice. It stays changeable on
+the Pricing step, which is safe: that step's Paid card is gated on `canOrganizePaid`, so entering as Free and
+switching to Paid cannot escape the financial tier.
+
+**No taxonomy change.** Public/Private keeps filtering the Type catalogue through `ProductClass` exactly as
+before (D-266 M1, D-326); Free/Paid selects a verification tier and nothing else. `EventProduct` is still
+derived from the chosen Type and is still not a user-editable field.
+
+**Verified.** Backend `TrustTests` 10/10 and the dependent `IdCardTests` / `IdentityVerificationTests` /
+`IdentityVerificationBypassTests` 42/42, both against real Postgres. `TrustTests` now pins both directions:
+identity-without-bank creates a public event but cannot take money or receive a payout and stays at `L1`, and
+a government ID with no PAN at all clears the public bar. Web 528 passed / 1 skipped, Flutter 426 passed,
+`flutter analyze` clean, web `tsc` clean.
+
+**One test inverted, and that is the decision rather than a weakened assertion.**
+`Identity_without_bank_still_cannot_create_a_public_event` asserted the exact behaviour this entry removes;
+it is now `Identity_without_bank_can_create_a_public_event_but_cannot_take_money` and asserts more than it
+did — the money capabilities and the trust level as well as the publishing one.
+
+---
+
+## D-344 · A leak that cannot fire yet, and nine seeders outside the migration lock (2026-08-15)
+
+Two startup/auth defects found by an external read of `Program.cs`, both fixed. Recorded together because
+the interesting part of each was **the severity, not the fix** — one was reported as urgent and is dormant,
+the other was reported as a missing comment and is a boot crash.
+
+### 1. The ES256 resolver abandoned an `ECDsa` per request — but nothing reaches it
+
+`Program.cs`'s `IssuerSigningKeyResolver` called `ECDsa.Create()` inline and never disposed it.
+`ECDsaSecurityKey` does not take ownership of the `ECDsa` it wraps, and nothing else disposed it either, so
+every request taking that branch abandoned a native crypto handle to the finalizer queue and re-ran a
+base64 decode plus an SPKI import that produce the same answer every time.
+
+That it was a defect is not in doubt: **it was the only un-disposed `ECDsa.Create()` in the repository.**
+`JwksEndpoints:42`, `DeviceSignatures:28`, `SigningKeyService:184` and `TokenService:87` all use `using` —
+and `TokenService` wraps its instance in an `ECDsaSecurityKey` and *still* disposes it, which is the
+clearest possible statement that the wrapper does not own it.
+
+**The reported severity was wrong, and checking is what showed it.** The report said this runs "on every
+authenticated request". It runs on every request carrying a `kid` — and **no request carries one**. All six
+issuance sites (`AuthService:365`, `LoginApprovalService:394`/`:539`, `PasskeyService:258`,
+`PasswordResetService:97`, `RecoveryCodeService:112`) call the synchronous HS256 `CreateAccessToken`;
+`CreateAccessTokenAsync` has zero callers. Verified against the running API rather than by reading: the JWT
+header of a live token from `/v1/auth/otp/verify` is `{"alg":"HS256","typ":"JWT"}`, no `kid`. This is
+D-099's documented "built but OFF" state (`AUTHENTICATION_ARCHITECTURE.md` §4.8), not drift.
+
+Fixed anyway, and that is the decision worth recording: a dormant defect on the hottest path in the
+application, which goes live as part of a cut-over whose reviewers will be reading *issuance* code, is
+cheaper to fix now than to rediscover under load later.
+
+`ValidationKeyCache` parses each key once. **It is a parse cache and never an authority**: the
+`published.FirstOrDefault(k => k.KeyId == kid)` lookup still runs first, so a retired or compromised key
+never reaches the cache and cannot be resurrected by it. The cache key includes the SPKI, so re-publishing
+different material under an existing `kid` re-parses. `GetOrAdd` wraps a `Lazy` with
+`ExecutionAndPublication` — a bare factory can run on several threads and discard the losers, which would
+abandon exactly the handle this class exists to stop abandoning.
+
+**Coverage gap this exposed:** `A_compromised_key_is_dropped_immediately_with_no_grace_period` asserts at
+the *service* layer and never makes a request, so it would pass even if the resolver served a stale cached
+key. `An_es256_token_stops_being_accepted_once_its_signing_key_is_compromised` closes that over HTTP. It
+mints its token through `CreateAccessTokenAsync` directly, because no login path will produce an ES256
+token — so this is currently the only coverage the `kid` branch has, and it keeps working unchanged when
+the cut-over lands.
+
+### 2. Nine seeders ran outside any lock on every replica
+
+The startup block applies migrations and then runs nine reference-data seeders. EF Core 9 takes its own
+lock for `MigrateAsync`, but that lock ends with the migration; the seeders sit outside it and every
+replica of a rolling deploy runs them simultaneously.
+
+They are read-then-insert. `KindRegistrySeeder` SELECTs existing slugs into a `HashSet`, diffs the catalog,
+inserts the difference. Two replicas booting together both observe the same slug missing, both insert, and
+the unique index on `event_kinds."Slug"` turns the loser into a `23505` **inside the startup try block** —
+so that replica refuses to start. Narrow (it needs a cold database, or a deploy that adds catalog rows) but
+a bad failure mode: a boot crash in the middle of a deploy.
+
+**Decision: serialize the block, do not make nine seeders individually conflict-tolerant.** The hazard is
+"N replicas run this block concurrently", not any one seeder — so a `pg_advisory_xact_lock` around the
+whole block also covers seeders added later, which `ON CONFLICT DO NOTHING` in nine files would not. The
+second replica then finds everything present and its already-populated checks correctly do nothing. Same
+idiom as `SeatBlockService` and `OrderService`.
+
+**Verified rather than assumed: advisory locks are per-database.** Probed against the real Postgres — a
+lock held on the same key in database A was acquirable in database B (`t`) and refused in A (`f`). That is
+what makes this safe for the suite: every test class runs on its own `kurx_test_<guid>`, so the ~176
+`WebApplicationFactory` boots never contend, while production replicas all share `kurx` and serialize.
+
+The transaction also makes seeding atomic. Previously a failure left rows from the seeders that had already
+run; now it rolls back. The startup `catch` refuses to serve traffic either way, so the change is strictly
+an improvement: the next replica seeds from a clean state rather than inheriting a half-seeded one.
+
+**Accepted trade-off:** `pg_advisory_xact_lock` blocks rather than failing. A replica wedged mid-seed makes
+its siblings wait at boot instead of crashing fast. That is the correct semantic — they cannot serve a
+request without this data — but it is a deliberate choice, not an oversight.
+
+### Not fixed, because they were not defects
+
+Two further items from the same report were checked and rejected. **`UseCors()` after
+`UseExceptionHandler()` is correct** — it is Microsoft's documented order, and a minimal app reproducing
+Kurx's exact pipeline returns `Access-Control-Allow-Origin` on a 500: `CorsMiddleware` registers a
+`Response.OnStarting` callback on the way in, and `ExceptionHandlerMiddleware.ClearHttpContext()` clears
+headers but not those callbacks, so they re-apply when the ProblemDetails response starts.
+**`jobs.Trigger("data-backfill")` on boot is deliberate**, guarded by `DisableConcurrentExecution` as its
+own docstring says.
+
+---
+
+## D-345 · A Linux build in a bind-mounted tree writes its intermediates outside the tree (2026-08-15)
+
+**Symptom.** VS Code showed **52 errors in `Program.cs`** — `FluentValidation`, `Hangfire`, `Serilog`,
+`Microsoft.EntityFrameworkCore`, and core framework types like `IServiceCollection` and `IConfiguration`,
+all "type or namespace could not be found", with `<No project>` in the status bar. At the same moment the
+container build reported `0 Warning(s), 0 Error(s)` under `-warnaserror` and 1824 tests passed.
+
+Both cannot be true of the same source, and the direction of the contradiction is the diagnosis: if
+`IServiceCollection` were genuinely missing, nothing in this repository would ever have compiled. The
+errors belonged to the tooling.
+
+**Cause.** The Windows host and the SDK container share this working copy over a bind mount, and NuGet
+writes **absolute paths** into `obj/project.assets.json`. A container restore therefore stamped
+`packageFolders: /root/.nuget/packages/` and `projectPath: /src/backend/…` onto the host. Roslyn read
+those, could not resolve a single package reference, and flagged every namespace in the open file.
+
+**Whoever built last won.** That is what made it recur: a repair at 09:47 was undone by 09:56, and a second
+repair was undone by 10:31 — with several sessions building in one checkout, the window is minutes.
+
+**Rejected: `-p:ArtifactsPath` on every invocation.** It was already the documented recipe and the tree
+still got clobbered, because the thing that clobbers it is a bare `dotnet restore` typed inside the
+container. A fix that depends on every future invocation remembering a flag is not a fix.
+
+**Rejected: `UseArtifactsOutput=true`.** Tried and measured. It relocates intermediates to
+`backend/artifacts/` — which is *still inside the bind mount*, so the container simply wrote Linux paths
+one directory over. Moving the collision is not removing it.
+
+**Decision.** `backend/Directory.Build.props` sets `ArtifactsPath` to `/tmp/kurx-artifacts` when — and only
+when — the build is on Unix, is not GitHub Actions, and has not been given an explicit `ArtifactsPath`.
+The container's intermediates land outside the mount and it can no longer write a file the host reads.
+
+Deliberately narrow, because every widening is a risk taken for no benefit:
+
+| Environment | Layout | Why |
+|---|---|---|
+| Windows host | unchanged per-project `obj/`, `bin/` | it is what the C# language server reads |
+| GitHub Actions | unchanged | its `backend/**/*.trx` upload and Release layout must not move |
+| Local SDK container | `/tmp/kurx-artifacts` | the only case that collides |
+| Explicit `-p:ArtifactsPath` | wins | the condition defers to it, so the documented recipe is unaffected |
+
+`infra/Dockerfile.api` is unaffected: it publishes with an explicit `-o /app`. Nothing in CI, CD or
+`scripts/` names a `bin/Debug`, `bin/Release` or `net10.0/` path — checked before changing this.
+
+**Verified, not assumed.** A **bare** `dotnet restore Kurx.sln` in the container — no `-p`, no `-e`, the
+exact command that caused the recurrence — wrote to `/tmp/kurx-artifacts/obj/` and left the host's
+`project.assets.json` byte-identical, same timestamp, still pointing at
+`C:\Users\…\.nuget\packages\`. The documented `-p:ArtifactsPath=/tmp/artifacts` build then still
+completed `0 Warning(s), 0 Error(s)`, and the IDE reports 0 errors in `Program.cs` (6 style *hints*
+remain, all pre-existing).
+
+**Not a code defect, and nothing shipped changed.** `obj/` and `bin/` are gitignored, no artifact is built
+from them, and CI restores fresh every run. This entry exists because the failure wastes an hour and looks
+exactly like a broken build — and because the first two fixes for it were wrong in an instructive way.
+
+---
+
+## D-350 · A paid event must represent a verified organization, and the client must say so up front (2026-08-15)
+
+**Status: ACCEPTED.** Narrows D-343 on the money axis only; the identity tier is unchanged.
+
+**The question.** Why can a user build an entire paid event that can never sell a ticket?
+
+**What was already true.** Nothing changed server-side. The backend enforced this in *three* places
+already — `EventService.PaidOrganizerGateAsync` on `submit_review`, the same gate on `publish`, and
+`OrderService` at capture (`payments_not_enabled`). A self-represented paid event was impossible before
+this entry and is impossible after it.
+
+**What was broken was *when* the organiser found out.** The gate and the wizard offered Paid to anyone
+whose personal proofs passed, so the refusal arrived at submit-for-review — after eleven steps. That is
+the exact failure D-305 exists to remove, reproduced one screen further along.
+
+**The rule, surfaced.** Paid additionally requires a **verified organization to represent**, because
+settlement is keyed on one (`OrganizationWallet.OrgId`). Asked at the gate, re-checked on the Pricing
+step so a Free-to-Paid switch cannot carry a stale answer, and enforced unchanged on the server.
+
+**A pending organization does not count.** `POST /v1/orgs/representation-requests` stages a real
+`PendingReview` row that legitimately appears in `/v1/me/representations` — a fine choice for a free
+event, never for a paid one. `RepresentableOrg` therefore gained `is_verified`: without it the client
+cannot tell a staged request from an approved registry entry, and offers a choice the server refuses.
+
+**Verified.** `OrgTests` pins that `is_verified` is the ORGANIZATION's registry status while `authority`
+is the caller's standing over it — both read `owner` in the fixture, which is the case that would hide a
+bug if only one were asserted.
+
+---
+
+## D-351 · Institutional authorization is collected inside event creation, not on a page after it (2026-08-15)
+
+**Status: ACCEPTED.** Implements D-266 M5's existing model at a new moment. No new model.
+
+**The question.** Where does the organization's letterhead get filed?
+
+**What already existed, and was not being reused.** `event_authorizations` — one row per event
+(`UNIQUE(EventId)`), carrying `LetterheadDocumentKey`, `SignatureDocumentKey`,
+`SupportingDocumentsJson`, the signatory's name / designation / official email / phone, a
+closed-vocabulary `RepresentativeRole`, and the full review spine
+(`Status` / `ReviewerId` / `ReasonCode` / `Notes`). Endpoints, presigned upload, malware scanning and the
+admin review panel all shipped with it. **Nothing needed inventing; the form was simply in the wrong
+place** — `/host/events/{id}/readiness`, a page reached *after* the draft exists, so the organiser
+finished the wizard and then met a twelfth requirement somewhere else entirely.
+
+**Now a wizard step.** Appended rather than inserted, so every index-keyed rule below it is untouched,
+and rendered only for a Public event that represents an institution — the same predicate
+`PolicyResolver` raises `event_authorization_required` for.
+
+**It files after creation, by necessity.** Both presign and submit are keyed on an `eventId` that only
+the final `POST /v1/events` produces. So the step holds the file in the browser and the submit action
+runs create → presign → PUT → file-authorization as one action. Two consequences, both deliberate:
+abandoning the wizard uploads nothing, and an event can exist while its authorization fails — which is
+reported and routed to Readiness rather than swallowed, because the event is real and its consent is
+genuinely still missing.
+
+**Two latent bugs surfaced by the extra step.** `Legal` had no `canNext` clause and no `blockedReason`
+— it had been terminal, where Continue is never rendered. The moment anything followed it, its Continue
+was disabled forever and the message was a generic shrug. Both fixed.
+
+---
+
+## D-352 · The verification bypass reaches organization verification and institutional consent (2026-08-15)
+
+**Status: ACCEPTED. Dev/test only — Production refuses to start with it set.** Widens D-323; every
+safety property of that entry is preserved.
+
+**The question.** A dev account can clear the identity proofs via the bypass and still stall: it has no
+admin-approved organization to represent and no approved letterhead. Both are answered by a human
+reviewer working a queue, against documents a stubbed rasterizer produced.
+
+**Widened, not duplicated.** The same `IDENTITY_VERIFICATION_BYPASS` flag now also lifts
+`IsOrgVerified` and the `event_authorization_required` / `representation_required` publish blockers.
+Deliberately **one switch**: a separate `ORG_VERIFICATION_BYPASS` would be a second door to remember to
+lock, and one Production guard is easier to keep correct than two.
+
+**Still enforced, and this is the load-bearing half.** `fraudClear` — the blacklist and risk engine are
+real code with no mock behind them. `canRepresentOrg` — it reads the caller's own membership row, which
+no provider mocks, and relaxing it would let anyone represent anyone. Product rules, eligibility and
+financial review are untouched.
+
+**A bypass may open a gate; it must never forge a fact.** `Organization.VerificationStatus` and
+`EventAuthorization.Status` are unchanged, so the admin console, the org profile and the reviewer
+checklist keep reporting exactly what is on file. To keep that true on the wire, `RepresentableOrg`
+carries **both** `is_verified` (the fact, displayed) and `can_back_paid_event` (the capability, gated
+on). They are identical in Production. Deriving the client's gate from the fact is what made a bypassed
+dev account unable to create the paid event the server would have accepted.
+
+---
+
+## D-353 · A public event must represent a real organization; self-hosting is Private-only (2026-08-15)
+
+**Status: ACCEPTED. Narrows D-267/D-268 on the public axis.**
+
+**The rule.** A **Public** event must name an organization Kurx has verified. A **Private** event is
+hosted by the person and asks no organization question at all.
+
+**The axis is public exposure, not money** — the same one D-307 established and D-343 refined. A public
+event carries the platform's name into discovery whether or not a ticket is sold, so a named,
+admin-verified institution has to be answerable for it. A private event reaches no discovery surface and
+can never sell, so there is nobody to be answerable *to*.
+
+**What D-267/D-268 keep.** Users still own events (`Event.CreatedBy`); an organization never does.
+Representation remains an attribute of the event, not a container it lives in. There are still no
+organization accounts, organizer accounts, or personal organizations. What is withdrawn is only
+*"Personal is always available"*, and only for Public.
+
+**"Hosted by you" is not an organization.** The Private branch is presented as the person hosting —
+never as an org, an account type, or a "personal organization", the concept D-268 deleted and this entry
+does not resurrect.
+
+**A pending representation is not an approved one.** Staged `PendingReview` organizations are *shown* in
+the Representing step but never selectable, and never hidden — hiding them leaves someone re-requesting
+what is already sitting in the queue.
+
+**Enforced server-side, because presentation is not a security boundary.** `EventService.CreateAsync`
+refuses with `representation_required` for a Public product carrying no representation, resolving the
+product from the Type's `ProductClass` *before* any row is written — the taxonomy read was hoisted up
+the method for exactly this. `PolicyResolver` carries the publish-time twin, which also closes a
+pre-existing hole: that blocker used to fire only for archetypes declaring `RequiresRepresentation`,
+leaving every other public archetype publishable with no institution behind it.
+
+**Known debt, unchanged by this entry.** `events."OrgId"` is still NOT NULL, so a Private event still
+points at the self-representation row D-268 recorded as debt. Making it nullable is now *provably* safe
+— a Private event never reaches the org-keyed money spine, which was the reason nullability was rejected
+twice — but it is ~140 non-test call sites plus a migration, and belongs in its own entry.

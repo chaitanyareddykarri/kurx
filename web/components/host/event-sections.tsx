@@ -132,7 +132,7 @@ export function SpeakersSection({ orgId, eventId, speakers }: { orgId: string; e
             <li key={s.id} className="rounded-md border border-border p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  {s.user_id && <Avatar name={s.name} src={s.avatar_key ?? undefined} size={28} />}
+                  {s.user_id && <Avatar name={s.name} src={s.avatar_url ?? undefined} size={28} />}
                   <div>
                     <div className="flex items-center gap-1.5">
                       {s.user_id && s.username ? (

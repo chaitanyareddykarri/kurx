@@ -52,6 +52,8 @@ public static class EventReviewEndpoints
         id = r.Id, event_id = r.EventId, rating = r.Rating, title = r.Title, body = r.Body,
         is_anonymous = r.IsAnonymous, is_verified = r.IsVerified, author_name = r.AuthorName, created_at = r.CreatedAt,
         author_username = r.AuthorUsername, author_avatar_key = r.AuthorAvatarKey,
+        // D-302 — the key names the object, this fetches it. A bare key renders no face.
+        author_avatar_url = r.AuthorAvatarUrl,
     };
 
     private static Guid UserId(ClaimsPrincipal principal)

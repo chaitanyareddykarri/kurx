@@ -95,7 +95,9 @@ public static class InvitationEndpoints
         app.MapGet("/v1/users/search",
             async (string? q, int? page, int? pageSize, IPublicProfileService svc, CancellationToken ct) =>
                 Results.Ok((await svc.SearchUsersAsync(q ?? "", page ?? 1, Math.Clamp(pageSize ?? 20, 1, 50), ct))
-                    .Select(r => new { id = r.Id, name = r.Name, username = r.Username, avatar_key = r.AvatarKey })))
+                    .Select(r => new { id = r.Id, name = r.Name, username = r.Username, avatar_key = r.AvatarKey,
+                        // D-302 — a search result with only a key shows no face.
+                        avatar_url = r.AvatarUrl })))
             .WithTags("invitations").RequireAuthorization();
 
         // ── D-266 M6 (D9 Method B) · invite links ──────────────────────────────

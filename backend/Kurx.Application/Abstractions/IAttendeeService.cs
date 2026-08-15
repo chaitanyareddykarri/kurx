@@ -7,7 +7,9 @@ public record AttendeeRow(Guid TicketId, Guid Code, string State, DateTime? Chec
     // account (guest checkout) or the account's profile isn't public. Buyer name/phone above are
     // organizer-only data shown regardless; these three are specifically what the public profile
     // link/Connect action needs, so they respect ProfilePublic even for the org's own attendee sheet.
-    Guid? BuyerUserId, string? BuyerUsername, string? BuyerAvatarKey);
+    Guid? BuyerUserId, string? BuyerUsername, string? BuyerAvatarKey,
+    /// <summary>Presigned companion to <c>BuyerAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? BuyerAvatarUrl = null);
 
 public record AttendeeListFilter(string? Q, Guid? TicketTypeId, Guid? GroupId, string? State, int Page, int PageSize);
 

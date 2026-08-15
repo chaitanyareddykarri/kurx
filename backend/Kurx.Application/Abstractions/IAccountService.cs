@@ -11,7 +11,9 @@ public record NotificationCategoryPreferenceView(
 
 public record NotificationPreferencesView(IReadOnlyList<NotificationCategoryPreferenceView> Categories);
 
-public record BlockedUserView(Guid UserId, string Name, string? Username, string? AvatarKey, DateTime CreatedAt);
+public record BlockedUserView(Guid UserId, string Name, string? Username, string? AvatarKey, DateTime CreatedAt,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 public record UsernameHistoryEntryView(string Username, DateTime ReleasedAt);
 

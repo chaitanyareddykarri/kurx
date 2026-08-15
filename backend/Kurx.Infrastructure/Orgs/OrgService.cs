@@ -17,7 +17,7 @@ namespace Kurx.Infrastructure.Orgs;
 /// + Route linked account: D-016. T1 schedule defaults: D-007/D-016.
 /// </summary>
 public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient route, IFraudService fraud,
-    Providers.UploadScanGate scanGate, ILogger<OrgService> log)
+    Providers.UploadScanGate scanGate, ILogger<OrgService> log, IStorage storage)
     : IOrgService
 {
     public const int Tier1AdvancePct = 50;
@@ -297,9 +297,12 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
                 (m, u) => new { u.Id, u.Phone, u.Name, u.Username, m.Role, m.CreatedAt, u.AvatarKey, m.IsVerified })
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(ct);
-        return ServiceResult<IReadOnlyList<OrgMember>>.Success(rows
-            .Select(x => new OrgMember(x.Id, x.Phone, x.Name, x.Username, x.Role.ToString(), x.CreatedAt, x.AvatarKey, x.IsVerified))
-            .ToList());
+        // D-302: presigned after materialising, because PresignGetAsync has no SQL translation.
+        var members = new List<OrgMember>(rows.Count);
+        foreach (var x in rows)
+            members.Add(new OrgMember(x.Id, x.Phone, x.Name, x.Username, x.Role.ToString(), x.CreatedAt,
+                x.AvatarKey, x.IsVerified, await storage.PresignOrNullAsync(x.AvatarKey, ct)));
+        return ServiceResult<IReadOnlyList<OrgMember>>.Success(members);
     }
 
     public async Task<ServiceResult<OrgMember>> AddMemberAsync(Guid actorId, Guid orgId, string phone, OrgRole role,
@@ -337,7 +340,7 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
         await db.SaveChangesAsync(ct);
         return ServiceResult<OrgMember>.Success(
             new OrgMember(user.Id, user.Phone, user.Name, user.Username, role.ToString(), membership.CreatedAt,
-                user.AvatarKey, membership.IsVerified));
+                user.AvatarKey, membership.IsVerified, await storage.PresignOrNullAsync(user.AvatarKey, ct)));
     }
 
     public async Task<ServiceResult<OrgMember>> ChangeRoleAsync(Guid actorId, Guid orgId, Guid userId, OrgRole role,
@@ -367,7 +370,7 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
         return ServiceResult<OrgMember>.Success(
             new OrgMember(user.Id, user.Phone, user.Name, user.Username, role.ToString(), membership.CreatedAt,
-                user.AvatarKey, membership.IsVerified));
+                user.AvatarKey, membership.IsVerified, await storage.PresignOrNullAsync(user.AvatarKey, ct)));
     }
 
     public async Task<ServiceResult<bool>> RemoveMemberAsync(Guid actorId, Guid orgId, Guid userId,

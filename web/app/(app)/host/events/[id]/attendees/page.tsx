@@ -40,7 +40,7 @@ export default async function EventAttendeesPage({ params }: { params: { id: str
                 <tr key={a.ticket_id} className="border-b border-border last:border-0">
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
-                      <Avatar name={a.buyer_name || a.buyer_phone || "?"} src={a.buyer_avatar_key ?? undefined} size={28} />
+                      <Avatar name={a.buyer_name || a.buyer_phone || "?"} src={a.buyer_avatar_url ?? undefined} size={28} />
                       <div>
                         {a.buyer_username ? (
                           <a href={`/u/${a.buyer_username}`} className="font-medium text-text hover:text-accent-text">{a.buyer_name || a.buyer_phone}</a>

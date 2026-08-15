@@ -370,7 +370,8 @@ public static class OrgEndpoints
         m.Role.ToLowerInvariant(),
         m.JoinedAt,
         m.AvatarKey,
-        m.IsVerified);
+        m.IsVerified,
+        m.AvatarUrl);
 
     private static KycOutcomeResponse ToKycJson(KycOutcome k) => new(
         k.Status,

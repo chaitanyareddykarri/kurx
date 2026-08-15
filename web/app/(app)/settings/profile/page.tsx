@@ -83,7 +83,9 @@ export default async function EditProfilePage() {
             education: parseEducation(me.education_json),
             links: parseLinks(me.links_json),
             avatarKey: me.avatar_key ?? "",
-            coverKey: me.cover_key ?? ""
+            coverKey: me.cover_key ?? "",
+            avatarUrl: me.avatar_url ?? null,
+            coverUrl: me.cover_url ?? null
           }}
         />
       </Card>

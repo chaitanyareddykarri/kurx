@@ -25,7 +25,9 @@ public record OrderView(Guid Id, Guid EventId, Guid TicketTypeId, string Status,
     string? TicketTypeName = null);
 
 public record GroupMemberView(Guid Id, Guid? UserId, string Name, string Phone, Guid? TicketId, string? AnswersJson, DateTime? JoinedAt,
-    string? Username = null, string? AvatarKey = null);
+    string? Username = null, string? AvatarKey = null,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 public record GroupView(Guid Id, Guid EventId, Guid TicketTypeId, int GroupNumber, string? DisplayName, string JoinCode,
     Guid LeaderUserId, int Capacity, IReadOnlyList<GroupMemberView> Members);

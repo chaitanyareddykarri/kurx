@@ -451,8 +451,12 @@ public partial class PostService(
             .Where(i => userIds.Contains(i.UserId) && i.Status == IdentityStatus.Approved)
             .Select(i => i.UserId).ToListAsync(ct)).ToHashSet();
 
-        var map = users.ToDictionary(u => u.Id,
-            u => new PostAuthorView(u.Id, u.Name, u.Username, u.AvatarKey, verified.Contains(u.Id)));
+        // D-302: presigned as the map is built, so every feed, comment thread and post detail that
+        // reads through this one projection gets a renderable avatar rather than a bare key.
+        var map = new Dictionary<Guid, PostAuthorView>(users.Count);
+        foreach (var u in users)
+            map[u.Id] = new PostAuthorView(u.Id, u.Name, u.Username, u.AvatarKey, verified.Contains(u.Id),
+                await storage.PresignOrNullAsync(u.AvatarKey, ct));
 
         // A referenced user that no longer exists would otherwise throw on lookup mid-page. A deleted
         // account is not a reason to fail someone else's feed.

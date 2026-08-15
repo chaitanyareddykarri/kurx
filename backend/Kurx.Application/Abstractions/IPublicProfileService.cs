@@ -100,7 +100,15 @@ public record PublicProfileView(
     /// convention would produce: the response converter renames keys but leaves <c>_meta</c> alone
     /// (it contains no uppercase), so serialized name and schema name agree.</para></summary>
     [property: System.Text.Json.Serialization.JsonPropertyName("_meta")]
-    IReadOnlyDictionary<string, string>? Meta = null);
+    IReadOnlyDictionary<string, string>? Meta = null,
+    /// <summary>Presigned companions to <see cref="AvatarKey"/>/<see cref="CoverKey"/> — D-302's rule
+    /// ("a storage key is not a URL") reaching the profile, which that sweep fixed for events and missed
+    /// here. The keys are kept beside them because <c>_meta</c> carries provenance keyed by
+    /// <c>avatar_key</c>/<c>cover_key</c>, so removing them would break that map; these are what a client
+    /// renders. Null when the key is unset — never a URL to nothing, or the client's "has a picture?"
+    /// test turns true and shows a broken image where initials belong.</summary>
+    string? AvatarUrl = null,
+    string? CoverUrl = null);
 
 public record PublicEventCard(
     Guid Id, string Title, string Slug, string? BannerKey,
@@ -130,7 +138,9 @@ public record TimelineEntry(
     IReadOnlyList<string> Roles, string? OrgName, string? City,
     DateTime OccurredAt, string? VerifyCode, bool IsFirstEvent);
 
-public record PublicUserSearchResult(Guid Id, string Name, string Username, string? AvatarKey, string? Headline);
+public record PublicUserSearchResult(Guid Id, string Name, string Username, string? AvatarKey, string? Headline,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 // ── Verified sources wired in D-222 ─────────────────────────────────────────
 // All three already existed with a real person FK and simply never reached the profile. Each is a

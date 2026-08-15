@@ -150,7 +150,9 @@ public enum KycKind { PennyDrop, PanMatch, Digilocker }
 public enum KycStatus { Pending, Approved, Rejected }
 public enum RiskFlagKind { UniqueBuyer, Velocity, Chargeback, Capacity }
 public enum RiskFlagStatus { Open, Cleared, Frozen }
-public enum TemplateKind { Certificate, Invite }
+// IdCard is APPENDED, never inserted. The enum persists by integer value, so putting a new
+// member ahead of Invite would silently reinterpret every stored row as a different kind of design.
+public enum TemplateKind { Certificate, Invite, IdCard }
 public enum TemplateMode { System, Custom }
 public enum GeneratedCardKind { EventInvite, GroupCard }
 public enum CertificateStatus { Generated, Emailed, Failed }
@@ -594,3 +596,53 @@ public enum EntitlementGrantStatus
     /// <summary>Money returned; can never be redeemed again (D-334 §28).</summary>
     Refunded,
 }
+
+// ── Certificate module (D-344) ───────────────────────────────────────────────────────────────────
+// Every enum below persists as its member NAME, not its ordinal — the loop at the top of
+// OnModelCreating sets the provider type to string for all enums. Members may therefore be reordered
+// safely, but must NEVER be renamed without a data migration, and a state vocabulary must be kept in
+// step with its CHECK constraint (which is generated from these names).
+
+/// <summary>The page a certificate design renders onto. A named size, not a pixel pair: the document
+/// carries no resolution and the renderer owns the millimetres.</summary>
+public enum CertificatePageSize { A4Landscape, A4Portrait }
+
+/// <summary>Draft is editable and cannot issue. Ready may issue. Archived is retained for the
+/// certificates already issued from it but offered nowhere new.</summary>
+public enum CertificateTemplateStatus { Draft, Ready, Archived }
+
+/// <summary>What an element on a template draws. <c>Text</c> is identical on every copy;
+/// <c>DynamicField</c> is substituted per recipient; <c>Image</c> is a stored asset such as a signature
+/// or logo; <c>QrCode</c> resolves to the online verification page.</summary>
+public enum CertificateFieldKind { Text, DynamicField, Image, QrCode }
+
+public enum CertificateHorizontalAlignment { Left, Center, Right }
+public enum CertificateVerticalAlignment { Top, Middle, Bottom }
+
+/// <summary>A generation run's lifecycle. The confirmed flow is preview → inspect → approve → full run,
+/// so <c>Generating</c> is reachable only from <c>Approved</c>.</summary>
+public enum CertificateBatchStatus
+{
+    Draft, Mapping, PreviewReady, Approved, Generating, Completed, Failed, Cancelled,
+}
+
+/// <summary>An issued certificate's standing. <c>Superseded</c> is distinct from <c>Revoked</c>: a
+/// superseded certificate was replaced as part of a correction, and the verification page has to be able
+/// to say which happened.</summary>
+public enum IssuedCertificateStatus { Issued, Revoked, Superseded }
+
+/// <summary><c>Account</c> is an availability rather than a send — the certificate simply appears for a
+/// linked user, with nothing transmitted.</summary>
+public enum CertificateDeliveryChannel { Email, Account }
+
+/// <summary><c>Sent</c> means the provider ACCEPTED the message, never that anyone received it. Without a
+/// bounce pipeline there is no state that can honestly claim delivery, so none is offered.</summary>
+public enum CertificateDeliveryStatus { Pending, Sent, Failed, Bounced }
+
+/// <summary>What the dashboard counts. Append-only; carries no identifying data about who did it.</summary>
+public enum CertificateEventType { Viewed, Downloaded, Verified, Shared }
+
+/// <summary>A certificate signing key's standing (D-344). <c>Retired</c> no longer signs but still
+/// verifies; <c>Compromised</c> also still verifies — a certificate signed before the compromise really
+/// was issued by the platform, and reporting it as fake would be the wrong lie.</summary>
+public enum CertificateSigningKeyState { Active, Retired, Compromised }

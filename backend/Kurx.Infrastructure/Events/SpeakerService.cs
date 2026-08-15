@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Kurx.Infrastructure.Events;
 
 public class SpeakerService(
-    KurxDbContext db, IEventAuthority authority, IAuditWriter audit, IProfileVisibilityResolver visibility) : ISpeakerService
+    KurxDbContext db, IEventAuthority authority, IAuditWriter audit, IProfileVisibilityResolver visibility,
+    IStorage storage) : ISpeakerService
 {
     public async Task<ServiceResult<SpeakerView>> CreateAsync(Guid userId, Guid orgId, bool isAdmin, SpeakerInput input, CancellationToken ct = default)
     {
@@ -150,9 +151,9 @@ public class SpeakerService(
 
     private async Task<SpeakerView> ToViewAsync(Speaker s, CancellationToken ct)
     {
-        if (s.UserId is not Guid uid) return ToView(s, null, EmptyIds);
+        if (s.UserId is not Guid uid) return await ToViewAsync(s, null, EmptyIds, ct);
         var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == uid, ct);
-        return ToView(s, u, await visibility.VisibleProfileIdsAsync([uid], null, ct));
+        return await ToViewAsync(s, u, await visibility.VisibleProfileIdsAsync([uid], null, ct), ct);
     }
 
     /// <summary>Batch-joins linked accounts in one query — avoids N+1 for a whole org/event's speaker list.</summary>
@@ -166,16 +167,21 @@ public class SpeakerService(
         // (D-233). Anonymous viewer: a speaker card is a public event artefact with no caller identity
         // threaded to it, so the answer is the same for everyone — as `ProfilePublic` was.
         var linkable = await visibility.VisibleProfileIdsAsync(userIds, null, ct);
-        return speakers.Select(s =>
-            ToView(s, s.UserId is Guid uid && usersById.TryGetValue(uid, out var u) ? u : null, linkable)).ToList();
+        return await Task.WhenAll(speakers.Select(s =>
+            ToViewAsync(s, s.UserId is Guid uid && usersById.TryGetValue(uid, out var u) ? u : null, linkable, ct)));
     }
 
     private static readonly IReadOnlySet<Guid> EmptyIds = new HashSet<Guid>();
 
-    private static SpeakerView ToView(Speaker s, User? u, IReadOnlySet<Guid> linkable)
+    /// Async and instance-scoped since D-302: a speaker carries two independent pictures — their own
+    /// uploaded photo and, when linked, the Kurx account's avatar — and neither key is fetchable as-is.
+    private async Task<SpeakerView> ToViewAsync(Speaker s, User? u, IReadOnlySet<Guid> linkable, CancellationToken ct)
     {
         var show = u is not null && linkable.Contains(u.Id);
+        var avatarKey = show ? u!.AvatarKey : null;
         return new(s.Id, s.OrgId, s.Name, s.Bio, s.PhotoKey, s.Company, s.Role,
-            s.SocialLinksJson, s.UserId, show ? u!.Username : null, show ? u!.AvatarKey : null);
+            s.SocialLinksJson, s.UserId, show ? u!.Username : null, avatarKey,
+            await storage.PresignOrNullAsync(s.PhotoKey, ct),
+            await storage.PresignOrNullAsync(avatarKey, ct));
     }
 }

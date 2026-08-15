@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { updateProfileAction, presignProfileImageAction } from "@/lib/profile-actions";
+import { updateProfileAction } from "@/lib/profile-actions";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/avatar";
+import { ImageUpload } from "@/components/profile/image-upload";
 
 const inputClass = "mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-text";
 const areaClass = "mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text";
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 type Initial = {
   name: string;
@@ -23,91 +21,14 @@ type Initial = {
   links: Record<string, string>;
   avatarKey: string;
   coverKey: string;
+  /** Presigned companions (D-302) — the keys above are submitted, these are rendered. */
+  avatarUrl: string | null;
+  coverUrl: string | null;
 };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save profile"}</Button>;
-}
-
-/// Presign → PUT → hand the key back. The bytes go straight from the browser to storage; the key rides
-/// along with the profile form so one save persists both the image and the rest of the profile.
-function ImageUpload({ slot, name, initialKey, label, previewName }: {
-  slot: "avatar" | "cover";
-  name: string;
-  initialKey: string;
-  label: string;
-  previewName: string;
-}) {
-  const [key, setKey] = useState(initialKey);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onPick(file: File) {
-    setError(null);
-    if (file.size > MAX_IMAGE_BYTES) {
-      setError("Image must be under 5 MB.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const presigned = await presignProfileImageAction(slot, file.type, file.size);
-      if (!presigned.ok) {
-        setError(presigned.error);
-        return;
-      }
-      const res = await fetch(presigned.url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type, ...(presigned.headers ?? {}) },
-        body: file
-      });
-      if (!res.ok) {
-        setError("Upload failed. Try again.");
-        return;
-      }
-      setKey(presigned.key);
-    } catch {
-      setError("Upload failed. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div>
-      <span className="text-sm font-medium text-text">{label}</span>
-      <input type="hidden" name={name} value={key} />
-      <div className="mt-2 flex items-center gap-3">
-        {slot === "avatar" ? (
-          <Avatar name={previewName} src={key || undefined} size={56} />
-        ) : (
-          <div className="h-14 w-28 overflow-hidden rounded-md border border-border bg-elevated">
-            {/* eslint-disable-next-line @next/next/no-img-element -- provider-swappable storage host */}
-            {key ? <img src={key} alt="Your current picture" className="h-full w-full object-cover" /> : null}
-          </div>
-        )}
-        <label className="cursor-pointer rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-elevated">
-          {busy ? "Uploading…" : key ? "Replace" : "Upload"}
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void onPick(file);
-            }}
-          />
-        </label>
-        {key ? (
-          <button type="button" className="text-sm text-muted underline" onClick={() => setKey("")}>
-            Remove
-          </button>
-        ) : null}
-      </div>
-      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
-    </div>
-  );
 }
 
 export function ProfileForm({ initial }: { initial: Initial }) {
@@ -116,8 +37,8 @@ export function ProfileForm({ initial }: { initial: Initial }) {
   return (
     <form action={formAction} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <ImageUpload slot="avatar" name="avatarKey" initialKey={initial.avatarKey} label="Profile photo" previewName={initial.name} />
-        <ImageUpload slot="cover" name="coverKey" initialKey={initial.coverKey} label="Cover image" previewName={initial.name} />
+        <ImageUpload slot="avatar" name="avatarKey" initialKey={initial.avatarKey} initialUrl={initial.avatarUrl} label="Profile photo" previewName={initial.name} />
+        <ImageUpload slot="cover" name="coverKey" initialKey={initial.coverKey} initialUrl={initial.coverUrl} label="Cover image" previewName={initial.name} />
       </div>
       <div>
         <label className="text-sm font-medium text-text" htmlFor="p-name">Name</label>

@@ -27,6 +27,15 @@ export function apiErrorStatus(err: unknown): number | undefined {
   return axios.isAxiosError(err) ? err.response?.status : undefined;
 }
 
+/// The machine-readable `error` code itself, for the cases where a caller needs to say something more
+/// specific than `problemMessage` can — "that file is over 10 MB" rather than a generic bad-request
+/// sentence. Prefer `apiErrorMessage`; reach for this only when the extra words genuinely help.
+export function apiErrorCode(err: unknown): string | undefined {
+  return axios.isAxiosError(err)
+    ? (err.response?.data as { error?: string } | undefined)?.error
+    : undefined;
+}
+
 export const tokenResponseSchema = z.object({
   access_token: z.string(),
   access_expires_at: z.string(),
@@ -85,6 +94,11 @@ export const meSchema = z.object({
   links_json: z.string().nullable().optional(),
   avatar_key: z.string().nullable().optional(),
   cover_key: z.string().nullable().optional(),
+  /// Presigned, fetchable companions to the two keys above (D-302). The KEY is what a save round-trips;
+  /// the URL is the only one of the pair a client can render — a bare key resolves against the web
+  /// origin and 404s, which is why every avatar showed initials.
+  avatar_url: z.string().nullable().optional(),
+  cover_url: z.string().nullable().optional(),
   privacy: privacyFlagsSchema.optional(),
   /// Self-declared date of birth, date-only `YYYY-MM-DD` (D-311).
   date_of_birth: z.string().nullable().optional(),
@@ -305,7 +319,9 @@ export async function listMyRepresentations(accessToken: string) {
   return z.array(representationSchema).parse(data);
 }
 
-function authHeaders(accessToken: string) {
+/** Exported for the sibling API modules (chat, posts, account) rather than each standing up a second
+ *  axios instance — one client, one auth convention. */
+export function authHeaders(accessToken: string) {
   return { headers: { Authorization: `Bearer ${accessToken}` } };
 }
 
@@ -320,7 +336,8 @@ export const groupMemberSchema = z.object({
   answers_json: z.string().nullable(),
   joined_at: z.string().nullable(),
   username: z.string().nullable(),
-  avatar_key: z.string().nullable()
+  avatar_key: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
 });
 
 export const groupSchema = z.object({
@@ -916,6 +933,7 @@ export const speakerSchema = z.object({
   user_id: z.string().nullable(),
   username: z.string().nullable(),
   avatar_key: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
 });
 export type Speaker = z.infer<typeof speakerSchema>;
 
@@ -1106,6 +1124,10 @@ export const publicProfileSchema = z.object({
   summary: z.string(),
   avatar_key: z.string().nullable(),
   cover_key: z.string().nullable(),
+  /// Presigned companions (D-302) — see the note on `meSchema`. Optional so a client built against a
+  /// backend that predates them still parses.
+  avatar_url: z.string().nullable().optional(),
+  cover_url: z.string().nullable().optional(),
   college: z.object({
     institute: z.string().nullable(),
     degree: z.string().nullable(),
@@ -1202,6 +1224,7 @@ export const allyProfileCardSchema = z.object({
   name: z.string(),
   username: z.string().nullable(),
   avatar_key: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
   mutual_event_count: z.number(),
 });
 export type AllyProfileCard = z.infer<typeof allyProfileCardSchema>;
@@ -1212,6 +1235,7 @@ export const allyConnectionSchema = z.object({
   other_name: z.string(),
   other_username: z.string().nullable(),
   other_avatar_key: z.string().nullable(),
+  other_avatar_url: z.string().nullable().optional(),
   status: z.enum(["Pending", "Accepted", "Declined", "Revoked"]),
   visibility: z.enum(["Public", "Hidden"]),
   requested_at: z.string(),
@@ -1470,6 +1494,7 @@ export async function getAllyMutualDetail(accessToken: string, otherUserId: stri
 
 export const allySuggestionSchema = z.object({
   user_id: z.string(), name: z.string(), username: z.string().nullable(), avatar_key: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
   shared_event_count: z.number(), shared_org_count: z.number(), reason: z.string(),
 });
 export type AllySuggestion = z.infer<typeof allySuggestionSchema>;
@@ -1483,6 +1508,7 @@ export async function getAllySuggestions(accessToken: string, limit = 20) {
 
 export const publicUserSearchResultSchema = z.object({
   id: z.string(), name: z.string(), username: z.string(), avatar_key: z.string().nullable(), headline: z.string().nullable(),
+  avatar_url: z.string().nullable().optional(),
 });
 export type PublicUserSearchResult = z.infer<typeof publicUserSearchResultSchema>;
 
@@ -1545,6 +1571,7 @@ export const eventReviewSchema = z.object({
   author_name: z.string().nullable(),
   author_username: z.string().nullable(),
   author_avatar_key: z.string().nullable(),
+  author_avatar_url: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type EventReview = z.infer<typeof eventReviewSchema>;
@@ -1925,6 +1952,7 @@ export const eventAssignmentSchema = z.object({
   assignee_name: z.string(),
   assignee_username: z.string().nullable(),
   assignee_avatar_key: z.string().nullable(),
+  assignee_avatar_url: z.string().nullable().optional(),
   // D-319 — event context. The host's team list already knows the event; the invitee's own list is the
   // one that needs it, and both read this schema. `representing_org_name` is null for a self-represented
   // event, which carries no organization identity (D-268) — render nothing, never a fallback label.
@@ -2203,6 +2231,7 @@ export const attendeeSchema = z.object({
   buyer_user_id: z.string().nullable(),
   buyer_username: z.string().nullable(),
   buyer_avatar_key: z.string().nullable(),
+  buyer_avatar_url: z.string().nullable().optional(),
 });
 export type Attendee = z.infer<typeof attendeeSchema>;
 
@@ -2438,6 +2467,7 @@ export async function searchUsersForInvite(accessToken: string, q: string) {
     { ...authHeaders(accessToken), params: { q, pageSize: 8 } });
   return z.array(z.object({
     id: z.string(), name: z.string(), username: z.string(), avatar_key: z.string().nullable(),
+    avatar_url: z.string().nullable().optional(),
   })).parse(data);
 }
 

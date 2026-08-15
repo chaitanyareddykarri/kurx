@@ -521,23 +521,32 @@ public class OrderService(
         var users = await db.Users.AsNoTracking().Where(u => linkable.Contains(u.Id)).ToDictionaryAsync(u => u.Id, ct);
 
         var membersByGroup = members.GroupBy(m => m.GroupId).ToDictionary(x => x.Key, x => x.ToList());
-        return groups.Select(g => ToGroupView(g, capacityByOrder.GetValueOrDefault(g.OrderId),
-            membersByGroup.GetValueOrDefault(g.Id) ?? [], users)).ToList();
+        var views = new List<GroupView>(groups.Count);
+        foreach (var g in groups)
+            views.Add(await ToGroupViewAsync(g, capacityByOrder.GetValueOrDefault(g.OrderId),
+                membersByGroup.GetValueOrDefault(g.Id) ?? [], users, ct));
+        return views;
     }
 
     /// <summary>The single GroupView shape, shared by the per-group path and the batched list path.
     /// <paramref name="users"/> holds only profiles the viewer may link to — absence means "not linkable",
     /// so the username/avatar simply stay null, exactly as the per-group path resolves it.</summary>
-    private static GroupView ToGroupView(Group group, int capacity, IReadOnlyList<GroupMember> members,
-        IReadOnlyDictionary<Guid, User> users) =>
-        new(group.Id, group.EventId, group.TicketTypeId, group.GroupNumber, group.DisplayName, group.JoinCode,
-            group.LeaderUserId, capacity,
-            members.Select(m =>
-            {
-                var u = m.UserId != null && users.TryGetValue(m.UserId.Value, out var found) ? found : null;
-                return new GroupMemberView(m.Id, m.UserId, m.Name, m.Phone, m.TicketId, m.AnswersJson, m.JoinedAt,
-                    u?.Username, u?.AvatarKey);
-            }).ToList());
+    /// Async since D-302: each linkable member's avatar key is presigned here, and presigning is not a
+    /// synchronous operation. Instance rather than static for the same reason — it needs the storage
+    /// provider. Both call paths still share this one shape, which is the point of the helper.
+    private async Task<GroupView> ToGroupViewAsync(Group group, int capacity, IReadOnlyList<GroupMember> members,
+        IReadOnlyDictionary<Guid, User> users, CancellationToken ct)
+    {
+        var views = new List<GroupMemberView>(members.Count);
+        foreach (var m in members)
+        {
+            var u = m.UserId != null && users.TryGetValue(m.UserId.Value, out var found) ? found : null;
+            views.Add(new GroupMemberView(m.Id, m.UserId, m.Name, m.Phone, m.TicketId, m.AnswersJson, m.JoinedAt,
+                u?.Username, u?.AvatarKey, await storage.PresignOrNullAsync(u?.AvatarKey, ct)));
+        }
+        return new GroupView(group.Id, group.EventId, group.TicketTypeId, group.GroupNumber, group.DisplayName,
+            group.JoinCode, group.LeaderUserId, capacity, views);
+    }
 
     public async Task<ServiceResult<GroupView>> GetGroupAsync(Guid userId, Guid groupId, CancellationToken ct = default)
     {
@@ -837,7 +846,7 @@ public class OrderService(
             .Where(u => linkable.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, ct);
 
-        return ToGroupView(group, capacity, members, users);
+        return await ToGroupViewAsync(group, capacity, members, users, ct);
     }
 
     private Ticket NewTicket(Guid orderItemId, Guid eventId, Guid? userId, Guid? groupMemberId, string? answersJson)

@@ -102,7 +102,7 @@ export function PeopleSearch() {
                   key={user.id}
                   name={user.name}
                   username={user.username}
-                  avatarSrc={user.avatar_key}
+                  avatarSrc={user.avatar_url}
                   subtitle={user.headline ?? undefined}
                   href={`/u/${user.username}`}
                   action={

@@ -19,7 +19,7 @@ export function PostComposer({
   eventId,
   onCreated
 }: {
-  author: { name: string; avatarKey?: string | null };
+  author: { name: string; avatarUrl?: string | null };
   eventId?: string;
   onCreated?: (post: Post) => void;
 }) {
@@ -104,7 +104,7 @@ export function PostComposer({
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="flex gap-3">
-        <Avatar name={author.name} src={author.avatarKey ?? undefined} size={40} />
+        <Avatar name={author.name} src={author.avatarUrl ?? undefined} size={40} />
         <div className="min-w-0 flex-1">
           <label htmlFor="composer-body" className="sr-only">
             What&apos;s happening?

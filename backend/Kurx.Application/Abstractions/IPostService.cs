@@ -4,7 +4,9 @@ namespace Kurx.Application.Abstractions;
 // namespace and nothing else (D-259 addendum), so a view declared elsewhere silently serializes
 // camelCase and breaks every client. Request shapes stay camelCase — Read is delegated untouched.
 
-public record PostAuthorView(Guid Id, string Name, string? Username, string? AvatarKey, bool IsVerified);
+public record PostAuthorView(Guid Id, string Name, string? Username, string? AvatarKey, bool IsVerified,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 /// <summary><paramref name="Url"/> is a short-lived signed download URL minted per read, never a stored
 /// public link — the same rule chat attachments follow, so revoking access is a matter of not minting

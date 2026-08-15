@@ -349,6 +349,13 @@ public class FileScannerProductionGuardTests
             ["JWT_SECRET"] = "a-unique-test-secret-that-is-definitely-long-enough-0123456789",
             ["TICKET_HMAC_SECRET"] = "a-unique-test-ticket-hmac-secret-0123456789-abcdef",
             ["OTP_PEPPER"] = "a-unique-test-otp-pepper-0123456789-abcdefghijklmnop",
+            // D-344: STORAGE_PROVIDER=localdisk is refused under Production, and that guard runs BEFORE
+            // this one — so without a durable provider configured here these tests would assert the
+            // storage refusal instead of the scanner refusal they exist for. Not a weakening: it is the
+            // rest of a valid Production configuration, so the only thing left under test is the scanner.
+            ["STORAGE_PROVIDER"] = "s3",
+            ["S3_BUCKET"] = "kurx-scanner-cfg-test",
+            ["S3_REGION"] = "ap-south-1",
         };
         if (scanner is not null) values["FILE_SCANNER"] = scanner;
         return new ConfigurationBuilder().AddInMemoryCollection(values).Build();

@@ -32,6 +32,8 @@ export const postAuthorSchema = z.object({
   name: z.string(),
   username: z.string().nullable().optional(),
   avatar_key: z.string().nullable().optional(),
+  /// Presigned companion (D-302) — what renders; the key alone is not fetchable.
+  avatar_url: z.string().nullable().optional(),
   is_verified: z.boolean().default(false)
 });
 export type PostAuthor = z.infer<typeof postAuthorSchema>;

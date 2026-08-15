@@ -111,11 +111,40 @@ public class CapturingEmailSender : IEmailSender
 {
     private readonly List<(string To, string Html)> _sent = new();
 
+    /// <summary>Everything sent, with the parts a delivery test needs — subject line and attachments —
+    /// which the OTP capture above has no use for.</summary>
+    public record SentEmail(string To, string Subject, string Html, IReadOnlyList<EmailAttachment> Attachments);
+
+    private readonly List<SentEmail> _messages = new();
+
+    /// <summary>Makes the next <paramref name="count"/> sends throw, for exercising retry and
+    /// give-up behaviour against a provider having a bad minute.</summary>
+    public void FailNext(int count) { lock (_sent) _failuresRemaining = count; }
+    private int _failuresRemaining;
+
+    public IReadOnlyList<SentEmail> Messages { get { lock (_sent) return _messages.ToList(); } }
+
+    public IReadOnlyList<SentEmail> MessagesTo(string to)
+    {
+        lock (_sent) return _messages.Where(m => m.To.Equals(to, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    public void Clear() { lock (_sent) { _sent.Clear(); _messages.Clear(); _failuresRemaining = 0; } }
+
     public Task<string?> SendAsync(string to, string subject, string htmlBody,
         IReadOnlyList<EmailAttachment>? attachments = null, CancellationToken ct = default)
     {
-        lock (_sent) _sent.Add((to, htmlBody));
-        return Task.FromResult<string?>(null);
+        lock (_sent)
+        {
+            if (_failuresRemaining > 0)
+            {
+                _failuresRemaining--;
+                throw new InvalidOperationException("Simulated provider outage.");
+            }
+            _sent.Add((to, htmlBody));
+            _messages.Add(new SentEmail(to, subject, htmlBody, attachments ?? []));
+        }
+        return Task.FromResult<string?>("provider-" + Guid.NewGuid().ToString("N")[..12]);
     }
 
     public string LastOtpFor(string email)

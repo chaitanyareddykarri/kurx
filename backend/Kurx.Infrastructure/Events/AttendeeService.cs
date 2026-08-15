@@ -16,7 +16,8 @@ namespace Kurx.Infrastructure.Events;
 /// Covered by AttendeeTests (roster incl. both the user + guest-order PII paths, non-member 404, state
 /// filter, CSV export), CI-green — the dev machine can't run the test host (Windows Application Control).
 /// </summary>
-public class AttendeeService(KurxDbContext db, IEventAuthority authority, IProfileVisibilityResolver visibility) : IAttendeeService
+public class AttendeeService(KurxDbContext db, IEventAuthority authority, IProfileVisibilityResolver visibility,
+    IStorage storage) : IAttendeeService
 {
 
     public async Task<ServiceResult<(IReadOnlyList<AttendeeRow> Items, int Total)>> ListAsync(
@@ -157,9 +158,10 @@ public class AttendeeService(KurxDbContext db, IEventAuthority authority, IProfi
             var answers = ParseAnswers(t.AnswersJson);
             var publicUsername = user is not null && linkable.Contains(user.Id) ? user.Username : null;
 
+            var avatarKey = publicUsername is not null ? user!.AvatarKey : null;
             rows.Add(new AttendeeRow(t.Id, t.Code, t.State.ToString(), t.CheckedInAt, name, phone,
                 ttId, ttName, group?.Id, group?.GroupNumber, group?.DisplayName, answers,
-                user?.Id, publicUsername, publicUsername is not null ? user!.AvatarKey : null));
+                user?.Id, publicUsername, avatarKey, await storage.PresignOrNullAsync(avatarKey, ct)));
         }
         return rows;
     }

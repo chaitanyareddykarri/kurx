@@ -5,9 +5,13 @@ namespace Kurx.Application.Abstractions;
 public record AllyConnectionView(
     Guid Id, Guid OtherUserId, string OtherName, string? OtherUsername, string? OtherAvatarKey,
     string Status, string Visibility, DateTimeOffset RequestedAt, DateTimeOffset? RespondedAt,
-    Guid? FirstSharedEventId, string? FirstSharedEventTitle, string? FirstSharedEventSlug);
+    Guid? FirstSharedEventId, string? FirstSharedEventTitle, string? FirstSharedEventSlug,
+    /// <summary>Presigned companion to <c>OtherAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? OtherAvatarUrl = null);
 
-public record AllyProfileCard(Guid UserId, string Name, string? Username, string? AvatarKey, int MutualEventCount);
+public record AllyProfileCard(Guid UserId, string Name, string? Username, string? AvatarKey, int MutualEventCount,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 public record SharedEventSummary(Guid Id, string Title, string Slug, DateTime StartsAt);
 public record SharedOrgSummary(Guid Id, string Name, string Slug);
@@ -27,7 +31,9 @@ public record MutualDetail(
 /// co-participation and shared verified-organization membership. <see cref="Reason"/> is a
 /// human-readable explanation ("3 shared events", "Same organization"), never a bare score.</summary>
 public record AllySuggestion(Guid UserId, string Name, string? Username, string? AvatarKey,
-    int SharedEventCount, int SharedOrgCount, string Reason);
+    int SharedEventCount, int SharedOrgCount, string Reason,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 /// <summary>Mutual, explicitly-consented professional connections ("Allies," D-201) — not a follow.
 /// One <see cref="Kurx.Domain.Entities.AllyConnection"/> row per unordered user pair, ever; see the

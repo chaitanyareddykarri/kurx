@@ -14,7 +14,7 @@ namespace Kurx.Infrastructure.Chat;
 /// three things a 1:1 conversation has that an event room does not: a canonical pair, a request gate,
 /// and a per-user archive.</para>
 /// </summary>
-public class DmService(KurxDbContext db, IChatService chat) : IDmService
+public class DmService(KurxDbContext db, IChatService chat, IStorage storage) : IDmService
 {
     /// <summary>The pair, ordered. Canonicalising here — and only here — is what lets the unique index
     /// do its job; a caller that ordered differently would create a second room for the same two people.</summary>
@@ -200,6 +200,7 @@ public class DmService(KurxDbContext db, IChatService chat) : IDmService
 
             result.Add(new DmRoomView(
                 room.Id, otherId, other.Name, other.Username, other.AvatarKey,
+                OtherAvatarUrl: await storage.PresignOrNullAsync(other.AvatarKey, ct),
                 RequestState: (room.DmRequestState ?? DmRequestState.Accepted).ToString().ToLowerInvariant(),
                 IsRequest: room.DmRequestState == DmRequestState.Pending && room.DmInitiatedBy != userId,
                 Archived: me?.ArchivedAt is not null,

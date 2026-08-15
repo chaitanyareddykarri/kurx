@@ -152,7 +152,7 @@ export default async function UserProfilePage({ params }: { params: { username: 
       <ProfileHeader
         username={params.username}
         name={profile.name}
-        avatarKey={profile.avatar_key}
+        avatarUrl={profile.avatar_url ?? null}
         coverKey={profile.cover_key}
         derivedHeadline={profile.derived_headline || null}
         headline={profile.headline}

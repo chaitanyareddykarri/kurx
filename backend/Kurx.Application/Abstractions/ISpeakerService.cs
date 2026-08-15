@@ -7,7 +7,10 @@ public record SpeakerInput(string Name, string? Bio, string? PhotoKey, string? C
     Guid? UserId = null);
 
 public record SpeakerView(Guid Id, Guid OrgId, string Name, string Bio, string? PhotoKey, string Company, string Role,
-    string? SocialLinksJson, Guid? UserId, string? Username, string? AvatarKey);
+    string? SocialLinksJson, Guid? UserId, string? Username, string? AvatarKey,
+    /// <summary>Presigned companions (D-302): the speaker's own uploaded photo, and the linked Kurx
+    /// account's avatar. Two different pictures, so two URLs — a speaker may have either, both or neither.</summary>
+    string? PhotoUrl = null, string? AvatarUrl = null);
 
 /// <summary>Org-scoped speaker profiles, reusable across events. Owner/Manager manage; any org member reads.</summary>
 public interface ISpeakerService

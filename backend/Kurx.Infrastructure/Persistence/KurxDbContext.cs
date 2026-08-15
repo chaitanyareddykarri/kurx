@@ -1,6 +1,8 @@
 using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+// PropertySaveBehavior — used to make IssuedCertificate.CertificateId immutable after insert (D-344).
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace Kurx.Infrastructure.Persistence;
 
@@ -174,6 +176,19 @@ public class KurxDbContext : DbContext
     public DbSet<GeneratedCard> GeneratedCards => Set<GeneratedCard>();
     public DbSet<Certificate> Certificates => Set<Certificate>();
     public DbSet<IdCard> IdCards => Set<IdCard>();
+
+    // ── The certificate module (D-344). New tables; the three dormant ones above are untouched. ──
+    public DbSet<CertificateTemplate> CertificateTemplates => Set<CertificateTemplate>();
+    public DbSet<CertificateTemplateField> CertificateTemplateFields => Set<CertificateTemplateField>();
+    public DbSet<CertificateIdRule> CertificateIdRules => Set<CertificateIdRule>();
+    public DbSet<CertificateBatch> CertificateBatches => Set<CertificateBatch>();
+    public DbSet<CertificateRecipient> CertificateRecipients => Set<CertificateRecipient>();
+    public DbSet<IssuedCertificate> IssuedCertificates => Set<IssuedCertificate>();
+    public DbSet<CertificateRevocation> CertificateRevocations => Set<CertificateRevocation>();
+    public DbSet<CertificateAccessLink> CertificateAccessLinks => Set<CertificateAccessLink>();
+    public DbSet<CertificateDelivery> CertificateDeliveries => Set<CertificateDelivery>();
+    public DbSet<CertificateEvent> CertificateEvents => Set<CertificateEvent>();
+    public DbSet<CertificateSigningKey> CertificateSigningKeys => Set<CertificateSigningKey>();
 
     // ── Entitlements — food, meals, merch, access (D-334). Distinct from Coupons (D-265 discounts).
     public DbSet<EntitlementProduct> EntitlementProducts => Set<EntitlementProduct>();
@@ -1770,6 +1785,209 @@ public class KurxDbContext : DbContext
             e.HasIndex(x => x.EventId);
             e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<DesignTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── The certificate module (D-344) ──────────────────────────────────────────────────────
+        //
+        // Configured with NO navigation properties, matching the convention used throughout this file.
+        // That is load-bearing here rather than stylistic: it is what lets these tables reference Event
+        // and User by id without the certificate entities gaining a compile-time dependency on the
+        // ticketing graph, and it is what would make the module extractable later.
+
+        b.Entity<CertificateTemplate>(e =>
+        {
+            e.ToTable("certificate_templates",
+                t => t.HasCheckConstraint("ck_certificate_templates_status", StateVocabulary<CertificateTemplateStatus>("Status")));
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.PageSize).HasMaxLength(20);
+            e.HasIndex(x => x.OwnerUserId);
+            // The reusable-library query: a creator's templates that belong to no event.
+            e.HasIndex(x => new { x.OwnerUserId, x.EventId });
+            e.HasIndex(x => x.EventId);
+            // SetNull, not Cascade: a template outlives the event it was first used on, because that is
+            // exactly what makes it reusable. Deleting the event returns it to the creator's library.
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CertificateTemplateField>(e =>
+        {
+            e.ToTable("certificate_template_fields");
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.FieldKey).HasMaxLength(100);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.HorizontalAlignment).HasMaxLength(10);
+            e.Property(x => x.VerticalAlignment).HasMaxLength(10);
+            e.Property(x => x.FontFamily).HasMaxLength(100);
+            e.Property(x => x.FontWeight).HasMaxLength(20);
+            e.Property(x => x.Color).HasMaxLength(9);
+            e.Property(x => x.BackgroundColor).HasMaxLength(9);
+            // Paint order is read for every render, always scoped to one template.
+            e.HasIndex(x => new { x.TemplateId, x.ZOrder });
+            // Cascade: a field has no meaning apart from the template it sits on.
+            e.HasOne<CertificateTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CertificateIdRule>(e =>
+        {
+            e.ToTable("certificate_id_rules",
+                // NextSequence only ever moves forward, and only by the atomic allocator. A negative or
+                // zero value would mean something wrote it directly.
+                t => t.HasCheckConstraint("ck_certificate_id_rules_sequence", "\"NextSequence\" >= 1"));
+            e.Property(x => x.Prefix).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Pattern).HasMaxLength(120).IsRequired();
+            // Unique per event — this is what the allocator's INSERT … ON CONFLICT relies on, so it is a
+            // correctness constraint rather than a lookup optimisation.
+            e.HasIndex(x => x.EventId).IsUnique();
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CertificateBatch>(e =>
+        {
+            e.ToTable("certificate_batches",
+                t => t.HasCheckConstraint("ck_certificate_batches_status", StateVocabulary<CertificateBatchStatus>("Status")));
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.SourceFileName).HasMaxLength(260);
+            e.Property(x => x.ColumnMappingJson).HasColumnType("jsonb");
+            e.HasIndex(x => new { x.EventId, x.Status });
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+            // Restrict: a template that produced certificates someone holds must not be deletable out
+            // from under the run that records them.
+            e.HasOne<CertificateTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CertificateRecipient>(e =>
+        {
+            e.ToTable("certificate_recipients");
+            e.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.Property(x => x.NormalizedEmail).HasMaxLength(320);
+            e.HasIndex(x => x.EventId);
+            e.HasIndex(x => x.BatchId);
+            // One recipient per row of an import. Two recipients claiming row 47 would make the batch
+            // run's row → recipient lookup ambiguous, and a re-import must not silently double the list.
+            e.HasIndex(x => new { x.BatchId, x.SourceRowNumber })
+                .IsUnique()
+                .HasFilter("\"BatchId\" IS NOT NULL AND \"SourceRowNumber\" IS NOT NULL");
+            // The verified-email linking lookup. NOT unique: the same person legitimately appears on
+            // several events, and two people can share a family address.
+            e.HasIndex(x => x.NormalizedEmail);
+            e.HasIndex(x => x.UserId);
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<CertificateBatch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.SetNull);
+            // SetNull, and deliberately so: if an account is deleted the certificate still exists and was
+            // still issued to that person. Losing the link is correct; losing the recipient is not.
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<IssuedCertificate>(e =>
+        {
+            e.ToTable("issued_certificates",
+                t => t.HasCheckConstraint("ck_issued_certificates_status", StateVocabulary<IssuedCertificateStatus>("Status")));
+            e.Property(x => x.CertificateId).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.FieldValuesJson).HasColumnType("jsonb");
+            e.Property(x => x.DocumentSha256).HasMaxLength(64);
+            e.Property(x => x.SignatureKeyId).HasMaxLength(64);
+
+            // THE uniqueness guarantee. Platform-wide, not per-event: verification is by this value alone,
+            // with no event context to disambiguate. The application allocator makes collisions rare; this
+            // index is what makes them impossible.
+            e.HasIndex(x => x.CertificateId).IsUnique();
+
+            // Immutable after insert. EF throws on any attempt to change it rather than silently issuing
+            // an UPDATE — a certificate id that can drift is not an identifier.
+            e.Property(x => x.CertificateId).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Throw);
+
+            e.HasIndex(x => new { x.EventId, x.Status });
+            e.HasIndex(x => x.RecipientId);
+            e.HasIndex(x => x.BatchId);
+
+            // What makes a batch retry safe (D-344, Phase 7). The run skips rows it has already issued,
+            // but a skip-list read at the top of a loop stops being true the moment two workers pick up
+            // the same job — so one certificate per (batch, recipient) is enforced here, where concurrency
+            // cannot get around it. Filtered, because a hand-issued certificate has no batch and several
+            // may legitimately go to one recipient.
+            e.HasIndex(x => new { x.BatchId, x.RecipientId })
+                .IsUnique()
+                .HasFilter("\"BatchId\" IS NOT NULL");
+
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<CertificateTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<CertificateBatch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<CertificateRecipient>().WithMany().HasForeignKey(x => x.RecipientId).OnDelete(DeleteBehavior.Restrict);
+            // The reissue chain. Restrict: the superseded original must survive its replacement, which is
+            // the entire point of keeping lineage.
+            e.HasOne<IssuedCertificate>().WithMany().HasForeignKey(x => x.SupersedesCertificateId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CertificateRevocation>(e =>
+        {
+            e.ToTable("certificate_revocations");
+            e.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            e.HasIndex(x => x.CertificateId);
+            e.HasOne<IssuedCertificate>().WithMany().HasForeignKey(x => x.CertificateId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<IssuedCertificate>().WithMany().HasForeignKey(x => x.ReplacementCertificateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.RevokedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CertificateAccessLink>(e =>
+        {
+            e.ToTable("certificate_access_links");
+            e.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+
+            // THE lookup, and unique: two links resolving to one hash would mean a token that grants
+            // access to more than one person's certificates.
+            e.HasIndex(x => x.TokenHash).IsUnique();
+
+            e.HasIndex(x => x.RecipientId);
+            e.HasOne<CertificateRecipient>().WithMany().HasForeignKey(x => x.RecipientId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.RevokedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.Ignore(x => x.IsLive);
+        });
+
+        b.Entity<CertificateDelivery>(e =>
+        {
+            e.ToTable("certificate_deliveries",
+                t => t.HasCheckConstraint("ck_certificate_deliveries_status", StateVocabulary<CertificateDeliveryStatus>("Status")));
+            e.Property(x => x.Channel).HasMaxLength(20);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Destination).HasMaxLength(320);
+            e.Property(x => x.ProviderMessageId).HasMaxLength(200);
+            e.Property(x => x.Error).HasMaxLength(1000);
+            e.HasIndex(x => new { x.CertificateId, x.Channel });
+            e.HasIndex(x => x.Status);
+            e.HasOne<IssuedCertificate>().WithMany().HasForeignKey(x => x.CertificateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CertificateEvent>(e =>
+        {
+            e.ToTable("certificate_events");
+            e.Property(x => x.Type).HasMaxLength(20);
+            e.Property(x => x.CorrelationId).HasMaxLength(64);
+            // The dashboard counts group by type within a certificate.
+            e.HasIndex(x => new { x.CertificateId, x.Type });
+            e.HasOne<IssuedCertificate>().WithMany().HasForeignKey(x => x.CertificateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CertificateSigningKey>(e =>
+        {
+            e.ToTable("certificate_signing_keys",
+                t => t.HasCheckConstraint("ck_certificate_signing_keys_state", StateVocabulary<CertificateSigningKeyState>("State")));
+            e.Property(x => x.KeyId).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Algorithm).HasMaxLength(16).IsRequired();
+            e.Property(x => x.State).HasMaxLength(20);
+            e.Property(x => x.ProtectionScheme).HasMaxLength(32);
+            e.Property(x => x.CompromisedReason).HasMaxLength(500);
+            // Verification selects the exact key a certificate names, so this lookup must be unique and
+            // fast — it runs on every public verification.
+            e.HasIndex(x => x.KeyId).IsUnique();
+            e.HasIndex(x => x.State);
+            // No foreign keys at all: signing keys belong to the module, not to any event or user.
         });
 
         b.Entity<IdCard>(e =>

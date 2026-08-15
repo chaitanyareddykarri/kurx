@@ -1,9 +1,9 @@
 import {
+  Award,
   Bookmark,
   ClipboardCheck,
   Handshake,
   Home,
-  IdCard,
   LayoutDashboard,
   MailOpen,
   MessagesSquare,
@@ -48,6 +48,7 @@ export const secondaryNav: NavItem[] = [
   // into it would undo that.
   { href: "/assignments", label: "Assignments", icon: ClipboardCheck },
   { href: "/tickets", label: "My Tickets", icon: Ticket },
+  { href: "/my-certificates", label: "My Certificates", icon: Award },
   { href: "/saved", label: "Saved", icon: Bookmark },
   { href: "/groups", label: "Groups", icon: Users },
   // "Create event" was here until D-305. Creation is entered from **Profile**, and a primary-nav entry

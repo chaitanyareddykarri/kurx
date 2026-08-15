@@ -282,6 +282,14 @@ builder.Services.AddRateLimiter(o =>
         return RateLimitPartitions.Window(ctx, key, postsPerMin, TimeSpan.FromMinutes(1));
     });
 
+    // Public certificate verification (D-344): per IP, because it is anonymous and certificate ids are
+    // sequential — enumerable by design, since the mitigation for a guessable id is a minimal public
+    // payload rather than secrecy. Generous enough that an organiser checking a stack of printed
+    // certificates by hand never trips it, low enough that scraping the id space is not practical.
+    var verifyPerMin = int.TryParse(builder.Configuration["RATE_LIMIT_VERIFY_PER_MIN"], out var vpm) ? vpm : 30;
+    o.AddPolicy("verify", ctx => RateLimitPartitions.Window(
+        ctx, $"verify:ip:{ctx.Connection.RemoteIpAddress}", verifyPerMin, TimeSpan.FromMinutes(1)));
+
     // Heavy endpoints (CSV import, bulk send, announcement fan-out): stricter concurrency cap.
     // Only 5 of these operations can run concurrently per user; excess requests are queued briefly.
     // Deliberately NOT distributed (D-255): this caps in-flight work on THIS instance, which is what
@@ -563,6 +571,14 @@ app.MapTemplateEndpoints();
 app.MapTicketTypeEndpoints();
 app.MapTicketTransferEndpoints();
 app.MapTicketQrEndpoints();
+app.MapCertificateTemplateEndpoints();
+app.MapCertificateVerificationEndpoints();
+app.MapSpreadsheetEndpoints();
+app.MapCertificateBatchEndpoints();
+app.MapCertificateDeliveryEndpoints();
+app.MapCertificateRevocationEndpoints();
+app.MapCertificateParticipantEndpoints();
+app.MapCertificateAnalyticsEndpoints();
 app.MapGateEndpoints();
 app.MapPublicProfileEndpoints();
 app.MapAllyEndpoints();
@@ -680,6 +696,13 @@ jobs.AddOrUpdate<AccountDeletionJob>(
     "account-deletion",
     job => job.RunAsync(CancellationToken.None),
     Cron.Daily());
+// Drains queued certificate emails (D-344, Phase 8). Minutely: the queue is written the moment an
+// organiser presses send, and a certificate arriving a minute later is fine — one arriving an hour later
+// looks broken.
+jobs.AddOrUpdate<CertificateDeliveryJob>(
+    "certificate-delivery",
+    job => job.RunAsync(CancellationToken.None),
+    Cron.Minutely());
 // V3 strangler-window convergence (D-250), formerly inline at boot. Hourly is the safety net; the
 // trigger below is what keeps deploy-time convergence — it ENQUEUES, so the host finishes starting
 // while a worker does the scan, and DisableConcurrentExecution keeps concurrent replicas off each

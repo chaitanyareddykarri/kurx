@@ -3,6 +3,7 @@ using System;
 using Kurx.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Kurx.Infrastructure.Migrations
 {
     [DbContext(typeof(KurxDbContext))]
-    partial class KurxDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815093351_AddCertificateModule")]
+    partial class AddCertificateModule
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -740,49 +743,6 @@ namespace Kurx.Infrastructure.Migrations
                     b.ToTable("certificates", (string)null);
                 });
 
-            modelBuilder.Entity("Kurx.Domain.Entities.CertificateAccessLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("LastAccessedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("RecipientId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("RevokedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByUserId");
-
-                    b.HasIndex("RecipientId");
-
-                    b.HasIndex("RevokedByUserId");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.ToTable("certificate_access_links", (string)null);
-                });
-
             modelBuilder.Entity("Kurx.Domain.Entities.CertificateBatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1016,10 +976,6 @@ namespace Kurx.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("BatchId", "SourceRowNumber")
-                        .IsUnique()
-                        .HasFilter("\"BatchId\" IS NOT NULL AND \"SourceRowNumber\" IS NOT NULL");
-
                     b.ToTable("certificate_recipients", (string)null);
                 });
 
@@ -1055,64 +1011,6 @@ namespace Kurx.Infrastructure.Migrations
                     b.HasIndex("RevokedByUserId");
 
                     b.ToTable("certificate_revocations", (string)null);
-                });
-
-            modelBuilder.Entity("Kurx.Domain.Entities.CertificateSigningKey", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Algorithm")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
-                    b.Property<DateTime?>("CompromisedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CompromisedReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("KeyId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<string>("ProtectedPrivateKey")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProtectionScheme")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("PublicKeySpki")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("RetiredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("KeyId")
-                        .IsUnique();
-
-                    b.HasIndex("State");
-
-                    b.ToTable("certificate_signing_keys", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_certificate_signing_keys_state", "\"State\" IN ('Active', 'Retired', 'Compromised')");
-                        });
                 });
 
             modelBuilder.Entity("Kurx.Domain.Entities.CertificateTemplate", b =>
@@ -4446,10 +4344,6 @@ namespace Kurx.Infrastructure.Migrations
                     b.HasIndex("SupersedesCertificateId");
 
                     b.HasIndex("TemplateId");
-
-                    b.HasIndex("BatchId", "RecipientId")
-                        .IsUnique()
-                        .HasFilter("\"BatchId\" IS NOT NULL");
 
                     b.HasIndex("EventId", "Status");
 
@@ -8763,26 +8657,6 @@ namespace Kurx.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Kurx.Domain.Entities.CertificateAccessLink", b =>
-                {
-                    b.HasOne("Kurx.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Kurx.Domain.Entities.CertificateRecipient", null)
-                        .WithMany()
-                        .HasForeignKey("RecipientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Kurx.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("RevokedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Kurx.Domain.Entities.CertificateBatch", b =>

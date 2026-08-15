@@ -76,6 +76,8 @@ public static class DependencyInjection
         services.AddScoped<ChatAttachmentCleanupJob>();
         services.AddScoped<PostMediaCleanupJob>();
         services.AddScoped<AccountDeletionJob>();
+        services.AddScoped<CertificateBatchJob>();
+        services.AddScoped<CertificateDeliveryJob>();
 
         // JwtOptions is registered by the host (Program.cs) so its production-strength
         // validation runs exactly once, using the host's IsProduction() check.
@@ -176,6 +178,26 @@ public static class DependencyInjection
         services.AddScoped<IWalkInService, Events.WalkInService>();                        // V3 §7.6 walk-in (Phase 13)
         services.AddScoped<ISeatBlockService, Events.SeatBlockService>();                  // V3 §7.5 delegated/SeatBlock (Phase 13)
         services.AddScoped<IApprovalService, Events.ApprovalService>();                    // V3 §14.3 approval chains (Phase 14)
+        // The certificate module (D-344). Scoped: it writes through the request's DbContext.
+        services.AddScoped<ICertificateIdAllocator, Certificates.CertificateIdAllocator>();
+        services.AddScoped<ICertificateTemplateService, Certificates.CertificateTemplateService>();
+        services.AddScoped<ICertificateIssuingService, Certificates.CertificateIssuingService>();
+        services.AddScoped<ICertificateBatchService, Certificates.CertificateBatchService>();
+        services.AddScoped<ICertificateDeliveryService, Certificates.CertificateDeliveryService>();
+        services.AddScoped<ICertificateRevocationService, Certificates.CertificateRevocationService>();
+        services.AddScoped<ICertificateParticipantService, Certificates.CertificateParticipantService>();
+        services.AddScoped<ICertificateAnalyticsService, Certificates.CertificateAnalyticsService>();
+        services.AddScoped<ICertificateSigner, Certificates.CertificateSigner>();
+        // Both readers registered; SpreadsheetService picks one by file extension. Adding a format
+        // later is a registration here rather than a change to any caller.
+        services.AddSingleton<ISpreadsheetReader, Certificates.CsvSpreadsheetReader>();
+        services.AddSingleton<ISpreadsheetReader, Certificates.XlsxSpreadsheetReader>();
+        services.AddSingleton<ISpreadsheetService, Certificates.SpreadsheetService>();
+        services.AddScoped<ICertificateVerificationService, Certificates.CertificateVerificationService>();
+        services.AddSingleton<ICertificateVerificationLinks, Certificates.CertificateVerificationLinks>();
+        // Singleton like the other renderers: QuestPDF layout is stateless and pays a one-time
+        // font-resolution cost on first use.
+        services.AddSingleton<ICertificateDocumentRenderer, Certificates.CertificateDocumentRenderer>();
         services.AddScoped<IEntitlementService, Events.EntitlementService>();   // D-334
         services.AddScoped<Analytics.IAnalyticsFactSource, Analytics.LeafFactSource>();   // V3 §16 (Phase 17) internal fact source
         services.AddScoped<IAnalyticsService, Analytics.AnalyticsService>();
@@ -335,7 +357,47 @@ public static class DependencyInjection
         AddProvider<IPaymentGateway, MockPaymentGateway>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IRouteClient, MockRouteClient>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IKycProvider, MockKycProvider>(services, config, "KYC_PROVIDER", "mock");
-        AddProvider<IStorage, LocalDiskStorage>(services, config, "STORAGE_PROVIDER", "localdisk");
+        // Certificate OCR (D-344 Phase 12). Deferred by decision: the editor places every field by hand and
+        // must keep working with no engine at all. Registered through AddProvider precisely because that
+        // helper REFUSES every value but the development one — so TEXT_DETECTOR=tesseract fails loudly at
+        // boot rather than silently resolving to a detector that detects nothing.
+        AddProvider<ITextDetector, Certificates.UnavailableTextDetector>(
+            services, config, "TEXT_DETECTOR", "none");
+        // Object storage (D-344 Phase 2). Hand-registered rather than through AddProvider, which exists
+        // to REFUSE every value but the development one — there are now two real choices.
+        switch ((config["STORAGE_PROVIDER"] ?? "localdisk").Trim().ToLowerInvariant())
+        {
+            case "localdisk":
+                // Fails closed in Production, matching FILE_SCANNER=none (D-338). LocalDiskStorage writes
+                // into the container's filesystem, which a redeploy destroys — so a production deployment
+                // that simply forgot the variable would come up healthy, accept uploads, issue
+                // certificates, and lose every stored document on the next release. Postgres would keep
+                // the rows, which makes the loss look like corruption rather than a wipe: the certificate
+                // still resolves to a storage key that now 404s.
+                if (isProduction)
+                    throw new InvalidOperationException(
+                        "STORAGE_PROVIDER=localdisk is not permitted in Production. LocalDiskStorage is "
+                        + "ephemeral container storage: uploaded designs and issued certificates would be "
+                        + "destroyed by the next deploy while their database rows survived. Set "
+                        + "STORAGE_PROVIDER=s3 and configure S3_BUCKET, S3_REGION and (for a non-AWS "
+                        + "S3-compatible server) S3_ENDPOINT. See .env.example.");
+                services.AddSingleton<IStorage, LocalDiskStorage>();
+                Resolved[nameof(IStorage)] = "localdisk (LocalDiskStorage — not durable)";
+                break;
+            case "s3":
+                // Validated here, at startup, so a missing bucket or an unparseable endpoint stops the
+                // deploy rather than surfacing on the first upload.
+                var s3 = S3StorageOptions.FromConfiguration(config);
+                services.AddSingleton<IStorage, S3Storage>();
+                Resolved[nameof(IStorage)] = s3.PublicEndpoint is { Length: > 0 }
+                    ? $"s3 ({s3.Bucket} @ {s3.Endpoint}, browser URLs signed for {s3.PublicEndpoint})"
+                    : $"s3 ({s3.Bucket}{(s3.Endpoint is null ? "" : " @ " + s3.Endpoint)})";
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"STORAGE_PROVIDER={config["STORAGE_PROVIDER"]} is not implemented. Valid values are "
+                    + "'localdisk' (development only — not durable) and 's3'. See .env.example.");
+        }
         // Malware scanning (D-110, real provider D-298). `none` stays the default so a dev machine
         // needs no clamd, and it provides NO protection; `clamav` is the production value. Registered
         // by hand rather than through AddProvider because this is the one boundary with a real

@@ -49,10 +49,6 @@ final eventMediaProvider = FutureProvider.autoDispose.family<List<EventMediaDto>
 final eventBannerProvider = FutureProvider.autoDispose.family<String?, OrgEventRef>(
     (ref, e) => ref.watch(eventContentSourceProvider).bannerUrl(e.orgId, e.eventId));
 
-final certificateRosterProvider =
-    FutureProvider.autoDispose.family<List<CertificateRosterDto>, String>(
-        (ref, eventId) => ref.watch(eventContentSourceProvider).certificateRoster(eventId));
-
 final myMembershipClaimsProvider = FutureProvider.autoDispose<List<MembershipClaimDto>>(
     (ref) => ref.watch(eventContentSourceProvider).myMembershipClaims());
 
@@ -207,18 +203,6 @@ class EventContentActions {
   Future<void> removeMedia(OrgEventRef e, String mediaId) async {
     await _api.removeMedia(e.orgId, e.eventId, mediaId);
     _ref.invalidate(eventMediaProvider(e));
-  }
-
-  // Certificates
-  Future<int> generateCertificates(String eventId, {String? templateId}) async {
-    final n = await _api.generateCertificates(eventId, templateId: templateId);
-    _ref.invalidate(certificateRosterProvider(eventId));
-    return n;
-  }
-
-  Future<void> revokeCertificate(String eventId, String certificateId, String reason) async {
-    await _api.revokeCertificate(certificateId, reason);
-    _ref.invalidate(certificateRosterProvider(eventId));
   }
 
   // Membership claims

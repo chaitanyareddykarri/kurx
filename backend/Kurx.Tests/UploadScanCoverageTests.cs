@@ -178,14 +178,48 @@ public class UploadScanCoverageTests : IClassFixture<UnreachableScannerFactory>
         client.DefaultRequestHeaders.Authorization = new("Bearer",
             tokens.GetProperty("access_token").GetString());
 
+        // The caller's OWN prefix (D-343). It used to be `users/x/avatar/a`, which since D-343 is
+        // refused as `invalid_storage_key` before the scanner is ever consulted — so the assertion below
+        // would have passed for the wrong reason and stopped covering the scan gate at all. The
+        // cross-user case has its own test, immediately after this one.
+        var userId = (await (await client.GetAsync("/v1/me")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetGuid();
+
         // camelCase IN, snake_case OUT — the convention that has bitten more than one client. Sending
         // `avatar_key` here binds nothing, the gate sees a null key, and the request succeeds.
         var res = await client.PatchAsJsonAsync("/v1/me/profile",
-            new { avatarKey = "users/x/avatar/a" });
+            new { avatarKey = $"users/{userId}/avatar/a" });
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
         var problem = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("scan_unavailable", problem.GetProperty("error").GetString());
+    }
+
+    /// <summary>D-343 — a key under ANOTHER user's prefix is refused outright, before the scanner.
+    ///
+    /// <para>The hole this closes: nothing checked the prefix, so any account could PATCH another user's
+    /// avatar key onto its own profile. Every projection then presigned that key and served a private
+    /// upload under the wrong person's name — and it would have read as a caching bug, not a breach.</para></summary>
+    [Fact]
+    public async Task A_profile_image_key_belonging_to_another_user_is_refused()
+    {
+        var client = _factory.CreateClient();
+        const string phone = "9931000009";
+        await client.PostAsJsonAsync("/v1/auth/otp/request", new { phone });
+        var code = _factory.WhatsApp.LastOtpFor(phone);
+        var tokens = await (await client.PostAsJsonAsync("/v1/auth/otp/verify", new { phone, code }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization = new("Bearer",
+            tokens.GetProperty("access_token").GetString());
+
+        var res = await client.PatchAsJsonAsync("/v1/me/profile",
+            new { avatarKey = $"users/{Guid.NewGuid()}/avatar/a" });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
+        var problem = await res.Content.ReadFromJsonAsync<JsonElement>();
+        // Not `scan_unavailable`: the refusal is authorization, and it must not depend on a scanner
+        // being reachable.
+        Assert.Equal("invalid_storage_key", problem.GetProperty("error").GetString());
     }
 
     /// <summary>The gate must not fire on a request that claims no key — otherwise every profile edit

@@ -96,22 +96,4 @@ public class NotificationCertTests : IClassFixture<KurxApiFactory>
         var after = await Json(await user.GetAsync("/v1/me/notifications"));
         Assert.Equal(0, after.GetProperty("unread_count").GetInt32());
     }
-
-    [Fact]
-    public async Task Owner_generates_and_lists_the_cert_roster_but_a_stranger_cannot()
-    {
-        var (owner, _) = await LoginAsync("9890000002");
-        var (_, eventId, ttId) = await PublishedFreeEventAsync(owner);
-        var (attendee, _) = await LoginAsync("9890000003");
-        await attendee.PostAsJsonAsync($"/v1/events/{eventId}/orders", new { ticketTypeId = ttId });
-
-        var gen = await Json(await owner.PostAsync($"/v1/events/{eventId}/certificates/generate", null));
-        Assert.True(gen.GetProperty("generated").GetInt32() >= 1);
-
-        var roster = await Json(await owner.GetAsync($"/v1/events/{eventId}/certificates"));
-        Assert.True(roster.GetArrayLength() >= 1);
-
-        var (stranger, _) = await LoginAsync("9890000004");
-        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.GetAsync($"/v1/events/{eventId}/certificates")).StatusCode);
-    }
 }

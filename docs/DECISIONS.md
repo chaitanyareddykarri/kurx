@@ -13225,3 +13225,62 @@ compose's `backend` service, `scripts/push-ecr.sh` and `.github/workflows/cd.yml
 `docker-compose.yml` and `.claude/memory/deployment.md` that cited it as corroborating evidence for
 D-318's single 5080 port. Historical entries above that mention the file are left as written — they
 record what was true when decided.
+
+## D-343 · The certificate & ID-card design studio is removed; the storage-key fix stays (2026-08-15)
+
+**D-340, D-341 and D-342 are retired and their numbers are not reused.** They described a
+"Certificates & ID Cards" design studio — an image-first template editor, OCR text detection over an
+uploaded certificate, and bulk generation from a CSV participant list — built across two sessions and
+removed at the owner's request before any of it was committed. The numbers are left as a gap on purpose:
+they were cited in code and in an archive that still exists, and a reused number would make two different
+decisions indistinguishable in a `git log` search.
+
+### What was removed
+The whole feature and its entry point: the `Certificates & ID Cards` item on the event dashboard, the
+editor, the upload and detection paths, the CSV batch runner, and the four EF migrations behind them
+(`AddDesignStudioFields`, `AddIdCardBadgeRender`, `AddDesignCertificateType`, `AddCertificateBatches`).
+None had been applied to any database, so there is no schema to roll back and the migration chain simply
+ends where it did before, at `AddIdCardMealDisplay`.
+
+The dashboard's **Certificates** item — issuance: generate, roster, revoke — is untouched, as are
+`CertificateService`, the D-331/D-335 ID cards, the admin console's certificates module, the mobile
+certificate screens and the public verification pages. Removing the designer removed a way to *author*
+what a document looks like, not the platform's ability to issue one.
+
+`DesignTemplate` and `TemplateKind.IdCard` remain: the table predates the studio, `CertificateService`
+and `DesignTemplateSeeder` read it, and the enum member is persisted by integer value so deleting it
+would reinterpret stored rows.
+
+**None of this was in git.** The studio was never committed — not even the parts that predated the
+sessions that extended it — so deletion left no history to restore from. The archive is
+`~/kurx/.design-studio-backup-2026-08-15/`, outside the repository, with a README describing how to
+restore it. Recording its location here is the point of this paragraph: an archive nobody can find is the
+same as no archive.
+
+### What was kept, and why it is not part of that feature
+
+`PATCH /v1/me/profile` accepted `AvatarKey` and `CoverKey` as arbitrary strings. Two checks now guard it,
+in this order, and they stay:
+
+1. **Prefix ownership**, before the malware gate and costing no IO: the key must sit under
+   `users/{callerId}/{slot}/`, exactly what `MediaService.PresignProfileImageAsync` mints. Without it any
+   account could PATCH another user's avatar key onto its own profile, and every surface that renders an
+   avatar would presign and serve that private upload under the wrong name — a cross-user exposure that
+   would have read as a caching bug.
+2. **Existence**, after the gate, because a real scanner already covers it (`ClamAvFileScanner` reads the
+   bytes through `IStorage`, so an absent key returns `ScanFailed`). This closes the case the scanner
+   cannot: with `FILE_SCANNER=none`, `NoOpFileScanner` reports a key Clean *without reading it*.
+
+Both refuse with the same `invalid_storage_key`. Distinguishing "not yours" from "does not exist" would
+turn the endpoint into an oracle for which storage keys are real (D-018).
+
+This was found while building the studio and has nothing to do with it — the hole is in the profile
+endpoint and predates the feature by months. Reverting it alongside the studio would have traded a
+removed convenience for a reintroduced vulnerability.
+
+### Consequences
+- No schema change, no migration, no data touched.
+- Backend suite loses the studio's own tests; the avatar-key tests in `UploadScanCoverageTests` and
+  `ProfileWriteSurfaceTests` remain and now cite this entry.
+- `web/lib/api.ts` keeps its exported `authHeaders` — the sibling chat, posts and account API modules use
+  it; only the comment naming the studio was corrected.

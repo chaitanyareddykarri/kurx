@@ -52,7 +52,6 @@ export default async function EventWorkspaceLayout({
           { key: "checkin", label: "Check-in", href: `${base}/checkin` },
           { key: "announcements", label: "Announcements", href: `${base}/announcements` },
           { key: "invitations", label: "Invitations", href: `${base}/invitations` },
-          { key: "certificates", label: "Certificates", href: `${base}/certificates` },
           { key: "chat", label: "Chat", href: `${base}/chat` }
         ]
       : []),

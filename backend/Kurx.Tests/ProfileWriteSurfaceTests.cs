@@ -348,6 +348,14 @@ public class ProfileWriteSurfaceTests : IClassFixture<KurxApiFactory>
         }));
         var key = presigned.GetProperty("key").GetString();
 
+        // Actually upload the bytes (D-343). This test used to presign and then patch the key straight
+        // through without ever PUTting anything — a sequence no real client performs, and one the
+        // endpoint now refuses, because a key that points at nothing renders as a broken image the
+        // clients cannot tell apart from "no picture".
+        var upload = await client.PutAsync(presigned.GetProperty("url").GetString(),
+            new ByteArrayContent([1, 2, 3, 4]) { Headers = { ContentType = new("image/webp") } });
+        Assert.True(upload.IsSuccessStatusCode, $"presigned PUT failed: {upload.StatusCode}");
+
         var patched = await Json(await client.PatchAsJsonAsync("/v1/me/profile", new { avatarKey = key }));
         Assert.Equal(key, patched.GetProperty("avatar_key").GetString());
 

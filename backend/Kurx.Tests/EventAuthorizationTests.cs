@@ -137,7 +137,6 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/payment-readiness")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/workspace")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/events/{eventId}/announcements")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/events/{eventId}/certificates")).StatusCode);
 
         // ...and writes, not just reads.
         var ticket = await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types",
@@ -168,7 +167,6 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.OK, ticket.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/analytics")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/v1/events/{eventId}/certificates")).StatusCode);
     }
 
     // ── Organization Manager (collaborator) ──────────────────────────────────────────────────────

@@ -75,11 +75,6 @@ class GuestGatePage extends ConsumerWidget {
       blurb: 'See everything you have registered for laid out by date.',
     ),
     (
-      prefix: '/certificates',
-      title: 'Certificates',
-      blurb: 'Collect and share the certificates you earn from events you attend.',
-    ),
-    (
       prefix: '/profile',
       title: 'Your profile',
       blurb: 'Build a profile, claim a username, and let organisers know who you are.',

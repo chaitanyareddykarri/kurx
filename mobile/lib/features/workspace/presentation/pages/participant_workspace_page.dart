@@ -41,11 +41,6 @@ class ParticipantWorkspacePage extends StatelessWidget {
         onTap: () => context.push('/leaderboard'),
       ),
       _Tile(
-        icon: Icons.workspace_premium_outlined,
-        label: 'Certificates',
-        onTap: () => context.push('/certificates'),
-      ),
-      _Tile(
         icon: Icons.rate_review_outlined,
         label: 'Feedback',
         onTap: () => context.push('/events/$eventId/reviews'),

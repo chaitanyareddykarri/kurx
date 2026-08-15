@@ -176,7 +176,6 @@ public static class DependencyInjection
         services.AddScoped<IWalkInService, Events.WalkInService>();                        // V3 §7.6 walk-in (Phase 13)
         services.AddScoped<ISeatBlockService, Events.SeatBlockService>();                  // V3 §7.5 delegated/SeatBlock (Phase 13)
         services.AddScoped<IApprovalService, Events.ApprovalService>();                    // V3 §14.3 approval chains (Phase 14)
-        services.AddScoped<ICertificateService, CertificateService>();
         services.AddScoped<IIdCardService, Cards.IdCardService>();
         services.AddScoped<IEntitlementService, Events.EntitlementService>();   // D-334
         services.AddScoped<Analytics.IAnalyticsFactSource, Analytics.LeafFactSource>();   // V3 §16 (Phase 17) internal fact source

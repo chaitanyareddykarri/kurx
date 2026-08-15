@@ -256,9 +256,17 @@ plus `Compromised`) with public keys at `/.well-known/jwks.json`. Exactly one ke
 `Retiring` keys no longer sign but still validate, which is what makes rotation zero-downtime.
 
 > **ES256 is built but OFF, by call graph rather than by flag.**
-> `TokenService.CreateAccessTokenAsync` has **zero callers**; all four issuance sites call the synchronous
-> HS256 method. Cut-over is a four-call-site change, gated on KMS being confirmed live first — enabling
-> ES256 while private keys sit unwrapped in Postgres is *worse* than HS256.
+> `TokenService.CreateAccessTokenAsync` has **zero callers**; all **six** issuance sites call the
+> synchronous HS256 method — `AuthService:365`, `LoginApprovalService:394` and `:539`, `PasskeyService:258`,
+> `PasswordResetService:97`, `RecoveryCodeService:112` (re-counted 2026-08-15; this said "four"). Cut-over
+> is a six-call-site change, gated on KMS being confirmed live first — enabling ES256 while private keys
+> sit unwrapped in Postgres is *worse* than HS256.
+>
+> Verified live 2026-08-15: the JWT header on a real access token from `/v1/auth/otp/verify` reads
+> `{"alg":"HS256","typ":"JWT"}` with no `kid`, so the resolver's ES256 branch is unreachable in
+> production today. It is covered by
+> `SigningKeyTests.An_es256_token_stops_being_accepted_once_its_signing_key_is_compromised`, which mints
+> an ES256 token directly because no login path will produce one.
 
 ### 4.9 Step-up / assurance level **[shipped — AM6]**
 
@@ -535,7 +543,7 @@ by the Event-System-V3 program** (D-131). The auth-continuation program uses **D
 |---|---|
 | **HIBP k-anonymity** breach checking | Adds a network dependency on the registration path; needs its own fail-open-or-closed decision |
 | **Distributed rate limiter** | The current limiter is in-process → N× the limit across N tasks; WAF partially mitigates. Measure after staging (D-116) |
-| **ES256 issuance cut-over** | Four call sites; gated on KMS confirmed live first |
+| **ES256 issuance cut-over** | Six call sites (re-counted 2026-08-15); gated on KMS confirmed live first |
 | **Device attestation validation** | Play Integrity / DeviceCheck payloads are stored but not validated |
 | **Passkey-only accounts** | Would require rethinking factor 1 |
 | **`security_events` retention policy** | Append-only with no pruning today |

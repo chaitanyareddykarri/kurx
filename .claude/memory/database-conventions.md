@@ -98,9 +98,22 @@ The fix was a single atomic statement, whose row-level lock is taken and release
 and never held across an `await`.
 
 This is not an absolute ban: `WalletService` holds one inside a short, tightly-scoped withdrawal
-transaction (D-031), and `pg_advisory_xact_lock` is used deliberately in the seat/order paths. The rule is
-narrower and worth stating exactly — **never hold a row lock across an `await` on a request path**, and
-prefer the conditional `UPDATE` whenever the guard can be expressed in a `WHERE`.
+transaction (D-031), and `pg_advisory_xact_lock` is used deliberately in the seat/order paths and around
+the boot-time seeders (D-344). The rule is narrower and worth stating exactly — **never hold a row lock
+across an `await` on a request path**, and prefer the conditional `UPDATE` whenever the guard can be
+expressed in a `WHERE`.
+
+**Advisory locks are per-database, and that is load-bearing here.** Measured, not assumed: the same key
+held in database A is freely acquirable in database B and refused in A. It is what makes the seeding lock
+free in the suite — each test class runs on its own `kurx_test_<guid>`, so ~176 `WebApplicationFactory`
+boots never contend — while production replicas, all on `kurx`, serialize. Anything reasoning about
+advisory-lock contention must account for which database the connection is on.
+
+**Read-then-insert is not idempotent just because it checks first.** The boot seeders each SELECT what
+exists, diff a catalog, and insert the difference. That is a check-then-act race the moment two processes
+run it: both observe a row missing, both insert, and the unique index turns the loser into a `23505`. A
+guard that reads in one statement and writes in another needs a lock, `ON CONFLICT DO NOTHING`, or a
+conditional `UPDATE` — the "already populated" check alone is decoration under concurrency.
 
 ### "At most one group of N rows per key" needs its own anchor row (D-262)
 

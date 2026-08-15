@@ -107,6 +107,8 @@ public static class EventEndpoints
 
         // D-101 (M7): duplicate an event as a fresh Draft — content is copied (ticket types with Sold reset,
         // form fields, media, speakers, sponsors, sessions, tags), runtime state never is.
+        // D-340: the event row itself now copies by default with a named reset list, rather than by an
+        // allowlist that named 47 of 110 columns and silently defaulted the rest.
         events.MapPost("/{eventId:guid}/clone", async (Guid eventId, CloneEventBody? body,
             ClaimsPrincipal principal, IEventService svc, CancellationToken ct) =>
         {

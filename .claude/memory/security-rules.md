@@ -95,6 +95,29 @@ Rules that follow:
 - **Per-user cache keys are the wrong fix** for a shared device: the data stays on disk and is still
   recoverable by anyone who can sign in — the same disclosure, one indirection later.
 
+## A cache in front of a security decision is a parse cache, never the authority (D-344)
+
+The JWT resolver looked up `kid` in the live published key set on **every** request, then parsed that key's
+SPKI into an `ECDsaSecurityKey` — allocating an `ECDsa` it never disposed (`ECDsaSecurityKey` does not take
+ownership; every other `ECDsa.Create()` in the repo uses `using`, `TokenService` included). Caching the
+parse is right. Caching the *lookup* would be a vulnerability: retirement and compromise are enforced by
+`GetValidationKeysAsync` returning only `Active`/`Retiring` rows, so a cache consulted before that check
+would keep honouring a key an attacker holds.
+
+The ordering rule: **resolve authority first, then use the cache purely to avoid recomputation.** In
+`ValidationKeyCache` the `published.FirstOrDefault(k => k.KeyId == kid)` lookup still runs on every
+request; a key that is no longer published never reaches the cache, so it cannot be resurrected by one.
+The cache key includes the SPKI, so re-publishing different material under an existing `kid` re-parses.
+
+Two things this exposed, both worth copying:
+
+- **Test the decision where it is enforced.** `A_compromised_key_is_dropped_immediately_with_no_grace_period`
+  asserts at the service layer and never makes a request, so it would pass even if the HTTP resolver served
+  a stale cached key. A cache bug is invisible to a test that does not go through the cache.
+- **`GetOrAdd` needs `Lazy` with `ExecutionAndPublication`** when the value owns a native handle. A bare
+  factory can run on several threads and discard the losers — abandoning exactly the handle the cache
+  exists to stop abandoning.
+
 ## Process gate
 
 Any change touching auth, payments, PII, or KYC/bank data runs `.claude/commands/security-review.md` before merge — not optional, not deferred to "later."
@@ -172,5 +195,5 @@ ships `none`, so "forgot the variable" was the default path rather than an unusu
 
 **Testing a scanner gate needs no clamd.** Point `ClamAvFileScanner` at a dead port
 (`UnreachableScannerFactory`): every scan returns `ScanFailed`, which a correctly-gated path must refuse. It
-runs on any machine, unlike the EICAR tests that need `docker compose --profile scanning`. Assert the refusal
+runs on any machine, unlike the EICAR tests that need a live clamd (`docker compose up -d clamav`). Assert the refusal
 is *total* — no row persisted, no half-staged aggregate — not merely that an error came back.

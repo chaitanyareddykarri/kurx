@@ -43,7 +43,7 @@ For .NET consumers (i.e. the test suite) `ReadFromJsonAsync<T>` is case-insensit
 separator-insensitive, so it cannot map `fcm_token` → `FcmToken` — and it does not throw, it leaves
 defaults. Use `TestJson.ReadAsync<T>` instead; reading into `JsonElement` needs nothing.
 
-**Declare the success response** ([D-313](../../docs/DECISIONS.md)). 439 of 518 operations carry a schema,
+**Declare the success response** ([D-313](../../docs/DECISIONS.md)). 461 of 535 operations carry a schema,
 32 declare `204`, 6 declare binary. An undeclared response is a gap, not the norm — and **CI enforces it**:
 `scripts/openapi-response-check.mjs` fails a new endpoint that does not say what it returns. If you are
 adding one, declare it or the build breaks.

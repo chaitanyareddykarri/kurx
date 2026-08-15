@@ -106,9 +106,10 @@ where §17.1 promises an idempotent no-op — a 500 that a gateway webhook answe
 by the transaction-scoped advisory lock the same method already used for credentials, so the loser reads the
 winner's committed row instead. Surfaced by `WalletConcurrencyTests` in a **full-suite** run only, which is
 why it went unrecorded for so long. **Response-schema coverage was closed out in [D-313](../DECISIONS.md) (2026-08-09):
-480 of 518 operations are now declared (439 JSON + 35 `204` + 6 binary), up from 122; 34 remain pending
-plus 3 permanently intentional, and `scripts/openapi-response-check.mjs` fails CI on any new undeclared
-response so the count can only go down.**
+480 of 518 operations declared at that date, up from 122. Re-measured 2026-08-14 as **496 of 535**
+(461 JSON + 32 `204` + 3 binary); 35 remain pending plus 4 permanently intentional, and
+`scripts/openapi-response-check.mjs` fails CI on any new undeclared response so the count can only go
+down.**
 
 *Why:* the as-built taxonomy carried 145 event types read by no filter, sort, permission check, pricing rule, notification, or analytics grouping — the D-018 unfinished-scaffolding pattern at taxonomy scale. V3 replaces it with 20 capability-bearing Kinds plus ~40 capabilities, and adds the OrgUnit tree, audience rules, inventory pools, and a registration/admission/pass layer.
 
@@ -209,12 +210,15 @@ that the database is up). All three reconciliation jobs now record `clean` / `dr
 in `INSUFFICIENT_DATA` while appearing on a dashboard as coverage. The design is recorded for when one
 arrives.
 
-*Verified:* backend Release `-warnaserror` clean; full suite **1743 total / 1737 passed / 1 skipped / 5
-failed** (1 h 21 m) against the 2026-08-11 baseline of 1709 / 1697 / 1 / **11**. **Failures fell from 11 to
-5**, and both remaining causes are environmental — 4 `ClamAvUploadPathTests` (no clamd; opt-in
-`--profile scanning`) and 1 `NoContentDeclarationTests` (the `-p:ArtifactsPath` artifact). **The 3
-`EventAudienceAuthorizationTests` the baseline recorded as failing on committed `HEAD` now pass.** This
-phase added 33 tests across 3 classes, all passing.
+*Verified at the time (2026-08-12):* backend Release `-warnaserror` clean; full suite **1743 total / 1737
+passed / 1 skipped / 5 failed** (1 h 21 m) against the 2026-08-11 baseline of 1709 / 1697 / 1 / **11**.
+**The 3 `EventAudienceAuthorizationTests` the baseline recorded as failing on committed `HEAD` now pass.**
+This phase added 33 tests across 3 classes, all passing.
+
+*Superseded 2026-08-14:* the 5 failures this entry called environmental were **all fixed**, and the suite
+now runs **1825 total / 1824 passed / 1 skipped / 0 failed** in 29 m 23 s. clamd starts with the default
+compose stack (profiles removed, [D-339](../DECISIONS.md)); the path-resolution failures were a real defect
+in the tests, not the runner. See [`.claude/memory/testing-standards.md`](../../.claude/memory/testing-standards.md).
 
 **DB-8 is RUNTIME VERIFIED** — the migration is applied to the live dev database and all four constraints
 read back out of `pg_constraint`; tests assert PostgreSQL's own `23514` on real seeded rows, including one

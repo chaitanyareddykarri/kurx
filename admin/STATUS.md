@@ -2,7 +2,9 @@
 
 # Kurx Admin Console — Build Status
 
-_Last narrative update: 2026-07-29 (Final polish pass — Audit Log/User Detail RSC fix, [D-200](../docs/DECISIONS.md)) · Counts re-measured 2026-08-12 · App root: `admin/`_
+_Last narrative update: 2026-07-29 (Final polish pass — Audit Log/User Detail RSC fix, [D-200](../docs/DECISIONS.md)) · Counts re-measured 2026-08-14 · App root: `admin/`_
+
+_Verified 2026-08-14: **27 `page.tsx` files** — 24 inside the `(console)` shell plus `login`, `reset` and `forbidden` outside it — against **58 `/v1/admin` operations over 56 paths** in `docs/api/openapi.json`. Both figures unchanged since the 2026-08-12 re-measure._
 
 > ⚠️ **Read the counts, not the prose.** The module/page figures in §1 and §3 were re-measured against
 > `nav-config.ts` and `admin/app` on 2026-08-12 and were wrong in both directions before that ("16 of 20"

@@ -215,6 +215,9 @@ public class SigningKeyTests : IClassFixture<KurxApiFactory>
     {
         // D-099 is a staged migration: existing users must not be signed out by the deploy that
         // introduces ES256. The OTP login path still mints HS256 today, and /v1/me must accept it.
+        // Still literally true as of 2026-08-15 — all six login paths call the synchronous
+        // CreateAccessToken (HS256); CreateAccessTokenAsync (ES256) has no callers. This is the
+        // documented "built but OFF" state, not drift — see AUTHENTICATION_ARCHITECTURE.md §4.8.
         const string phone = "9200000001";
         await _client.PostAsJsonAsync("/v1/auth/otp/request", new { phone });
         var code = _factory.WhatsApp.LastOtpFor(phone);
@@ -226,6 +229,54 @@ public class SigningKeyTests : IClassFixture<KurxApiFactory>
             new("Bearer", tokens.GetProperty("access_token").GetString());
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/v1/me")).StatusCode);
+    }
+
+    /// <summary>D-344: the resolver caches the parsed <c>ECDsaSecurityKey</c> per key so it stops
+    /// abandoning a native handle and re-importing the SPKI on every request that carries a <c>kid</c>.
+    /// This test keeps that cache honest — it must never become the authority on which keys are valid.
+    ///
+    /// <para>The compromise test above proves it at the SERVICE layer (<c>GetValidationKeysAsync</c>
+    /// stops listing the key). That would still pass if the HTTP resolver served a stale parsed key,
+    /// because it never makes a request.</para>
+    ///
+    /// <para><b>The token is minted directly rather than by logging in</b>, because all six login paths
+    /// call the synchronous HS256 <c>CreateAccessToken</c> — <c>CreateAccessTokenAsync</c> has no
+    /// callers, so D-099's ES256 cut-over is built but not switched on. An OTP login therefore
+    /// produces a token with no <c>kid</c> and never reaches the branch under test. When the cut-over
+    /// lands this test keeps working unchanged; until then it is the only coverage the branch has.</para></summary>
+    [Fact]
+    public async Task An_es256_token_stops_being_accepted_once_its_signing_key_is_compromised()
+    {
+        const string phone = "9200000002";
+        await _client.PostAsJsonAsync("/v1/auth/otp/request", new { phone });
+        var code = _factory.WhatsApp.LastOtpFor(phone);
+        var login = await (await _client.PostAsJsonAsync("/v1/auth/otp/verify", new { phone, code }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        var hs256 = _factory.CreateClient();
+        hs256.DefaultRequestHeaders.Authorization =
+            new("Bearer", login.GetProperty("access_token").GetString());
+        var userId = (await (await hs256.GetAsync("/v1/me")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetGuid();
+
+        using var scope = _factory.Services.CreateScope();
+        var user = await scope.ServiceProvider.GetRequiredService<KurxDbContext>()
+            .Users.SingleAsync(u => u.Id == userId);
+        var (token, _) = await scope.ServiceProvider
+            .GetRequiredService<Kurx.Infrastructure.Auth.TokenService>().CreateAccessTokenAsync(user);
+
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+
+        // Accepted while the key is published — and this is what populates the parse cache for its kid.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/v1/me")).StatusCode);
+
+        var signer = await WithServiceAsync(s => s.GetActiveAsync());
+        await WithServiceAsync(s => s.MarkCompromisedAsync(signer.KeyId, "resolver cache test"));
+
+        // Same token, same kid, now unpublished. The cache still holds parsed material for it; the
+        // resolver must never reach that entry, because the published-key lookup runs first.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/v1/me")).StatusCode);
     }
 
     [Fact]

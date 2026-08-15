@@ -2,7 +2,7 @@
 
 > **User-first, event-first architecture ([D-267](../DECISIONS.md) · [D-268](../DECISIONS.md) · [D-269](../DECISIONS.md), building on [D-074](../DECISIONS.md)/[D-075](../DECISIONS.md)).** Kurx has Users, Events and Representations — no organization accounts, organizer accounts, or personal organizations. **A user owns an event** (`events.created_by`); the organization on an event is the one it *represents*. Event authorization is the single `IEventAuthority`. An institution is created only via an admin-approved **representation request** (`POST /v1/orgs/representation-requests`), which stages a hidden `PendingReview` placeholder org and, on approval, links the submitter as a **Verified Representative** (never Owner). Registry search and the public org profile are **Verified-only**. See [`../architecture/event-creation.md`](../architecture/event-creation.md).
 >
-> ✅ **[`openapi.json`](openapi.json) regenerated from the running API — 427 paths / 518 operations** (last regenerated for the profile validation constraints, 2026-08-12; the messaging additions below landed 2026-08-08 under D-295/D-296). Messaging Phase 2 is on the contract: reactions, search, delivery receipts, forwarding, per-member pin/mute/archive, shared media, and `PinMessageBody.durationHours` with `ChatMessageView.pinned_until`. Regenerate with `scripts/generate-openapi.sh` after any contract change.
+> ✅ **[`openapi.json`](openapi.json) regenerated from the running API — 441 paths / 535 operations** (counts re-measured 2026-08-14; last regenerated for the profile validation constraints, 2026-08-12; the messaging additions below landed 2026-08-08 under D-295/D-296). Messaging Phase 2 is on the contract: reactions, search, delivery receipts, forwarding, per-member pin/mute/archive, shared media, and `PinMessageBody.durationHours` with `ChatMessageView.pinned_until`. Regenerate with `scripts/generate-openapi.sh` after any contract change.
 
 Base URL: `http://localhost:5080` in dev. The client env var differs per surface and each reads its own exact name: web `NEXT_PUBLIC_API_BASE_URL` (SSR: `API_INTERNAL_URL`), admin **`NEXT_PUBLIC_API_URL`** (SSR: `API_URL`), mobile `KURX_API_BASE`. See `.env.example`. Swagger UI is available at `/swagger` in Development.
 
@@ -46,8 +46,8 @@ record and its mapper are part of that change, and the test that proves it belon
 
 Two further limits to be honest about ([D-259](../DECISIONS.md)):
 
-- **Response schemas are declared on 439 of 518 operations** ([D-313](../DECISIONS.md)), plus 35 declared
-  `204 No Content` and 6 binary downloads — **38 remain undeclared** (4 of them intentionally), every one tracked in
+- **Response schemas are declared on 461 of 535 operations** ([D-313](../DECISIONS.md)), plus 32 declared
+  `204 No Content` and 3 binary downloads — 496 covered, **39 remain undeclared** (4 of them intentionally), every one tracked in
   [`UNDECLARED_TRACKER.md`](UNDECLARED_TRACKER.md). Those still return anonymous
   objects (`Results.Ok(new { … })`), which have no nameable type for Swashbuckle to infer, so they appear
   with no response body. Annotating one means extracting a response DTO first — and the DTO's keys **and

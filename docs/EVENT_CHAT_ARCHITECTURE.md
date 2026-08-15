@@ -1253,7 +1253,7 @@ makes that durable. A transition is a compare-and-set, so concurrent callers can
 ## Backend architecture — detail
 
 
-**Status:** Shipped end to end (D-104 … D-120). Backend, Flutter and web all carry messaging, attachments and presence. The canonical cross-platform reference is [`docs/EVENT_CHAT_ARCHITECTURE.md`](../EVENT_CHAT_ARCHITECTURE.md); this document remains the backend architecture detail.
+**Status:** Shipped end to end (D-104 … D-120). Backend, Flutter and web all carry messaging, attachments and presence. This file *is* the canonical cross-platform reference, and also carries the backend architecture detail.
 
 > The "no client is wired on either platform" line here was correct on 2026-07-18 and survived the phases that built both clients. Corrected 2026-07-19 (D-120).
 

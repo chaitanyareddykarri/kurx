@@ -24,6 +24,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
     private static readonly object ResetLock = new();
     private static bool _reset;
     private static Guid _categoryId;
+    private static Guid _typeId;
 
     public EventAuthorizationTests(KurxApiFactory factory)
     {
@@ -38,6 +39,19 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
             db.EventCategories.Add(cat);
             db.SaveChanges();
             _categoryId = cat.Id;
+
+            // A PRIVATE type, deliberately. This class is about who may act on an event, and it creates
+            // self-represented ones — which D-353 confines to private products, since a public event must
+            // name a real institution. An untyped event resolves to Public, so leaving the type off would
+            // have every event here refused at creation for a reason that has nothing to do with authority.
+            var type = new EventCategory
+            {
+                Level = CategoryLevel.Type, Name = "Auth Type", Slug = "auth-type",
+                ParentId = cat.Id, ProductClass = EventProduct.Private,
+            };
+            db.EventCategories.Add(type);
+            db.SaveChanges();
+            _typeId = type.Id;
             _reset = true;
         }
     }
@@ -60,6 +74,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         title,
         description = "An event with plenty of detail for validation.",
         categoryId = _categoryId,
+        typeId = _typeId,
         venueName = "Main Hall",
         city = "Vizag",
         startsAt = DateTime.UtcNow.AddDays(20),

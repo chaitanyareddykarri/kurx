@@ -14077,3 +14077,85 @@ real re-issue could collide with.
 
 Audited for the same hazard elsewhere: no other signed or HMAC'd payload in the repository carries a
 `DateTime`. Presigned storage URLs use unix **seconds** and never round-trip through the database.
+
+## D-362 · Event badges are printed by the organizer, and staff carry a signed pass because they hold no ticket (2026-08-16)
+
+**Status: ACCEPTED. Rendering, authority and printing shipped. One deferred piece is named at the end.**
+Finishes the event-badge half of [D-331](#d-331), whose data model already anticipated it: *"Event badges
+reuse this row … issued against a ticket by the event's organizer."*
+
+### Organizer-only, end to end
+
+There is no holder-facing badge anywhere — no `/v1/me/badges`, no user-dashboard section, no mobile
+screen. Badges are pre-printed onto lanyards and handed out. This is a product decision and the code says
+so in three places (`IIdCardService`, `IdCardEndpoints`, `web/lib/badge-api.ts`), because the natural
+instinct on reading the feature is to add "let me see my own badge", and doing that would quietly turn a
+printing tool into a credential-distribution channel.
+
+Authority is **Manager**, not Staff, resolved live through `IEventAuthority` (D-015) — and 404 rather than
+403 for a caller with no standing (D-018). Staff can already read the attendee list; minting an entry
+credential for an arbitrary person is a different power from reading a name.
+
+### Staff have no ticket, which the brief did not anticipate
+
+An attendee badge carries the holder's existing `Ticket.Code`, exactly as `TicketQrEndpoints` encodes it,
+so a printed badge scans through `GateEntryService` **with no change to the gate** — proven by round-trip,
+not by inspection: `EventBadgeTests` takes the payload the badge would print and hands it to the real
+`IGateEntryService`, asserting it is admitted and that a second scan reports a duplicate. Asserting the
+payload merely *equals* the ticket code would have proved two strings match, not that the door opens.
+Staff hold no ticket —
+an `EventAssignment` is not a purchase — so there is nothing to look up, and a badge with no verifiable
+code is a laminated claim rather than a credential.
+
+**Chose:** a derived, signed staff pass. The QR carries `staff:{assignmentId}:{sig}` where
+`sig = HMAC(TICKET_HMAC_SECRET, "staff-pass|" + assignmentId)`.
+
+- **Prefixed, therefore domain-separated.** `SignTicketCode` HMACs the raw 16 bytes of a Guid. Signing an
+  assignment id the same way would mean one secret producing two signatures over the same input space, so
+  a staff pass and a ticket signature could stand in for one another. The two now sign disjoint byte
+  strings.
+- **Nothing is stored.** The signature is a pure function of the assignment id, recomputed at scan time.
+  No column, no migration, no rotation path, no cleanup — and revocation stays where it already is, on the
+  assignment's own `Status`.
+
+**Rejected:** storing `StaffPassCode`/`StaffPassSig` on `event_assignments`, mirroring `Ticket`. It buys
+nothing the derivation does not already give, and adds a column that can drift from the row it describes.
+
+### One renderer, not two
+
+`ICertificateDocumentRenderer` already takes a page in millimetres (D-361) and paints `text`, `image` and
+`qrcode` elements positioned as percentages. A badge is a small page with those elements on it, so
+`BadgeLayout` is a **layout, not an engine**: it returns a `CertificateDocument`. A second renderer would
+have meant a second font stack, a second QR path and a second set of rounding bugs producing the same
+output. The certificate-shaped type names are the cost, and they are cheaper than the duplication.
+
+Percentage geometry is what lets one layout land correctly on a 3.5×5.5in lanyard and an 85.6×54mm PVC
+card. The one thing that cannot survive the change is stacking, so CR80 — the only landscape size — gets
+its own arrangement rather than a squashed portrait one.
+
+### Size is the organizer's choice, not a constant
+
+Three presets (`lanyard` 88.9×139.7mm, `large` 101.6×152.4mm, `card` 85.6×54mm CR80), served from
+`/badges/sizes` rather than hardcoded per client so the console cannot drift from what the renderer
+supports. An unrecognised key is **refused, never defaulted**: defaulting would print a whole run at the
+wrong physical size, discovered only at the guillotine.
+
+### A combined sheet, not a file per person
+
+The workflow is "print the lanyards for Saturday" — one print job. Badges are rendered once at 300dpi and
+placed as rasters onto A4 with cut guides; the sheet and the single-badge download therefore cannot
+disagree about a font metric. A folder of two hundred PDFs is the same job with two hundred extra steps.
+
+### Deliberately not built
+
+**Staff scans are not yet recorded.** `gate_entries.TicketId` is non-nullable, and putting staff rows in
+it would corrupt attendee check-in counts, so staff scanning needs its own `staff_gate_entries` table.
+That migration was **not** generated: another session had an uncommitted migration and a modified
+`KurxDbContextModelSnapshot.cs` in the tree at the time, and generating against a half-finished snapshot
+would have baked their schema changes into this one and broken the chain for both. Minting and printing a
+staff pass works today; the gate accepting one is the remaining step.
+
+Until it lands, `A_staff_pass_cannot_be_scanned_as_a_ticket` pins the safe half of that gap: a staff
+payload does not parse as a bare Guid, so a scanner cannot mistake one for a ticket code and resolve it
+against some other event's ticket. When `staff_gate_entries` ships, that test is what an admission
+assertion replaces.

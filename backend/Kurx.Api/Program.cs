@@ -605,6 +605,8 @@ app.MapCertificateBatchEndpoints();
 app.MapCertificateDeliveryEndpoints();
 app.MapCertificateRevocationEndpoints();
 app.MapCertificateParticipantEndpoints();
+// D-362 — organizer-only event badge printing. No holder-facing route by design.
+app.MapIdCardEndpoints();
 app.MapCertificateAnalyticsEndpoints();
 app.MapGateEndpoints();
 app.MapPublicProfileEndpoints();

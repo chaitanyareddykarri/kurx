@@ -1111,6 +1111,36 @@ Real PDF/PNG rendering via QuestPDF (`ICertificateRenderer`) against system layo
 | `/v1/certificates/{certificateId}/revoke` | POST `{ reason }` | Owner/Manager/Admin | Marks a certificate revoked (D-036). |
 | `/v1/tickets/{code}/qr.png` | GET | ticket owner or event org member | Real scannable QR image (`image/png`) for a ticket — the actual QR payload embedded in `Ticket.Code`. |
 
+## Event badges (`/v1/events/{eventId}/badges`) — D-362
+
+Printed lanyard badges for an event's attendees and staff. **Organizer-only: there is no holder-facing
+route here by design** — no `/v1/me/badges`, no self-service download. Badges are pre-printed and handed
+out; adding a "my badge" route would be a product change, not a convenience.
+
+Every route that touches an event's data resolves **Manager** authority live through `IEventAuthority`
+(D-015) and answers `404`, not `403`, to a caller with no standing on the event (D-018). Staff-level view
+access is deliberately not enough: a badge is an entry credential, and minting one for an arbitrary person
+is a different power from reading a name. (`/sizes` is the exception — it returns a fixed list of paper
+sizes, reads nothing, and is authenticated only.)
+
+Rendering reuses `ICertificateDocumentRenderer` (D-361's millimetre pages) rather than a second renderer;
+`BadgeLayout` is a layout, not an engine.
+
+| Endpoint | Method | Auth | Notes |
+|---|---|---|---|
+| `/v1/events/{eventId}/badges/sizes` | GET | Manager | The badge sizes available for printing: `lanyard` (88.9×139.7mm), `large` (101.6×152.4mm), `card` (CR80, 85.6×54mm, the only landscape one). Served rather than hardcoded per client so the console cannot drift from what the renderer supports. |
+| `/v1/events/{eventId}/badges/recipients` | GET | Manager | Everyone who can be given a badge — ticket holders and accepted `EventAssignment` staff. Someone who is both appears **once, as staff**. Returns `{ user_id, name, kind: "attendee" \| "staff", subtitle, access_level, has_photo }`. The QR payload is deliberately **not** returned: it is a working credential, and listing everyone's scannable code would hand out badges as JSON. |
+| `/v1/events/{eventId}/badges/sheet` | POST `{ sizeKey, kinds?, userIds? }` | Manager | The print run — one `application/pdf` with badges laid out N-up on A4 with cut guides. `kinds` omitted means both. `userIds` omitted means everyone matching `kinds`. An unrecognised `sizeKey` is **refused** (`unknown_badge_size`), never defaulted: defaulting prints a whole run at the wrong physical size. |
+| `/v1/events/{eventId}/badges/{userId}.pdf` | GET `?size=` | Manager | One badge, print-ready. Defaults to `lanyard`. |
+
+**QR payloads differ by kind, and that is load-bearing.** An attendee badge carries the holder's existing
+`Ticket.Code`, exactly as `/v1/tickets/{code}/qr.png` encodes it — so a printed badge scans through
+`GateEntryService` with no change to the gate. Staff hold no ticket, so their badge carries
+`staff:{assignmentId}:{sig}` where `sig = HMAC(TICKET_HMAC_SECRET, "staff-pass|" + assignmentId)`:
+domain-separated from `SignTicketCode` so neither can be replayed as the other, and derived rather than
+stored, so revocation stays on the assignment's own `Status`. **The gate does not yet accept a staff
+pass** — minting and printing work; recording a staff scan needs a `staff_gate_entries` table (D-362).
+
 ## Realtime (SignalR)
 
 | Hub | Path | Groups / Methods |

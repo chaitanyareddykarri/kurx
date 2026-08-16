@@ -144,4 +144,27 @@ public class TokenService(JwtOptions options, IServiceScopeFactory? scopeFactory
         using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(options.TicketHmacSecret));
         return Convert.ToHexString(hmac.ComputeHash(code.ToByteArray())).ToLowerInvariant();
     }
+
+    /// <summary>Signs a staff member's event-badge pass (D-362).
+    ///
+    /// <para><b>Why staff need their own signature at all.</b> An attendee badge carries the holder's
+    /// ticket code, which the gate already resolves. Staff hold no ticket — an <c>EventAssignment</c> is
+    /// not a purchase — so there is nothing for the gate to look up, and a badge with no verifiable code
+    /// is a laminated claim rather than a credential.</para>
+    ///
+    /// <para><b>Why the payload is prefixed.</b> <see cref="SignTicketCode"/> HMACs the raw 16 bytes of a
+    /// Guid. Signing an assignment id the same way would mean one secret producing two signatures over the
+    /// same input space, so a staff pass and a ticket signature could in principle stand in for one
+    /// another. The <c>staff-pass|</c> prefix is domain separation: the two now sign disjoint byte
+    /// strings, and neither can be replayed as the other.</para>
+    ///
+    /// <para>Nothing is stored. The signature is recomputed from the assignment id at scan time, so a
+    /// badge needs no column, no rotation path and no cleanup — and revocation stays where it already is,
+    /// on the assignment's own <c>Status</c>.</para></summary>
+    public string SignStaffPass(Guid assignmentId)
+    {
+        using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(options.TicketHmacSecret));
+        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes($"staff-pass|{assignmentId}")))
+            .ToLowerInvariant();
+    }
 }

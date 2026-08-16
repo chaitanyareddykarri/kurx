@@ -74,8 +74,9 @@ public static class CertificateCanonicalPayload
             $"tid{PairSeparator}{templateId:D}",
             $"tv{PairSeparator}{templateVersion}",
             // Round-trip UTC. A culture-formatted date would verify on the machine that signed it and
-            // nowhere else.
-            $"iat{PairSeparator}{issuedAt.ToUniversalTime():O}",
+            // nowhere else — and a timestamp finer than the database can hold verifies on the machine that
+            // signed it and nowhere else either. See Storable.
+            $"iat{PairSeparator}{Storable(issuedAt):O}",
         };
 
         // Ordinal sort, so the same set of values always produces the same string regardless of the
@@ -84,5 +85,29 @@ public static class CertificateCanonicalPayload
             parts.Add($"f:{key}{PairSeparator}{value}");
 
         return string.Join(FieldSeparator, parts);
+    }
+
+    /// <summary>The instant at the precision that survives being stored.
+    ///
+    /// <para>Signing happens over a <see cref="DateTime"/> still in memory; verification rebuilds the
+    /// payload from the row that was written. PostgreSQL <c>timestamptz</c> keeps <b>microseconds</b> and
+    /// .NET ticks are 100 nanoseconds, so anything finer is silently truncated on the way in — and the two
+    /// payloads differ by the digits that were dropped. The signature then fails, and a genuine
+    /// certificate reports as tampered: the worst possible way to be wrong, arriving at the person holding
+    /// a real document.</para>
+    ///
+    /// <para>It hid because the clock differs by platform. On macOS <c>DateTime.UtcNow</c> is already
+    /// microsecond-granular, so every value round-trips exactly and the suite passes; on Linux — CI, and
+    /// every deployed container — roughly nine in ten carry sub-microsecond ticks, so most certificates
+    /// signed there could never verify. It was a production defect that only CI could see.</para>
+    ///
+    /// <para>Truncation, not rounding, because that is what PostgreSQL does with the digits it cannot
+    /// keep. Applied here rather than at issuance so both halves normalise identically no matter which
+    /// caller built the payload, and so the format string is untouched — a value that was already whole
+    /// microseconds is unchanged, which is what keeps certificates issued before this fix verifying.</para></summary>
+    private static DateTime Storable(DateTime issuedAt)
+    {
+        var utc = issuedAt.ToUniversalTime();
+        return new DateTime(utc.Ticks - utc.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc);
     }
 }

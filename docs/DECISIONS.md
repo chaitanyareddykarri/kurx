@@ -14031,3 +14031,49 @@ Four defects the redesign itself introduced or exposed, all fixed:
 **Also:** `Button` gained an `xl` size rather than four call sites overriding height in `className`. An
 existing guard forbids that, correctly — the height floor belongs to the design system, not to whoever is
 in a hurry.
+
+
+## D-360 · A signed timestamp is normalised to the precision the database keeps (2026-08-16)
+
+**Context.** Certificates were reporting as `Tampered` in CI and only in CI — thirteen tests, all of them
+tests that verify a signature. The suite passed on every developer machine.
+
+`CertificateCanonicalPayload` includes the issue time as round-trip ISO-8601 with seven fractional digits.
+Signing happens over the `DateTime` still in memory; verification rebuilds the payload from the row that
+was written, and reads it back with `AsNoTracking()`, so it always sees the stored value. PostgreSQL
+`timestamptz` keeps **microseconds**; a .NET tick is **100 nanoseconds**. Anything finer is dropped on the
+way in, the two payloads differ by the digits that were dropped, and ES256 verification fails.
+
+It hid because the clock differs by platform. Measured: on macOS `DateTime.UtcNow` never produced a
+sub-microsecond tick across 1000 samples, so every value round-tripped exactly; on Linux 886 of 1000 did.
+CI is Linux — and so is every deployed container, which makes this a **production defect that only CI
+could see**. Roughly nine in ten certificates issued in production could never have verified, and the
+person holding a genuine document would have been told it was forged. That is the worst possible way for
+this system to be wrong, which is why the payload's own documentation already warned about determinism.
+
+**Decision.** `Build` normalises the timestamp to microsecond precision before formatting it.
+
+**Truncation, not rounding**, because that is what PostgreSQL does with the digits it cannot keep —
+verified empirically at +1, +4, +5, +6 and +9 ticks rather than assumed.
+
+**In `Build`, not at issuance.** Both halves then normalise identically no matter which caller assembled
+the payload, so a third issuance path cannot reintroduce the asymmetry. Issuance still records the full
+`DateTime.UtcNow` on the entity; what is *signed* is what can be *stored*.
+
+**The format string is untouched and `Version` stays `"1"`.** A value that was already whole microseconds
+serialises exactly as before, so every certificate issued before this fix continues to verify. Bumping the
+version, or widening the format, would have invalidated all of them.
+
+**What this cannot repair.** Certificates issued on Linux before this fix are signed over a timestamp that
+no longer exists in the row. No change here makes them verify; they would need re-issuing. Since the
+platform has not issued production certificates yet, the blast radius is CI only — but the same defect
+shipped would have been unrecoverable without re-issue.
+
+**Consequences.** The regression test asserts the property directly at several sub-microsecond offsets,
+rather than relying on the platform clock to produce a value that happens to expose it — on macOS no such
+value ever occurs, which is precisely how this survived a green suite. A companion test pins that a whole
+microsecond is still a distinguishable difference, so the normalisation cannot be widened into something a
+real re-issue could collide with.
+
+Audited for the same hazard elsewhere: no other signed or HMAC'd payload in the repository carries a
+`DateTime`. Presigned storage URLs use unix **seconds** and never round-trip through the database.

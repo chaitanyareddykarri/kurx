@@ -123,6 +123,49 @@ public class CertificateVerificationTests : IClassFixture<KurxApiFactory>
         Assert.Equal(a, b);
     }
 
+    /// <summary>The payload must survive being stored, which is the only form verification ever sees it in.
+    ///
+    /// <para>The defect this exists to prevent reported genuine certificates as TAMPERED. Signing happens
+    /// over a timestamp in memory; verification rebuilds from the written row, and PostgreSQL
+    /// <c>timestamptz</c> keeps microseconds while .NET ticks are 100ns. The dropped digits changed the
+    /// payload, the signature failed, and the holder of a real document was told it was forged.</para>
+    ///
+    /// <para>It was invisible on macOS, whose clock is already microsecond-granular — the suite passed
+    /// here and failed in CI, where ~9 in 10 timestamps carry sub-microsecond ticks, as every deployed
+    /// Linux container does. So this asserts the property directly rather than relying on the platform
+    /// clock to produce a value that exposes it.</para></summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(9)]
+    public void The_canonical_payload_ignores_precision_the_database_cannot_keep(int extraTicks)
+    {
+        var id = Guid.NewGuid();
+        var values = new Dictionary<string, string> { ["participant_name"] = "Rahul Sharma" };
+
+        var whole = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        var finer = whole.AddTicks(extraTicks);   // what was signed, before the row truncated it
+
+        Assert.Equal(
+            CertificateCanonicalPayload.Build("C-1", id, id, 1, whole, values),
+            CertificateCanonicalPayload.Build("C-1", id, id, 1, finer, values));
+    }
+
+    /// <summary>A microsecond is still a difference, though — truncating must not blunt the timestamp into
+    /// something a real re-issue could collide with.</summary>
+    [Fact]
+    public void The_canonical_payload_still_distinguishes_a_microsecond()
+    {
+        var id = Guid.NewGuid();
+        var values = new Dictionary<string, string> { ["participant_name"] = "Rahul Sharma" };
+        var at = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.NotEqual(
+            CertificateCanonicalPayload.Build("C-1", id, id, 1, at, values),
+            CertificateCanonicalPayload.Build("C-1", id, id, 1, at.AddTicks(TimeSpan.TicksPerMicrosecond), values));
+    }
+
     [Fact]
     public void The_canonical_payload_changes_when_anything_it_covers_changes()
     {

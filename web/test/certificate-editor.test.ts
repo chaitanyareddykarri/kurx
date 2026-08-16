@@ -7,8 +7,7 @@ import {
   type DraftField,
   nextFreeSlot,
   coverArtwork,
-  uncoverArtwork
-} from "@/lib/certificate-editor";
+  uncoverArtwork, startDrawing } from "@/lib/certificate-editor";
 
 /**
  * The certificate editor's arithmetic and history (D-355, Phase 3).
@@ -312,6 +311,20 @@ describe("nextFreeSlot", () => {
     expect(slot.y).toBeGreaterThanOrEqual(60);
   });
 
+  /** The bug this guards: a finished certificate is printed almost edge to edge, so treating artwork as
+   *  a hard constraint rejected every candidate and every new field cascaded onto the last one. Clear of
+   *  other fields is required; clear of the design is only preferred. */
+  it("still separates fields when the whole design is covered in artwork", () => {
+    const fields: DraftField[] = [];
+    const slots = [0, 1, 2, 3].map(() => {
+      const slot = nextFreeSlot(fields, box, () => true);
+      fields.push({ ...at(slot.x, slot.y) });
+      return `${slot.x},${slot.y}`;
+    });
+
+    expect(new Set(slots).size).toBe(4);
+  });
+
   it("still returns a usable slot when everywhere is busy", () => {
     const slot = nextFreeSlot([], box, () => true);
 
@@ -395,5 +408,47 @@ describe("coverArtwork", () => {
 
     expect(undone.is_masking).toBe(false);
     expect(undone.background_color).toBeNull();
+  });
+});
+
+/**
+ * When a handle on the artwork becomes a mark on the page (D-356).
+ *
+ * A detected line draws and covers nothing while the design already says it. This decides the moment that
+ * stops being true — and getting it wrong in the lenient direction puts a patch on a design the creator
+ * never actually edited.
+ */
+describe("editing text the artwork already prints", () => {
+  const mirrored = (): DraftField => ({
+    ...newField("text"),
+    static_text: "has successfully completed",
+    mirrors_artwork: true,
+    is_masking: false,
+    background_color: "#FDF6E3",
+  });
+
+  it("starts covering once the words genuinely change", () => {
+    const patch = startDrawing(mirrored(), "has completed with distinction");
+
+    expect(patch.mirrors_artwork).toBe(false);
+    expect(patch.is_masking).toBe(true);
+    expect(patch.static_text).toBe("has completed with distinction");
+  });
+
+  /** Clicking into text and clicking straight back out must not cost the design a patch. */
+  it("stays a handle when the same words are retyped", () => {
+    expect(startDrawing(mirrored(), "has successfully completed")).toEqual({});
+  });
+
+  it("ignores incidental whitespace, which is not an edit either", () => {
+    expect(startDrawing(mirrored(), "  has successfully completed  ")).toEqual({});
+  });
+
+  /** An ordinary element was never mirroring; its text simply changes. */
+  it("leaves an ordinary element's covering exactly as it was", () => {
+    const patch = startDrawing({ ...newField("text"), static_text: "Signed" }, "Countersigned");
+
+    expect(patch).toEqual({ static_text: "Countersigned" });
+    expect(patch.is_masking).toBeUndefined();
   });
 });

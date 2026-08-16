@@ -8,30 +8,43 @@ import {
   updateTemplateAction
 } from "@/lib/certificate-actions";
 import { overlapsArtwork, type ArtworkMap } from "@/lib/certificate-artwork-map";
+import { CertificateTextPanel } from "@/components/host/certificates/certificate-text-panel";
+import { CertificateSteps, type Step, type StepId } from "@/components/host/certificates/certificate-steps";
+import { autoLayout, foldDetection } from "@/lib/certificate-autolayout";
+import type { TextDetection } from "@/lib/certificate-detection";
+import { toKey } from "@/lib/certificate-fields";
 import { BackgroundUpload } from "@/components/host/certificates/background-upload";
 import { CertificateCanvas } from "@/components/host/certificates/certificate-canvas";
-import type { CertificateFieldKind, CertificateTemplate } from "@/lib/certificate-api";
+import type { CertificateTemplate } from "@/lib/certificate-api";
 import {
-  FONT_FAMILIES, FONT_WEIGHTS, HORIZONTAL_ALIGNMENTS, PAGE_ASPECT, VERTICAL_ALIGNMENTS, ZOOM_STEPS,
-  addField, canRedo, canUndo, commit, duplicateField, initHistory, moveField, newField, normaliseOrder,
-  coverArtwork, nextFreeSlot, redo, removeField, reorderField, resizeField, rotateField, same, squareOnPage,
+  PAGE_ASPECT,
+  addField, canRedo, canUndo, commit, initHistory, moveField, newField, normaliseOrder,
+  coverArtwork, nextFreeSlot, redo, removeField, resizeField, same,
   toDraft, toInput, undo, updateField,
-  type DraftField, type History
-} from "@/lib/certificate-editor";
+  type DraftField, type History, startDrawing } from "@/lib/certificate-editor";
 
 /**
- * The certificate editor (D-355, Phase 3).
+ * Making a certificate, as five steps (D-359).
  *
- * **Simple by default, advanced on demand.** The default surface is a list of details to add and a canvas
- * to place them on. Everything finer — exact coordinates, rotation, z-order, masking — lives behind
- * "Advanced", because the common case is "put the name here" and burying that under twenty controls is
- * how a tool stops being usable by the person who actually runs the event.
+ * **A guided tool, not a design editor.** The person using this runs an event; they have not been trained
+ * on anything, and they will use it once every few months. So the screen answers four questions at all
+ * times — what step am I on, what does this button do, where do I click, what happens next — and every
+ * control that does not help answer one of them has been taken out.
  *
- * **No OCR anywhere.** Every field is placed by the creator. Detection arrives later as a source of
- * suggestions, and this editor has to remain complete without it.
+ * What went, and why: the zoom selector, rotation, z-order, duplicate, layer ordering, per-field alignment
+ * and the whole "Advanced" panel. None of them are needed to put a name on a certificate, and each one was
+ * a thing to read past. Text size, colour and bold survive because "make it bigger" is a thing people
+ * genuinely want and needs no explaining.
  *
- * Every mutation goes through the pure functions in `lib/certificate-editor` and lands in history via
- * `commit`, so undo is a stack of whole field lists rather than a stack of inverse operations.
+ * **Plain words everywhere.** Nothing user-facing says element, handle, field (as a noun), mask, render or
+ * z-order. It says *text*, *picture*, *changes for each person*, *the same on every certificate*.
+ *
+ * **Preview is the real thing.** It asks the server for a rendered sample using the same renderer that
+ * issues certificates, rather than showing the browser's approximation of it — because a preview that is
+ * only nearly right is worse than none, and the difference is discovered after two hundred are sent.
+ *
+ * Every mutation still goes through the pure functions in `lib/certificate-editor` and lands in history via
+ * `commit`, so Undo is a stack of whole field lists rather than a stack of inverse operations.
  */
 export function CertificateTemplateEditor({ template: initial, canManage }: {
   template: CertificateTemplate;
@@ -41,20 +54,23 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
   const [template, setTemplate] = useState(initial);
   const [history, setHistory] = useState<History>(() => initHistory(initial.fields.map(toDraft)));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [advanced, setAdvanced] = useState(false);
   const [name, setName] = useState(initial.name);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [localBackground, setLocalBackground] = useState<string | null>(null);
-  // The OCR extension point (D-355, Phase 12). No build registers an engine today, so this stays false
-  // and nothing extra renders. Probed rather than assumed so that turning one on is a server-side change
-  // with no edit here — which is the entire reason the boundary exists.
   const [canDetectText, setCanDetectText] = useState(false);
-  // Where the uploaded design already has something printed. Fetched once per design and consulted
-  // locally while dragging — see lib/certificate-artwork-map.ts for why it is not asked per move.
+  /** Still working out whether this deployment can read designs, and whether this one has been read.
+   *  Counts as busy: otherwise the Find text step offers a button, then withdraws it a moment later when
+   *  the automatic pass starts, then offers it again — a control that flickers on load reads as broken. */
+  const [settling, setSettling] = useState(true);
   const [artwork, setArtwork] = useState<ArtworkMap | null>(null);
   const [covering, setCovering] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  /** Why reading failed, in words the reader can act on. Null means it has not failed. */
+  const [readFailed, setReadFailed] = useState<string | null>(null);
+  /** The step the user asked for. Null means "wherever the design actually is" — see `step`. */
+  const [goneTo, setGoneTo] = useState<StepId | null>(null);
   const dragRef = useRef<{ id: string; mode: "move" | "resize"; x: number; y: number } | null>(null);
 
   const fields = history.present;
@@ -62,23 +78,57 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
   const dirty = !same(initial.fields.map(toDraft), fields) || name !== template.name;
 
   const aspect = PAGE_ASPECT[template.page_size] ?? PAGE_ASPECT["a4-landscape"];
-  const width = Math.round(720 * zoom);
+  const width = 720;
   const height = Math.round(width / aspect);
   const backgroundUrl = localBackground ?? template.background_url ?? null;
 
+  const hasDesign = Boolean(backgroundUrl);
+  const hasText = fields.length > 0;
+
+  /**
+   * Where the user is.
+   *
+   * Derived from the design itself, so it is right on arrival without anyone having clicked anything —
+   * a half-finished certificate opened a week later lands on the step it actually stopped at. An explicit
+   * click wins, but only as far as the design allows: you cannot preview a page with nothing on it.
+   */
+  const step: StepId =
+    !hasDesign ? "upload"
+    : goneTo && (goneTo !== "preview" && goneTo !== "download" ? true : hasText) ? goneTo
+    : !hasText ? "detect"
+    : "edit";
+
   const apply = useCallback((next: DraftField[]) => setHistory((h) => commit(h, next)), []);
 
-  // Asked once, and never blocking: the action swallows every failure into "unavailable", so a detector
-  // that is missing, off or broken costs the editor nothing. Manual placement never consults this.
   useEffect(() => {
     let cancelled = false;
     void detectTemplateTextAction(initial.id).then((result) => {
-      if (!cancelled) setCanDetectText(result.available);
+      if (cancelled) return;
+      setCanDetectText(result.available);
+      // Only settled once a readable design has had its automatic pass; an unreadable one settles here.
+      if (!result.available) setSettling(false);
     });
     return () => { cancelled = true; };
   }, [initial.id]);
 
-  // Re-read when the artwork itself changes, since a new design invalidates the old map entirely.
+  /**
+   * Reads an uploaded design without being asked (D-358).
+   *
+   * The words are already on the certificate. Presenting an empty panel and asking someone to retype and
+   * reposition each one is asking them to do by hand the job the reader exists to do. Only when there is
+   * nothing to lose — once anything has been placed, a re-read is offered instead.
+   */
+  const autoRead = useRef<string | null>(null);
+  useEffect(() => {
+    if (!canManage || !canDetectText || !backgroundUrl) { setSettling(false); return; }
+    if (fields.length > 0 || scanning) { setSettling(false); return; }
+    if (autoRead.current === backgroundUrl) { setSettling(false); return; }
+
+    autoRead.current = backgroundUrl;
+    void read({ silent: true }).finally(() => setSettling(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, canDetectText, backgroundUrl, fields.length]);
+
   useEffect(() => {
     let cancelled = false;
     void getArtworkMapAction(initial.id).then((map) => {
@@ -87,13 +137,14 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
     return () => { cancelled = true; };
   }, [initial.id, template.background_url]);
 
-  // Keyboard is the whole point of an editor: a canvas reachable only by mouse excludes anyone using a
-  // keyboard, and arrow-key nudging is more precise than dragging for the case that matters most —
-  // aligning a field to a rule printed on the artwork.
+  // Arrow keys nudge and Delete removes, because a canvas reachable only by mouse excludes anyone using a
+  // keyboard — and nudging is more precise than dragging for the case that matters, lining text up with a
+  // rule printed on the design.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (editingId) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -119,7 +170,15 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fields, selectedId, apply]);
+  }, [fields, selectedId, editingId, apply]);
+
+  /** Click selects; clicking the selected text again types into it. Double-click does the same, because
+   *  neither gesture is guessable and offering both costs nothing. */
+  function startOrSelect(id: string) {
+    const field = fields.find((f) => f.id === id);
+    if (selectedId === id && field?.kind === "text") setEditingId(id);
+    else { setSelectedId(id); setEditingId(null); }
+  }
 
   function onPointerDown(e: React.PointerEvent, id: string, mode: "move" | "resize") {
     if (!canManage) return;
@@ -132,8 +191,6 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
   function onPointerMove(e: React.PointerEvent) {
     const drag = dragRef.current;
     if (!drag) return;
-    // Pixels → percent once, here. Everything downstream is percentages, which is what makes the design
-    // resolution-independent.
     const dx = ((e.clientX - drag.x) / width) * 100;
     const dy = ((e.clientY - drag.y) / height) * 100;
     if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
@@ -149,502 +206,626 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
     if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
   }
 
-  function add(kind: CertificateFieldKind, fieldKey?: string, label?: string) {
-    const base = kind === "qrcode"
-      ? { ...newField(kind), ...squareOnPage(13, template.page_size) }
-      : newField(kind, { fieldKey, label });
+  /**
+   * Finds the text printed on the design and makes it changeable.
+   *
+   * `silent` is the automatic first pass: a design nobody asked us to read must not report failure at
+   * someone who never invoked the feature. An explicit Try Again does report, because then it is the
+   * answer to a question they asked.
+   */
+  async function read({ silent = false } = {}) {
+    // Any read counts as having read this design — including one the user asked for before the automatic
+    // pass got its turn. Without this, the silent pass fires afterwards and clears the failure message
+    // they just asked to see, leaving a screen that looks like the button did nothing.
+    autoRead.current = backgroundUrl;
 
-    // Land somewhere free rather than always at the same coordinates — three fields added in a row used
-    // to stack exactly on top of each other, which prints as illegible overlapping text. Artwork is
-    // avoided too where a map is available, so a new field does not start life on top of the design's
-    // own title.
-    const field = {
-      ...base,
-      ...nextFreeSlot(fields, base, (candidate) => overlapsArtwork(artwork, candidate)),
-    };
+    setScanning(true);
+    setReadFailed(null);
+    setMessage(null);
 
+    const detection = await detectTemplateTextAction(initial.id);
+    const result = autoLayout(detection, template.page_size === "a4-portrait" ? 1191 : 842);
+    setScanning(false);
+
+    if (!detection.available || result.fields.length === 0) {
+      // Never the machine's words. "DetectionError: element_coordinates_invalid" tells the person holding
+      // a certificate nothing they can act on; "try a clearer picture" tells them exactly what to do.
+      if (!silent) {
+        setReadFailed(detection.available
+          ? "Try uploading a clearer picture of your certificate, or add the text yourself."
+          : "Text finding is not switched on here. You can still add the text yourself.");
+      }
+      return;
+    }
+
+    apply(foldDetection(fields, result.fields, detection));
+    setSelectedId(null);
+    setGoneTo("edit");
+    setMessage({
+      ok: true,
+      text: `Found ${result.fields.length} piece${result.fields.length === 1 ? "" : "s"} of text you can change.`,
+    });
+  }
+
+  function addNamedField(fieldKey: string | null, label: string) {
+    const base = newField("dynamicfield", { fieldKey: fieldKey ?? toKey(label), label });
+    const field = { ...base, ...nextFreeSlot(fields, base, (c) => overlapsArtwork(artwork, c)) };
     apply(addField(fields, field));
     setSelectedId(field.id);
   }
 
-  async function save() {
+  function deleteField(id: string) {
+    apply(removeField(fields, id));
+    if (selectedId === id) setSelectedId(null);
+  }
+
+  async function save(): Promise<boolean> {
     setSaving(true);
     setMessage(null);
 
     if (name.trim() && name.trim() !== template.name) {
       const renamed = await updateTemplateAction(template.id, { name: name.trim() }, template.event_id);
-      if ("error" in renamed && renamed.error) { setSaving(false); setMessage({ ok: false, text: renamed.error }); return; }
+      if ("error" in renamed && renamed.error) {
+        setSaving(false);
+        setMessage({ ok: false, text: "Your changes could not be saved. Please try again." });
+        return false;
+      }
       if ("template" in renamed && renamed.template) setTemplate(renamed.template);
     }
 
     const result = await saveFieldsAction(template.id, toInput(fields), template.event_id);
     setSaving(false);
 
-    if ("error" in result && result.error) { setMessage({ ok: false, text: result.error }); return; }
+    if ("error" in result && result.error) {
+      setMessage({ ok: false, text: "Your changes could not be saved. Please try again." });
+      return false;
+    }
     if ("template" in result && result.template) {
       setTemplate(result.template);
       setHistory(initHistory(result.template.fields.map(toDraft)));
-      setMessage({
-        ok: true,
-        text: result.template.version > template.version
-          ? `Saved as version ${result.template.version}. Certificates already issued keep the version they were made with.`
-          : "Design saved."
-      });
+      setMessage({ ok: true, text: "Saved." });
       router.refresh();
     }
+    return true;
   }
 
-  return (
-    <div className="space-y-4">
-      {/* ── Top bar: upload, preview-of-record, save ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <label className="sr-only" htmlFor="template-name">Design name</label>
-          <input
-            id="template-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canManage}
-            className="h-10 w-72 max-w-full rounded-md border border-border bg-background px-3 text-sm font-semibold text-text"
-          />
-          <p className="mt-1 text-[11px] text-muted">
-            Version {template.version} · {template.status}
-            {template.has_issued_certificates ? " · certificates issued" : ""}
-          </p>
-        </div>
+  const steps: Step[] = [
+    { id: "upload", label: "Upload", hint: "Choose your certificate picture.", done: hasDesign, enabled: true },
+    { id: "detect", label: "Find text", hint: "We find the text you can change.", done: hasText, enabled: hasDesign },
+    { id: "edit", label: "Edit", hint: "Click any text to change it.", done: hasText && !dirty, enabled: hasText },
+    { id: "preview", label: "Preview", hint: "See exactly how it will look.", done: false, enabled: hasText },
+    { id: "download", label: "Download", hint: "Save a copy to your computer.", done: false, enabled: hasText },
+  ];
 
-        <div className="flex flex-wrap items-center gap-2">
-          {canManage ? (
-            <BackgroundUpload
-              template={template}
-              onUploaded={(next, preview) => { setTemplate(next); setLocalBackground(preview); }}
-            />
-          ) : null}
-          <Button type="button" variant="secondary" size="sm" disabled={!canUndo(history)}
-            onClick={() => setHistory(undo)} aria-label="Undo">Undo</Button>
-          <Button type="button" variant="secondary" size="sm" disabled={!canRedo(history)}
-            onClick={() => setHistory(redo)} aria-label="Redo">Redo</Button>
-          <label className="sr-only" htmlFor="zoom">Zoom</label>
-          <select id="zoom" value={zoom} onChange={(e) => setZoom(Number(e.target.value))}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm text-text">
-            {ZOOM_STEPS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
-          </select>
-          <Button type="button" onClick={save} disabled={!canManage || saving || !dirty}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </div>
+  return (
+    <div className="space-y-7">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-bold text-text">Make your certificate</h1>
+        <label className="sr-only" htmlFor="template-name">Certificate name</label>
+        <input
+          id="template-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={!canManage}
+          className="h-12 w-full max-w-md rounded-lg border border-border bg-background px-3 text-base font-semibold text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        />
+      </header>
+
+      <CertificateSteps steps={steps} current={step} onGo={setGoneTo} />
 
       {message ? (
-        <p role={message.ok ? "status" : "alert"}
-          className={`text-sm ${message.ok ? "text-muted" : "text-danger"}`}>{message.text}</p>
+        <p
+          role={message.ok ? "status" : "alert"}
+          className={`rounded-lg border px-4 py-3 text-base ${
+            message.ok
+              ? "border-success/40 bg-success/10 text-text"
+              : "border-danger/40 bg-danger/10 text-text"
+          }`}
+        >
+          <span aria-hidden className="mr-2">{message.ok ? "✓" : "!"}</span>
+          {message.text}
+        </p>
       ) : null}
 
-      {/* Honest about what is exact and what is not. The artwork IS the artwork; only the type is an
-          approximation, because the browser's fonts are not the renderer's. */}
-      <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted">
-        Your uploaded design is shown exactly as it will print. The <strong>text</strong> is an
-        approximation here — fonts and spacing are the browser&apos;s; the certificate itself is rendered
-        on the server.
-      </p>
+      {step === "upload" ? (
+        <UploadStep template={template} canManage={canManage}
+          onUploaded={(next, preview) => { setTemplate(next); setLocalBackground(preview); }} />
+      ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[auto_320px]">
-        <div className="min-w-0 space-y-3">
-          <div className="overflow-auto" onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
-            <CertificateCanvas
-              pageSize={template.page_size}
-              backgroundUrl={backgroundUrl}
-              fields={fields}
-              width={width}
-              selectedId={selectedId}
-              interactive={canManage}
-              onSelect={setSelectedId}
-              onPointerDown={onPointerDown}
-              onBackgroundClick={() => setSelectedId(null)}
-            />
-          </div>
+      {step === "detect" ? (
+        <DetectStep
+          scanning={scanning || settling}
+          failed={readFailed}
+          canManage={canManage}
+          onRead={() => void read()}
+          onSkip={() => setGoneTo("edit")}
+          preview={
+            <CertificateCanvas pageSize={template.page_size} backgroundUrl={backgroundUrl}
+              fields={[]} width={480} interactive={false} />
+          }
+        />
+      ) : null}
 
-          {canManage ? <AddDetails onAdd={add} canDetectText={canDetectText} /> : null}
+      {step === "edit" ? (
+        <EditStep
+          template={template}
+          fields={fields}
+          selected={selected}
+          selectedId={selectedId}
+          canManage={canManage}
+          backgroundUrl={backgroundUrl}
+          width={width}
+          editingId={editingId}
+          artwork={artwork}
+          covering={covering}
+          scanning={scanning}
+          canDetectText={canDetectText}
+          history={history}
+          saving={saving}
+          dirty={dirty}
+          onUndo={() => setHistory(undo)}
+          onRedo={() => setHistory(redo)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerDown={onPointerDown}
+          onSelect={startOrSelect}
+          onDeselect={() => { setSelectedId(null); setEditingId(null); }}
+          onStartEditing={(id) => { setSelectedId(id); setEditingId(id); }}
+          onEditDone={() => setEditingId(null)}
+          onChangeText={(id, text) =>
+            apply(updateField(fields, id, startDrawing(fields.find((f) => f.id === id), text)))}
+          onChange={(patch) => selected && apply(updateField(fields, selected.id, patch))}
+          onDelete={deleteField}
+          onAdd={addNamedField}
+          onReRead={() => void read()}
+          onCover={async () => {
+            if (!selected) return;
+            setCovering(true);
+            const ground = await getArtworkColourAction(template.id, selected);
+            setCovering(false);
+            if (ground) apply(updateField(fields, selected.id, coverArtwork(selected, ground)));
+          }}
+          onSave={() => void save()}
+          onNext={() => setGoneTo("preview")}
+        />
+      ) : null}
 
-          {/* The mistake this catches renders as `[Recipient's Full Name] John Doe` on a finished
-              certificate: the placeholder is printed into the uploaded image, and the field's value is
-              drawn on top of it. The renderer cannot edit those pixels, so the only place to catch it is
-              here, while the layout is still being decided. */}
-          {selected && artwork && overlapsArtwork(artwork, selected) && !selected.is_masking ? (
-            <div role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-text">
-              <p>
-                Your design already has something printed here, and it will still be there behind this
-                field — the certificate would show both.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                disabled={!canManage || covering}
-                onClick={async () => {
-                  setCovering(true);
-                  // Sampled from the artwork around the field, never assumed: a white patch on cream
-                  // stock is a smear exactly where it was meant to be invisible. No colour means no
-                  // change — a guessed one would be worse than leaving the overlap visible.
-                  const ground = await getArtworkColourAction(template.id, selected);
-                  setCovering(false);
-                  if (ground) apply(updateField(fields, selected.id, coverArtwork(selected, ground)));
-                }}
-              >
-                {covering ? "Matching the design…" : "Cover what's printed here"}
-              </Button>
-            </div>
-          ) : null}
-
-          {selected?.is_masking ? (
-            <p className="mt-3 text-xs text-muted">
-              This field paints over the design behind it, so only its value shows. Clear the background
-              colour under Advanced to let the design through again.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="space-y-4">
-          {selected && canManage ? (
-            <Inspector
-              field={selected}
-              advanced={advanced}
-              onToggleAdvanced={() => setAdvanced((v) => !v)}
-              onChange={(patch) => apply(updateField(fields, selected.id, patch))}
-              onRotate={(d) => apply(rotateField(fields, selected.id, d))}
-              onReorder={(dir) => apply(reorderField(fields, selected.id, dir))}
-              onDuplicate={() => {
-                const next = duplicateField(fields, selected.id);
-                if (next) { apply(next.fields); setSelectedId(next.id); }
-              }}
-              onDelete={() => { apply(removeField(fields, selected.id)); setSelectedId(null); }}
-            />
-          ) : (
-            <section className="rounded-md border border-border bg-surface p-3">
-              <h3 className="text-sm font-semibold text-text">Nothing selected</h3>
-              <p className="mt-1 text-xs text-muted">
-                Add a detail below, then click it on the design to move, resize or restyle it.
-              </p>
-            </section>
-          )}
-
-          <FieldList
-            fields={normaliseOrder(fields)}
-            selectedId={selectedId}
-            canManage={canManage}
-            onSelect={setSelectedId}
-            onReorder={(id, dir) => apply(reorderField(fields, id, dir))}
-          />
-        </div>
-      </div>
+      {step === "preview" || step === "download" ? (
+        <PreviewStep
+          templateId={template.id}
+          download={step === "download"}
+          dirty={dirty}
+          saving={saving}
+          canManage={canManage}
+          onSave={save}
+          onBack={() => setGoneTo("edit")}
+          onNext={() => setGoneTo("download")}
+        />
+      ) : null}
     </div>
   );
 }
 
-/**
- * "+ Add Details" — a flat list of what a certificate can say, not a palette of drawing tools.
- *
- * The dynamic keys offered here are suggestions, not a fixed vocabulary: the key is a free string, and a
- * creator whose spreadsheet has a column we never thought of types their own. A closed enum would mean a
- * code change for every new column.
- */
-function AddDetails({ onAdd, canDetectText }: {
-  onAdd: (kind: CertificateFieldKind, fieldKey?: string, label?: string) => void;
-  /** True only when this deployment has a text detector configured. False in every build today, so the
-   *  control below does not render and the editor is exactly what it was. */
-  canDetectText?: boolean;
+/** A big icon, a big heading, one sentence, one button. Nothing else on the screen. */
+function UploadStep({ template, canManage, onUploaded }: {
+  template: CertificateTemplate;
+  canManage: boolean;
+  onUploaded: (t: CertificateTemplate, preview: string) => void;
 }) {
-  const [custom, setCustom] = useState("");
+  return (
+    <section className="rounded-2xl border-2 border-dashed border-border bg-surface px-6 py-14 text-center">
+      <span aria-hidden className="block text-6xl leading-none">🖼️</span>
+      <h2 className="mt-5 text-xl font-bold text-text">Upload your certificate</h2>
+      <p className="mx-auto mt-2 max-w-md text-base text-muted">
+        Choose a certificate image to get started. We will find the text on it for you.
+      </p>
+      <div className="mt-6 flex justify-center">
+        {canManage ? (
+          <BackgroundUpload template={template} prominent onUploaded={onUploaded} />
+        ) : (
+          <p className="text-base text-muted">You do not have permission to change this certificate.</p>
+        )}
+      </div>
+      <p className="mt-4 text-sm text-muted">PNG, JPG or WebP · up to 15MB</p>
+    </section>
+  );
+}
 
-  const common: { key: string; label: string }[] = [
-    { key: "participant_name", label: "Participant name" },
-    { key: "event_name", label: "Event name" },
-    { key: "event_date", label: "Date" },
-    { key: "achievement", label: "Achievement" },
-    { key: "organizer_name", label: "Organizer" },
-    { key: "certificate_id", label: "Certificate ID" }
-  ];
+/** Normally passed straight through by the automatic read. This is what a failure looks like, and it is
+ *  the only place the reader is ever a button. */
+function DetectStep({ scanning, failed, canManage, onRead, onSkip, preview }: {
+  scanning: boolean;
+  failed: string | null;
+  canManage: boolean;
+  onRead: () => void;
+  onSkip: () => void;
+  preview: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-6">
+      <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+        <div>
+          <span aria-hidden className="block text-5xl leading-none">{failed ? "😕" : "🔍"}</span>
+          <h2 className="mt-4 text-xl font-bold text-text">
+            {scanning ? "Finding your text…" : failed ? "We couldn’t find the text" : "Find the text"}
+          </h2>
+          <p className="mt-2 max-w-md text-base text-muted">
+            {scanning
+              ? "This takes a few seconds."
+              : failed
+                ? failed
+                : "We’ll find the text on your certificate so you can change it."}
+          </p>
+
+          {!scanning && canManage ? (
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button type="button" size="xl" onClick={onRead}>
+                <span aria-hidden className="mr-2 text-lg">🔍</span>
+                {failed ? "Try Again" : "Find Text"}
+              </Button>
+              <Button type="button" size="lg" variant="secondary" onClick={onSkip}>
+                Add the text myself
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="justify-self-center opacity-90">{preview}</div>
+      </div>
+    </section>
+  );
+}
+
+function EditStep(props: {
+  template: CertificateTemplate;
+  fields: DraftField[];
+  selected: DraftField | null;
+  selectedId: string | null;
+  canManage: boolean;
+  backgroundUrl: string | null;
+  width: number;
+  editingId: string | null;
+  artwork: ArtworkMap | null;
+  covering: boolean;
+  scanning: boolean;
+  canDetectText: boolean;
+  history: History;
+  saving: boolean;
+  dirty: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onPointerDown: (e: React.PointerEvent, id: string, mode: "move" | "resize") => void;
+  onSelect: (id: string) => void;
+  onDeselect: () => void;
+  onStartEditing: (id: string) => void;
+  onEditDone: () => void;
+  onChangeText: (id: string, text: string) => void;
+  onChange: (patch: Partial<DraftField>) => void;
+  onDelete: (id: string) => void;
+  onAdd: (key: string | null, label: string) => void;
+  onReRead: () => void;
+  onCover: () => void;
+  onSave: () => void;
+  onNext: () => void;
+}) {
+  const { selected, canManage } = props;
+  const overlapping = selected && props.artwork
+    && overlapsArtwork(props.artwork, selected) && !selected.is_masking;
 
   return (
-    <section className="rounded-md border border-border bg-surface p-3">
-      <h3 className="text-sm font-semibold text-text">+ Add Details</h3>
-      <p className="mt-0.5 text-xs text-muted">
-        Each one is filled in per recipient when certificates are generated. Click to add, then drag it
-        into place on your design.
-      </p>
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-text">Edit your certificate</h2>
+        <p className="mt-1 text-base text-muted">
+          Click any text on the certificate to change it. Everything else stays exactly as you designed it.
+        </p>
+      </div>
 
-      <ul className="mt-3 flex flex-wrap gap-2">
-        {common.map((f) => (
-          <li key={f.key}>
-            <button
-              type="button"
-              onClick={() => onAdd("dynamicfield", f.key, f.label)}
-              className="rounded-full border border-border px-3 py-1.5 text-xs text-text hover:border-accent hover:bg-accent/10"
-            >
-              {f.label}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="grid gap-6 lg:grid-cols-[auto_360px]">
+        <div className="min-w-0 space-y-4">
+          <div
+            className="overflow-auto"
+            onPointerMove={props.onPointerMove}
+            onPointerUp={props.onPointerUp}
+            onPointerLeave={props.onPointerUp}
+          >
+            <CertificateCanvas
+              pageSize={props.template.page_size}
+              backgroundUrl={props.backgroundUrl}
+              fields={props.fields}
+              width={props.width}
+              selectedId={props.selectedId}
+              interactive={canManage}
+              editingId={props.editingId}
+              showEditable
+              onSelect={props.onSelect}
+              onPointerDown={props.onPointerDown}
+              onBackgroundClick={props.onDeselect}
+              onStartEditing={props.onStartEditing}
+              onTextChange={props.onChangeText}
+              onEditDone={props.onEditDone}
+            />
+          </div>
 
-      <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
-        <label className="text-[11px] text-muted">
-          Your own field
-          <input
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            placeholder="e.g. employee_grade"
-            aria-label="Custom field key"
-            className="mt-1 block h-8 w-48 rounded-md border border-border bg-background px-2 text-xs text-text"
+          <p className="text-sm text-muted">
+            <span aria-hidden className="mr-1">ℹ️</span>
+            Dashed boxes show the text you can change. Your design itself is shown exactly as it will print.
+          </p>
+
+          {overlapping ? (
+            <div role="status" className="rounded-xl border border-warning/50 bg-warning/10 p-4">
+              <p className="text-base font-semibold text-text">This sits on top of your design</p>
+              <p className="mt-1 text-sm text-muted">
+                Your certificate already has something printed here, so both would show. Hide what is
+                underneath?
+              </p>
+              <Button type="button" variant="secondary" className="mt-3"
+                disabled={!canManage || props.covering} onClick={props.onCover}>
+                {props.covering ? "Matching your design…" : "Hide what’s underneath"}
+              </Button>
+            </div>
+          ) : null}
+
+          {canManage ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <ToolButton icon="↶" label="Undo" disabled={!canUndo(props.history)} onClick={props.onUndo} />
+              <ToolButton icon="↷" label="Redo" disabled={!canRedo(props.history)} onClick={props.onRedo} />
+              {props.canDetectText ? (
+                <ToolButton icon="🔍" label={props.scanning ? "Finding…" : "Find text again"}
+                  disabled={props.scanning} onClick={props.onReRead} />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-5">
+          {selected && canManage ? <Appearance field={selected} onChange={props.onChange} /> : null}
+
+          <CertificateTextPanel
+            fields={normaliseOrder(props.fields)}
+            selectedId={props.selectedId}
+            canManage={canManage}
+            onSelect={props.onSelect}
+            onChangeText={props.onChangeText}
+            onDelete={props.onDelete}
+            onAdd={props.onAdd}
           />
-        </label>
-        <Button
-          type="button" variant="secondary" size="sm" disabled={!custom.trim()}
-          onClick={() => { onAdd("dynamicfield", custom.trim(), custom.trim()); setCustom(""); }}
-        >
-          Add field
-        </Button>
+        </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <span className="text-[11px] uppercase tracking-wide text-muted">Same on every copy</span>
-        <Button type="button" variant="secondary" size="sm" onClick={() => onAdd("text")}>Fixed text</Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => onAdd("image")}>Signature or logo</Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => onAdd("qrcode")}>Verification QR</Button>
-      </div>
-
-      {/* The extension point, rendered only where an engine exists. Deliberately additive: it would place
-          suggested fields alongside the hand-placed ones, never replace them, because a detector guessing
-          wrong must cost a creator a delete rather than their layout. */}
-      {canDetectText ? (
-        <div className="mt-3 border-t border-border pt-3">
-          <span className="text-[11px] uppercase tracking-wide text-muted">Assisted</span>
+      {canManage ? (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+          <Button type="button" size="xl" onClick={props.onNext}>
+            <span aria-hidden className="mr-2 text-lg">👁️</span>
+            Preview
+          </Button>
+          <Button type="button" size="lg" variant="secondary" disabled={props.saving || !props.dirty}
+            onClick={props.onSave}>
+            <span aria-hidden className="mr-2 text-lg">💾</span>
+            {props.saving ? "Saving…" : props.dirty ? "Save" : "Saved"}
+          </Button>
         </div>
       ) : null}
     </section>
   );
 }
 
-function Inspector({ field, advanced, onToggleAdvanced, onChange, onRotate, onReorder, onDuplicate, onDelete }: {
+/** Icon and word together, always. An icon alone is a puzzle for anyone who does not already know it. */
+function ToolButton({ icon, label, disabled, onClick }: {
+  icon: string; label: string; disabled?: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className="flex h-12 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-base font-semibold text-text hover:bg-elevated disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <span aria-hidden className="text-lg leading-none">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+/**
+ * How the selected text looks: bigger, smaller, bolder, a different colour.
+ *
+ * Three controls, because these are the three things people ask for by name. Rotation, spacing, line
+ * height and alignment were all here once; none of them are needed to put a name on a certificate, and
+ * every one of them was something to read past on the way to the size.
+ */
+function Appearance({ field, onChange }: {
   field: DraftField;
-  advanced: boolean;
-  onToggleAdvanced: () => void;
   onChange: (patch: Partial<DraftField>) => void;
-  onRotate: (delta: number) => void;
-  onReorder: (dir: "front" | "forward" | "backward" | "back") => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
 }) {
-  const isText = field.kind === "text" || field.kind === "dynamicfield";
+  if (field.kind !== "text" && field.kind !== "dynamicfield") return null;
+  const size = field.font_size_pt ?? 24;
 
   return (
-    <section className="space-y-3 rounded-md border border-border bg-surface p-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-text">
-          {field.label || field.field_key || (field.kind === "text" ? "Fixed text" : field.kind)}
-        </h3>
-        <button type="button" onClick={onToggleAdvanced} className="text-[11px] text-muted underline">
-          {advanced ? "Simple" : "Advanced"}
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <h3 className="text-base font-bold text-text">How this text looks</h3>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text">Size</span>
+          <button
+            type="button"
+            aria-label="Make text smaller"
+            title="Make text smaller"
+            onClick={() => onChange({ font_size_pt: Math.max(6, Math.round(size - 2)) })}
+            className="h-12 w-12 rounded-lg border border-border text-xl font-bold text-text hover:bg-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            −
+          </button>
+          <span className="min-w-[3ch] text-center text-base font-semibold text-text" aria-live="polite">
+            {Math.round(size)}
+          </span>
+          <button
+            type="button"
+            aria-label="Make text bigger"
+            title="Make text bigger"
+            onClick={() => onChange({ font_size_pt: Math.min(120, Math.round(size + 2)) })}
+            className="h-12 w-12 rounded-lg border border-border text-xl font-bold text-text hover:bg-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            ＋
+          </button>
+        </div>
+
+        <button
+          type="button"
+          aria-pressed={field.font_weight === "bold"}
+          onClick={() => onChange({ font_weight: field.font_weight === "bold" ? "normal" : "bold" })}
+          className={`h-12 rounded-lg border px-4 text-base font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+            field.font_weight === "bold"
+              ? "border-accent bg-accent/10 text-text"
+              : "border-border text-text hover:bg-elevated"
+          }`}
+        >
+          Bold{field.font_weight === "bold" ? " ✓" : ""}
         </button>
-      </div>
 
-      {field.kind === "text" ? (
-        <Field label="Text">
-          <input value={field.static_text ?? ""} onChange={(e) => onChange({ static_text: e.target.value })}
-            className={inputCls} />
-        </Field>
-      ) : null}
-
-      {field.kind === "dynamicfield" ? (
-        <Field label="Field key">
+        <label className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text">Colour</span>
           <input
-            value={field.field_key ?? ""}
-            onChange={(e) => onChange({ field_key: e.target.value })}
-            aria-label="Field key"
-            className={inputCls}
+            type="color"
+            aria-label="Text colour"
+            value={field.color ?? "#0F172A"}
+            onChange={(e) => onChange({ color: e.target.value })}
+            className="h-12 w-14 cursor-pointer rounded-lg border border-border bg-background p-1"
           />
-        </Field>
-      ) : null}
-
-      {isText ? (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Font">
-              <select value={field.font_family ?? "sans"} onChange={(e) => onChange({ font_family: e.target.value })} className={inputCls}>
-                {FONT_FAMILIES.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </Field>
-            <Field label="Weight">
-              <select value={field.font_weight ?? "normal"} onChange={(e) => onChange({ font_weight: e.target.value })} className={inputCls}>
-                {FONT_WEIGHTS.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Num label="Size (pt)" value={field.font_size_pt ?? 24} onChange={(v) => onChange({ font_size_pt: v })} />
-            <Field label="Align">
-              <select value={field.horizontal_alignment} onChange={(e) => onChange({ horizontal_alignment: e.target.value })} className={inputCls}>
-                {HORIZONTAL_ALIGNMENTS.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </Field>
-          </div>
-          <Field label="Text colour">
-            <input type="color" value={field.color ?? "#0F172A"} onChange={(e) => onChange({ color: e.target.value })}
-              className="h-9 w-full rounded-md border border-border bg-background" />
-          </Field>
-        </>
-      ) : null}
-
-      {advanced ? (
-        <>
-          <div className="grid grid-cols-4 gap-2">
-            <Num label="X" value={field.x} onChange={(v) => onChange({ x: v })} />
-            <Num label="Y" value={field.y} onChange={(v) => onChange({ y: v })} />
-            <Num label="W" value={field.width} onChange={(v) => onChange({ width: v })} />
-            <Num label="H" value={field.height} onChange={(v) => onChange({ height: v })} />
-          </div>
-
-          <Field label="Rotation">
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => onRotate(-90)}>−90°</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => onRotate(90)}>+90°</Button>
-              <span className="text-xs tabular-nums text-muted">{field.rotation}°</span>
-            </div>
-          </Field>
-
-          {isText ? (
-            <Field label="Vertical align">
-              <select value={field.vertical_alignment} onChange={(e) => onChange({ vertical_alignment: e.target.value })} className={inputCls}>
-                {VERTICAL_ALIGNMENTS.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </Field>
-          ) : null}
-
-          <Field label="Depth">
-            <div className="flex flex-wrap items-center gap-1">
-              <Button type="button" variant="secondary" size="sm" onClick={() => onReorder("back")}>Back</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => onReorder("backward")}>−</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => onReorder("forward")}>+</Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => onReorder("front")}>Front</Button>
-            </div>
-          </Field>
-
-          {/* Cover and replace. Stated plainly because it is not editing: the printed text stays where it
-              is, under a patch. Moving this field reveals it again. */}
-          <div className="rounded border border-dashed border-border p-2">
-            <label className="flex items-center gap-2 text-xs text-text">
-              <input
-                type="checkbox"
-                checked={field.is_masking}
-                onChange={(e) => onChange({
-                  is_masking: e.target.checked,
-                  background_color: e.target.checked ? field.background_color ?? "#FFFFFF" : null
-                })}
-              />
-              Cover printed text underneath
-            </label>
-            <p className="mt-1 text-[11px] text-muted">
-              Your design cannot be un-printed. This paints over that area in the colour below and writes
-              on top — so if you move it, the original text shows through again.
-            </p>
-            {field.is_masking ? (
-              <input
-                type="color"
-                value={field.background_color ?? "#FFFFFF"}
-                onChange={(e) => onChange({ background_color: e.target.value })}
-                aria-label="Cover colour"
-                className="mt-2 h-8 w-full rounded-md border border-border bg-background"
-              />
-            ) : null}
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <input type="checkbox" checked={field.is_required}
-              onChange={(e) => onChange({ is_required: e.target.checked })} />
-            Refuse to generate if this value is missing
-          </label>
-        </>
-      ) : null}
-
-      <div className="flex items-center justify-end gap-1 pt-1">
-        <Button type="button" variant="secondary" size="sm" onClick={onDuplicate}>Duplicate</Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onDelete}>Delete</Button>
+        </label>
       </div>
     </section>
   );
 }
 
-function FieldList({ fields, selectedId, canManage, onSelect, onReorder }: {
-  fields: DraftField[];
-  selectedId: string | null;
+/**
+ * The certificate as it will actually print, and a copy to keep.
+ *
+ * Asked of the server, which renders it with the same code that issues certificates. The editing canvas
+ * uses the browser's fonts and line breaking, so it is close but not exact — and "close" is discovered
+ * after the certificates are sent. Since the server renders what has been *saved*, an unsaved change is
+ * saved first rather than quietly left out of the picture.
+ */
+function PreviewStep({ templateId, download, dirty, saving, canManage, onSave, onBack, onNext }: {
+  templateId: string;
+  download: boolean;
+  dirty: boolean;
+  saving: boolean;
   canManage: boolean;
-  onSelect: (id: string) => void;
-  onReorder: (id: string, dir: "front" | "forward" | "backward" | "back") => void;
+  onSave: () => Promise<boolean>;
+  onBack: () => void;
+  onNext: () => void;
 }) {
-  // Reversed: the list reads top-of-stack first, which is what "layers" means everywhere else.
-  const ordered = [...fields].reverse();
+  const [url, setUrl] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function load() {
+      setState("loading");
+      if (dirty && canManage && !(await onSave())) {
+        if (!cancelled) setState("failed");
+        return;
+      }
+      try {
+        const response = await fetch(`/api/certificate-templates/${templateId}/preview?format=png`,
+          { cache: "no-store" });
+        if (!response.ok) throw new Error("preview");
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (!cancelled) { setUrl(objectUrl); setState("ready"); }
+      } catch {
+        if (!cancelled) setState("failed");
+      }
+    }
+    void load();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId]);
+
+  async function saveCopy() {
+    setDownloading(true);
+    try {
+      const response = await fetch(`/api/certificate-templates/${templateId}/preview?format=pdf`,
+        { cache: "no-store" });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = "certificate-sample.pdf";
+      link.click();
+      URL.revokeObjectURL(href);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
-    <section className="rounded-md border border-border bg-surface p-3">
-      <h3 className="text-sm font-semibold text-text">On this design</h3>
-      {ordered.length === 0 ? (
-        <p className="mt-2 text-xs text-muted">Nothing added yet.</p>
-      ) : (
-        <ul className="mt-2 space-y-1">
-          {ordered.map((f) => (
-            <li key={f.id} className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onSelect(f.id)}
-                aria-pressed={f.id === selectedId}
-                className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-xs ${
-                  f.id === selectedId ? "bg-accent/10 text-text" : "text-muted hover:bg-elevated hover:text-text"
-                }`}
-              >
-                <span className="uppercase opacity-60">{f.kind === "dynamicfield" ? "field" : f.kind}</span>{" "}
-                {f.label || f.field_key || f.static_text || f.id}
-                {f.is_masking ? <span className="ml-1 opacity-60">(covers)</span> : null}
-              </button>
-              {canManage ? (
-                <>
-                  <button type="button" aria-label={`Bring ${f.id} forward`} onClick={() => onReorder(f.id, "forward")}
-                    className="rounded px-1 text-xs text-muted hover:text-text">↑</button>
-                  <button type="button" aria-label={`Send ${f.id} backward`} onClick={() => onReorder(f.id, "backward")}
-                    className="rounded px-1 text-xs text-muted hover:text-text">↓</button>
-                </>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-text">
+          {download ? "Download your certificate" : "Preview your certificate"}
+        </h2>
+        <p className="mt-1 text-base text-muted">
+          {download
+            ? "Save a sample to your computer to check or share."
+            : "Check your certificate before you finish. This is exactly how it will print."}
+        </p>
+      </div>
+
+      <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border bg-elevated p-6">
+        {state === "loading" ? (
+          <p role="status" className="text-base text-muted">
+            {saving ? "Saving your changes…" : "Getting your certificate ready…"}
+          </p>
+        ) : state === "failed" ? (
+          <div className="text-center">
+            <span aria-hidden className="block text-5xl leading-none">😕</span>
+            <p className="mt-4 text-lg font-bold text-text">We couldn’t show your certificate</p>
+            <p className="mt-1 text-base text-muted">Please check your connection and try again.</p>
+            <Button type="button" size="lg" className="mt-5" onClick={onBack}>Back to Edit</Button>
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url ?? ""} alt="Your certificate, filled in with example details"
+            className="h-auto w-full max-w-3xl rounded-lg shadow-lg" />
+        )}
+      </div>
+
+      <p className="text-sm text-muted">
+        <span aria-hidden className="mr-1">ℹ️</span>
+        Example details are shown. Each certificate is filled in from your participant list.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+        <Button type="button" size="lg" variant="secondary" onClick={onBack}>
+          <span aria-hidden className="mr-2 text-lg">←</span>
+          Back to Edit
+        </Button>
+
+        {download ? (
+          <Button type="button" size="xl" disabled={state !== "ready" || downloading} onClick={saveCopy}>
+            <span aria-hidden className="mr-2 text-lg">⬇</span>
+            {downloading ? "Downloading…" : "Download PDF"}
+          </Button>
+        ) : (
+          <Button type="button" size="xl" disabled={state !== "ready"} onClick={onNext}>
+            <span aria-hidden className="mr-2 text-lg">⬇</span>
+            Looks good — Download
+          </Button>
+        )}
+      </div>
     </section>
-  );
-}
-
-const inputCls = "h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-text";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block text-xs text-muted">
-      {label}
-      <div className="mt-1">{children}</div>
-    </label>
-  );
-}
-
-function Num({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block text-xs text-muted">
-      {label}
-      <input
-        type="number"
-        value={value}
-        step={0.5}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={label}
-        className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-text"
-      />
-    </label>
   );
 }

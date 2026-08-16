@@ -29,10 +29,17 @@ export const certificateFieldSchema = z.object({
   is_required: z.boolean(),
   /// Covers text printed into the uploaded artwork. See the editor for why this is not "editing".
   is_masking: z.boolean(),
+  /// A handle on text the artwork already prints: nothing drawn, nothing covered, until the creator
+  /// changes the words. Covering unchanged text erases the design's texture for no gain.
+  mirrors_artwork: z.boolean().optional().default(false),
   background_color: z.string().nullable().optional(),
   font_family: z.string().nullable().optional(),
   font_size_pt: z.number().nullable().optional(),
   font_weight: z.string().nullable().optional(),
+  font_style: z.string().nullable().optional(),
+  underline: z.boolean().optional(),
+  line_height: z.number().nullable().optional(),
+  letter_spacing: z.number().nullable().optional(),
   color: z.string().nullable().optional(),
   horizontal_alignment: z.string(),
   vertical_alignment: z.string()

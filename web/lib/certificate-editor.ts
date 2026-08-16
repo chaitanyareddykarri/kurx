@@ -48,10 +48,15 @@ export function newField(kind: CertificateFieldKind, opts: { fieldKey?: string; 
     z_order: 0,
     is_required: false,
     is_masking: false,
+    mirrors_artwork: false,
     background_color: null,
     font_family: "sans",
     font_size_pt: 24,
     font_weight: "normal",
+    font_style: null,
+    underline: false,
+    line_height: null,
+    letter_spacing: null,
     color: "#0F172A",
     horizontal_alignment: "center",
     vertical_alignment: "middle"
@@ -100,17 +105,32 @@ export function nextFreeSlot(
 
   // Two columns of candidates: straight down from the default, then nudged right, which keeps a design
   // with many fields from marching off the bottom of the page.
-  for (const x of [box.x, Math.min(box.x + 8, 100 - box.width)]) {
-    for (let y = box.y; y + box.height <= 100; y += step) {
-      const candidate = { x, y, width: box.width, height: box.height };
-      if (!collides(candidate) && !isBusy(candidate)) return { x, y };
+  function search(avoidArtwork: boolean): { x: number; y: number } | null {
+    for (const x of [box.x, Math.min(box.x + 8, 100 - box.width)]) {
+      for (let y = box.y; y + box.height <= 100; y += step) {
+        const candidate = { x, y, width: box.width, height: box.height };
+        if (collides(candidate)) continue;
+        if (avoidArtwork && isBusy(candidate)) continue;
+        return { x, y };
+      }
     }
+    return null;
   }
 
-  // Everywhere is taken or busy. Cascade off the default rather than returning it unchanged, so the new
-  // field is at least visibly its own box and can be dragged.
-  const cascade = Math.min(existing.length * 2, 100 - box.height - box.y);
-  return { x: box.x, y: box.y + Math.max(0, cascade) };
+  // Clear of the design's own printing is a PREFERENCE; clear of the other fields is a REQUIREMENT.
+  //
+  // Collapsing the two was a real bug: a finished certificate is printed almost edge to edge, so the
+  // artwork check rejected nearly every candidate, the search found nothing, and every new field fell
+  // through to the cascade — landing on top of the last one. Fields piled up in the middle of the page,
+  // which is the exact overlap this function exists to prevent.
+  return search(true) ?? search(false) ?? fallback();
+
+  function fallback() {
+    // Genuinely nowhere: every position collides with an existing field. Step off the default so the new
+    // element is at least visibly its own box and can be dragged.
+    const cascade = Math.min(existing.length * 2, Math.max(0, 100 - box.height - box.y));
+    return { x: box.x, y: box.y + cascade };
+  }
 }
 
 /** A box that is square on the page, given the page it sits on. */
@@ -319,9 +339,14 @@ export function toInput(fields: DraftField[]): CertificateFieldInput[] {
     zOrder: f.z_order,
     isRequired: f.is_required,
     isMasking: f.is_masking,
+    mirrorsArtwork: f.mirrors_artwork ?? false,
     backgroundColor: f.background_color ?? null,
     fontFamily: f.font_family ?? null,
     fontSizePt: f.font_size_pt ?? null,
+    fontStyle: f.font_style ?? null,
+    underline: f.underline ?? false,
+    lineHeight: f.line_height ?? null,
+    letterSpacing: f.letter_spacing ?? null,
     fontWeight: f.font_weight ?? null,
     color: f.color ?? null,
     horizontalAlignment: f.horizontal_alignment,
@@ -370,4 +395,23 @@ export function canRedo(h: History): boolean { return h.future.length > 0; }
  *  gains properties. */
 export function same(a: DraftField[], b: DraftField[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+
+/**
+ * What an edit turns a mirrored element into (D-356).
+ *
+ * Until now it has been a handle: the uploaded design prints these words, so nothing was drawn and
+ * nothing covered. Changing the words ends that — the artwork still shows the OLD text, which has to be
+ * covered, and the new text has to be drawn. The paper colour for the fill was sampled at detection and
+ * has been carried on the element ever since, waiting for exactly this.
+ *
+ * Retyping the same words is not an edit and leaves the element mirroring, so a creator who clicks into
+ * text and clicks away again does not silently acquire a patch on their design.
+ */
+export function startDrawing(field: DraftField | undefined, text: string): Partial<DraftField> {
+  if (!field?.mirrors_artwork) return { static_text: text };
+  if (text.trim() === (field.static_text ?? "").trim()) return {};
+
+  return { static_text: text, mirrors_artwork: false, is_masking: true };
 }

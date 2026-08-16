@@ -97,14 +97,21 @@ export function BackgroundUpload({ template, onUploaded, prominent = false }: {
     }
   }
 
-  const label = busy ? "Uploading…" : template.background_url ? "Replace design" : "Upload design";
+  const label = busy
+    ? "Uploading…"
+    : template.background_url ? "Choose a different picture" : "Upload Certificate";
+  // Big enough to be the obvious thing to do, on a page where it IS the only thing to do. The smaller
+  // variant is for later steps, where the design already exists and replacing it is the rare case.
   const chrome = prominent
-    ? "inline-flex cursor-pointer items-center rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-on-accent hover:opacity-90"
-    : "inline-flex cursor-pointer items-center rounded-md border border-border px-3 py-2 text-xs text-text hover:bg-elevated";
+    ? "inline-flex h-14 cursor-pointer items-center justify-center gap-2.5 rounded-xl bg-accent px-7 text-base font-bold text-on-accent hover:opacity-90 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent"
+    : "inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-text hover:bg-elevated focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent";
 
   return (
     <div>
       <label className={busy ? `${chrome} pointer-events-none opacity-60` : chrome}>
+        <span aria-hidden className={prominent ? "text-2xl leading-none" : "text-lg leading-none"}>
+          {busy ? "⏳" : "⬆"}
+        </span>
         {label}
         <input
           ref={inputRef}
@@ -116,9 +123,9 @@ export function BackgroundUpload({ template, onUploaded, prominent = false }: {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void pick(f); }}
         />
       </label>
-      {error ? <p role="alert" className="mt-1 text-xs text-danger">{error}</p> : null}
+      {error ? <p role="alert" className="mt-2 text-sm font-medium text-danger">{error}</p> : null}
       {template.has_issued_certificates && !busy ? (
-        <p className="mt-1 text-[11px] text-muted">
+        <p className="mt-2 text-sm text-muted">
           Certificates have already been issued from this design. Replacing the artwork creates
           version {template.version + 1}; the ones already sent keep the version they were made with.
         </p>

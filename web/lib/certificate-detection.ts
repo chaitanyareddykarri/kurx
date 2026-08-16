@@ -24,8 +24,16 @@ export const textDetectionSchema = z.object({
     width: z.number(),
     height: z.number(),
     confidence: z.number(),
+    /** The paper colour behind this text, sampled server-side where the artwork was already decoded.
+     *  Carried per region so the editor can place editable text AND hide the printed characters
+     *  underneath in one step — covering each block by hand is the work detection exists to remove. */
+    ground: z.string().optional().default("#FFFFFF"),
+    /** How many lines of the original this region covers. Type is sized per LINE, not per block — a
+     *  three-line paragraph is three times as tall as its type, and sizing from the block renders the
+     *  first few words at enormous size. */
+    lines: z.number().optional().default(1),
   })),
-  reason: z.string().nullable(),
+  reason: z.string().nullable().optional(),
 });
 
 export type TextDetection = z.infer<typeof textDetectionSchema>;

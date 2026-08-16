@@ -206,6 +206,54 @@ public class CertificateRenderingTests : IClassFixture<KurxApiFactory>
         Assert.NotEqual(withName, withOther);
     }
 
+    /// <summary>Text the artwork already prints is left completely alone.
+    ///
+    /// <para>Detection makes every line of an uploaded design clickable, but most lines are never
+    /// changed. Covering unchanged words to redraw them identically erases the design's watermark and
+    /// texture under each box, leaving a smooth rectangle with hard edges — the certificate announcing
+    /// itself as edited, everywhere at once, for no gain. A mirroring element must therefore leave the
+    /// page byte-for-byte as if it were not there at all: no fill, no text, nothing.</para></summary>
+    [Fact]
+    public async Task An_element_that_mirrors_the_artwork_changes_nothing_on_the_page()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var renderer = scope.ServiceProvider.GetRequiredService<ICertificateDocumentRenderer>();
+        var data = new CertificateRenderData(new Dictionary<string, string>(), new Dictionary<string, byte[]>());
+
+        // A fill and text that WOULD both be visible, were it not mirroring.
+        var mirroring = new CertificateRenderElement("text", null, "has successfully completed",
+            10, 40, 80, 12, 0, 1, true, "#FDF6E3", null, "sans", 40, "normal", "#000000", "center", "middle",
+            MirrorsArtwork: true);
+
+        var withIt = await renderer.RenderPngAsync(
+            new CertificateDocument("a4-landscape", null, [mirroring]), data, 96);
+        var without = await renderer.RenderPngAsync(
+            new CertificateDocument("a4-landscape", null, []), data, 96);
+
+        Assert.Equal(without, withIt);
+    }
+
+    /// <summary>And the same element, once edited, draws and covers like any other — otherwise the
+    /// creator's change would simply never appear.</summary>
+    [Fact]
+    public async Task The_same_element_marks_the_page_once_it_stops_mirroring()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var renderer = scope.ServiceProvider.GetRequiredService<ICertificateDocumentRenderer>();
+        var data = new CertificateRenderData(new Dictionary<string, string>(), new Dictionary<string, byte[]>());
+
+        var edited = new CertificateRenderElement("text", null, "has successfully completed",
+            10, 40, 80, 12, 0, 1, true, "#FDF6E3", null, "sans", 40, "normal", "#000000", "center", "middle",
+            MirrorsArtwork: false);
+
+        var withIt = await renderer.RenderPngAsync(
+            new CertificateDocument("a4-landscape", null, [edited]), data, 96);
+        var without = await renderer.RenderPngAsync(
+            new CertificateDocument("a4-landscape", null, []), data, 96);
+
+        Assert.NotEqual(without, withIt);
+    }
+
     /// <summary>An oversized font must be shrunk to fit rather than dropped. Text slightly smaller than
     /// designed is visible and obviously wrong; text that is absent looks like a design choice, and
     /// nobody notices until the certificates are sent.</summary>

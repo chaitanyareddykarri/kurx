@@ -1821,6 +1821,7 @@ public class KurxDbContext : DbContext
             e.Property(x => x.VerticalAlignment).HasMaxLength(10);
             e.Property(x => x.FontFamily).HasMaxLength(100);
             e.Property(x => x.FontWeight).HasMaxLength(20);
+            e.Property(x => x.FontStyle).HasMaxLength(20);
             e.Property(x => x.Color).HasMaxLength(9);
             e.Property(x => x.BackgroundColor).HasMaxLength(9);
             // Paint order is read for every render, always scoped to one template.

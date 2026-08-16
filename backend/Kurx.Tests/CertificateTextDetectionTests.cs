@@ -13,10 +13,11 @@ namespace Kurx.Tests;
 /// <summary>
 /// The OCR boundary, with no engine behind it (D-355, Phase 12).
 ///
-/// <para>OCR is deferred by decision. What this phase ships is the seam and nothing else, so the property
-/// under test is mostly <b>absence</b>: no engine runs, no regions are invented, and every path that
-/// matters — placing fields, saving, previewing, approving, issuing — behaves exactly as it did before
-/// this file existed.</para>
+/// <para>An engine now exists — Tesseract, shelled out to in the runtime image — but the seam is what
+/// these tests defend. The stub must stay honest, the boundary must stay vendor-neutral, and every path
+/// that matters — placing fields, saving, previewing, approving, issuing — must behave identically
+/// whether detection is configured or not. A deployment with <c>TEXT_DETECTOR=none</c> is a supported
+/// configuration, not a broken one.</para>
 ///
 /// <para>The distinction the tests keep returning to is between <i>nothing looked</i> and <i>nothing
 /// found</i>. The first is a statement about this deployment; the second would be a statement about the
@@ -315,8 +316,12 @@ public class CertificateTextDetectionTests : IClassFixture<KurxApiFactory>
 
     // ── No engine was added ─────────────────────────────────────────────────────────────────────
 
-    /// <summary>Phase 12 adds a boundary, not a dependency. This fails the moment somebody quietly
-    /// references an OCR package, which is exactly when it should.</summary>
+    /// <summary>The engine is a BINARY, invoked as a process — not a managed dependency.
+    ///
+    /// <para>That is deliberate and worth pinning: a wrapper package pins a native libtesseract ABI, and
+    /// the two drift. On arm64 that surfaces as a load failure at runtime rather than a build error, which
+    /// is the worst place to find it. If somebody adds a wrapper later, this fails and they have to argue
+    /// with the reason.</para></summary>
     [Theory]
     [InlineData("Tesseract")]
     [InlineData("TesseractOCR")]
@@ -326,40 +331,31 @@ public class CertificateTextDetectionTests : IClassFixture<KurxApiFactory>
     [InlineData("Azure.AI.FormRecognizer")]
     [InlineData("IronOcr")]
     [InlineData("PaddleOCR")]
-    public void No_ocr_engine_is_referenced_by_the_build(string package)
-    {
-        var loaded = AppDomain.CurrentDomain.GetAssemblies()
-            .Select(a => a.GetName().Name ?? "")
-            .ToList();
-
-        Assert.DoesNotContain(loaded,
-            name => name.StartsWith(package, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>The project files are the authority on what was installed — an assembly can simply not be
-    /// loaded yet.</summary>
-    [Fact]
-    public void No_ocr_package_is_referenced_by_any_project_file()
+    public void No_managed_ocr_package_is_referenced(string package)
     {
         var root = RepoRoot();
-        var suspects = new[]
-        {
-            "tesseract", "textract", "cloud.vision", "ai.vision", "formrecognizer",
-            "ironocr", "paddleocr", "ocr.net",
-        };
-
         var projects = Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories);
 
-        // Asserted first, so a wrong root cannot make this test pass by scanning nothing — the failure
-        // mode of a "nothing found" test is that it finds nothing because it looked nowhere.
+        // Asserted first, so a wrong root cannot make this pass by scanning nothing.
         Assert.True(projects.Length >= 4, $"Expected to scan the solution's projects, found {projects.Length}.");
 
         foreach (var project in projects)
-        {
-            var text = File.ReadAllText(project);
-            foreach (var suspect in suspects)
-                Assert.DoesNotContain(suspect, text, StringComparison.OrdinalIgnoreCase);
-        }
+            Assert.DoesNotContain(package, File.ReadAllText(project), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The runtime image must actually carry the binary, or `TEXT_DETECTOR=tesseract` resolves a
+    /// detector that cannot run and every design reports "could not be read".</summary>
+    [Fact]
+    public void The_runtime_image_installs_the_engine_the_config_selects()
+    {
+        // RepoRoot finds the directory holding the .sln, which is `backend/`; infra sits beside it.
+        var infra = Path.Combine(Directory.GetParent(RepoRoot())!.FullName, "infra", "Dockerfile.api");
+        Assert.True(File.Exists(infra), $"Expected the API Dockerfile at {infra}.");
+
+        var dockerfile = File.ReadAllText(infra);
+
+        Assert.Contains("tesseract-ocr", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("tesseract-ocr-eng", dockerfile, StringComparison.Ordinal);
     }
 
     /// <summary>Walks up from this source file rather than from the test binary's directory, which moves

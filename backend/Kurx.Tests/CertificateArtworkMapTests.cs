@@ -182,6 +182,54 @@ public class CertificateArtworkColourTests
                 image[col, row] = colour;
     }
 
+    /// <summary>White paper must come back as white.
+    ///
+    /// <para>The histogram buckets colour at 5-bit precision, and it used to return the BUCKET's floor as
+    /// the answer: 255 >> 3 << 3 = 248, so every mask on a white certificate was painted #F8F8F8. On
+    /// screen that is a visible grey band sitting exactly where the recipient's name goes — the covering
+    /// announcing itself as an edit, which is the one thing it must not do.</para></summary>
+    [Fact]
+    public void SamplesWhitePaperAsExactlyWhite()
+    {
+        using var page = Page(new Rgba32(255, 255, 255));
+        Fill(page, 200, 250, 400, 40, new Rgba32(0, 0, 0));   // the printed text being covered
+
+        Assert.Equal("#FFFFFF", Ground(page, 25, 44.2, 50, 7.1));
+    }
+
+    /// <summary>On textured stock the fill matches what the eye reads, not just the base tone.
+    ///
+    /// <para>A watermark makes the paper a mix of its base colour and slightly darker strokes. Filling a
+    /// patch with the base alone leaves a rectangle visibly LIGHTER than everything around it — the
+    /// texture stopping in a straight line, which is precisely the "this was edited" tell. The answer has
+    /// to sit between the two.</para></summary>
+    [Fact]
+    public void SamplesTexturedPaperBetweenItsBaseAndItsPattern()
+    {
+        using var page = Page(new Rgba32(255, 255, 255));
+        // A watermark: every third row a few shades darker, over the whole page.
+        for (var y = 0; y < page.Height; y += 3)
+            for (var x = 0; x < page.Width; x++)
+                page[x, y] = new Rgba32(235, 235, 235);
+        Fill(page, 200, 250, 400, 40, new Rgba32(0, 0, 0));   // the text being covered
+
+        var sampled = System.Drawing.ColorTranslator.FromHtml(Ground(page, 25, 44.2, 50, 7.1));
+
+        // Darker than the bare base, and nowhere near the ink.
+        Assert.InRange(sampled.R, 236, 254);
+    }
+
+    /// <summary>And a tinted paper comes back as its own tint, not a quantised neighbour.</summary>
+    [Fact]
+    public void SamplesTintedPaperAsItsOwnColour()
+    {
+        var cream = new Rgba32(253, 250, 241);
+        using var page = Page(cream);
+        Fill(page, 200, 250, 400, 40, new Rgba32(0, 0, 0));
+
+        Assert.Equal("#FDFAF1", Ground(page, 25, 44.2, 50, 7.1));
+    }
+
     /// <summary>The paper colour, not the ink — even when the region is almost entirely ink.</summary>
     [Fact]
     public void The_ink_being_covered_does_not_tint_the_sample()
@@ -189,7 +237,7 @@ public class CertificateArtworkColourTests
         using var page = Page(new Rgba32(255, 255, 255));
         Fill(page, 160, 170, 480, 57, new Rgba32(0, 0, 0));   // a solid black line of "text"
 
-        Assert.Equal("#F8F8F8", Ground(page, 20, 30, 60, 10));
+        Assert.Equal("#FFFFFF", Ground(page, 20, 30, 60, 10));
     }
 
     /// <summary>Certificate stock is rarely white. Assuming it is puts a white smear on every cream,
@@ -205,11 +253,10 @@ public class CertificateArtworkColourTests
 
         var hex = Ground(page, 20, 30, 60, 10);
 
-        // Quantised to 32 levels per channel, so within 8 of the true colour on every channel.
+        // Exact. Bucketing groups near-identical pixels, but the colour returned is the average of the
+        // real ones — a uniform page comes back as the colour it actually is, with no patch to see.
         var sampled = System.Drawing.ColorTranslator.FromHtml(hex);
-        Assert.True(Math.Abs(sampled.R - r) <= 8, $"R {sampled.R} vs {r}");
-        Assert.True(Math.Abs(sampled.G - g) <= 8, $"G {sampled.G} vs {g}");
-        Assert.True(Math.Abs(sampled.B - b) <= 8, $"B {sampled.B} vs {b}");
+        Assert.Equal((r, g, b), ((byte)sampled.R, (byte)sampled.G, (byte)sampled.B));
     }
 
     /// <summary>A region against the page edge still yields the paper colour rather than falling off the

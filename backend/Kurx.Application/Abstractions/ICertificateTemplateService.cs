@@ -111,9 +111,29 @@ public interface ICertificateTemplateService
     /// currently backs with an engine, so today this always answers "not available" — and that answer is a
     /// normal response, not an error. Manual placement is unaffected either way: nothing in the save,
     /// preview, approve or issue paths consults this.</para></summary>
-    Task<ServiceResult<TextDetectionResult>> DetectBackgroundTextAsync(
+    Task<ServiceResult<CertificateTextScan>> DetectBackgroundTextAsync(
         Guid userId, Guid templateId, bool isAdmin, CancellationToken ct = default);
 }
+
+/// <summary>What was found on a design, ready to become editable text.</summary>
+/// <param name="Available">False when no engine is configured or the artwork could not be read. An empty
+/// <see cref="Regions"/> with this false is NOT a claim that the design has no text on it.</param>
+public sealed record CertificateTextScan(
+    bool Available,
+    IReadOnlyList<CertificateDetectedText> Regions,
+    string? Reason = null);
+
+/// <param name="Ground">The artwork's own colour behind this text, sampled from its margins. Carried with
+/// the region so a creator does not have to cover each block by hand: the editor can place editable text
+/// AND hide the printed characters underneath in one step, which is the whole point of detecting them.</param>
+/// <param name="Confidence">0–1. Low-confidence lines are still returned — the creator can see the text
+/// and judge it — but a caller may want to present them differently.</param>
+public sealed record CertificateDetectedText(
+    string Text,
+    double X, double Y, double Width, double Height,
+    double Confidence,
+    string Ground,
+    int Lines = 1);
 
 /// <summary>A rectangle on the page, in percentages, matching how fields are stored.</summary>
 public sealed record CertificateRegion(double X, double Y, double Width, double Height);
@@ -152,10 +172,17 @@ public sealed record CertificateFieldInput(
     int ZOrder = 0,
     bool IsRequired = false,
     bool IsMasking = false,
+    /// <summary>True while this element is only a handle on text the artwork already prints: nothing is
+    /// drawn and nothing is covered until the creator actually changes the words.</summary>
+    bool MirrorsArtwork = false,
     string? BackgroundColor = null,
     string? FontFamily = null,
     double? FontSizePt = null,
     string? FontWeight = null,
+    string? FontStyle = null,
+    bool Underline = false,
+    double? LineHeight = null,
+    double? LetterSpacing = null,
     string? Color = null,
     string? HorizontalAlignment = null,
     string? VerticalAlignment = null);
@@ -192,10 +219,15 @@ public sealed record CertificateFieldView(
     int ZOrder,
     bool IsRequired,
     bool IsMasking,
+    bool MirrorsArtwork,
     string? BackgroundColor,
     string? FontFamily,
     double? FontSizePt,
     string? FontWeight,
+    string? FontStyle,
+    bool Underline,
+    double? LineHeight,
+    double? LetterSpacing,
     string? Color,
     string HorizontalAlignment,
     string VerticalAlignment);

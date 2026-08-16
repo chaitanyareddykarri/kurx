@@ -58,10 +58,14 @@ public sealed record TextDetectionResult(
 /// canvas as a field without the editor learning anything about image dimensions.</para></summary>
 /// <param name="Confidence">0–1. Normalised here because every engine scales this differently, and a
 /// caller filtering on 0.8 should mean the same thing whichever one is installed.</param>
+/// <param name="Lines">How many lines of the original the region covers. A caller sizing type from the
+/// box needs this: a three-line paragraph is three times as tall as its type, and treating the block
+/// height as one line renders the first few words at enormous size.</param>
 public sealed record DetectedTextRegion(
     string Text,
     double X,
     double Y,
     double Width,
     double Height,
-    double Confidence);
+    double Confidence,
+    int Lines = 1);

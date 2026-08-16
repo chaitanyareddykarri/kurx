@@ -209,6 +209,9 @@ services:
       # D-298. Defaults to `none` — scanning is off unless asked for, even though the daemon now starts
       # with the stack. Set FILE_SCANNER=clamav in .env to route uploads through it.
       FILE_SCANNER: ${FILE_SCANNER:-none}
+      # Text detection on uploaded certificate artwork (D-355). `tesseract` is installed in the API
+      # image; `none` falls back to the stub that detects nothing.
+      TEXT_DETECTOR: ${TEXT_DETECTOR:-tesseract}
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
       CLAMAV_TIMEOUT_SECONDS: ${CLAMAV_TIMEOUT_SECONDS:-30}

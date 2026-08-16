@@ -94,6 +94,12 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
     private void Draw(
         IContainer root, CertificateRenderElement element, CertificateRenderData data, float ptW, float ptH)
     {
+        // An element that mirrors the artwork is a handle in the editor, not a mark on the page. The
+        // design already prints these words; covering them to redraw them identically would erase the
+        // watermark and texture under the box and leave a smooth rectangle with hard edges — visible
+        // exactly as "this was edited". Nothing here, deliberately.
+        if (element.MirrorsArtwork) { root.Container(); return; }
+
         var x = (float)(element.X / 100.0) * ptW;
         var y = (float)(element.Y / 100.0) * ptH;
         var w = Math.Max(1f, (float)(element.Width / 100.0) * ptW);
@@ -171,12 +177,20 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
         };
 
         var span = aligned.Text(value);
+        if (element.LineHeight is { } leading && leading > 0) span.LineHeight((float)leading);
         // 0.8 leaves room for the line box around the glyphs; above that QuestPDF starts dropping the
         // line. Only ever reduces — a design whose type already fits renders exactly as authored.
         var requested = (float)(element.FontSizePt ?? 16);
         span.FontSize(Math.Max(4f, Math.Min(requested, boxHeightPoints * 0.8f)));
         span.FontColor(Hex(element.Color, Colors.Black));
         if (string.Equals(element.FontWeight, "bold", StringComparison.OrdinalIgnoreCase)) span.Bold();
+        if (string.Equals(element.FontStyle, "italic", StringComparison.OrdinalIgnoreCase)) span.Italic();
+        if (element.Underline) span.Underline();
+
+        // Tracking is expressed in ems by the editor, because that is the unit that survives a font-size
+        // change; QuestPDF takes points, so it is resolved against the size actually being drawn.
+        if (element.LetterSpacing is { } tracking && Math.Abs(tracking) > 0.0001)
+            span.LetterSpacing((float)tracking);
         span.FontFamily((element.FontFamily?.Trim().ToLowerInvariant()) switch
         {
             "serif" => Fonts.TimesNewRoman,

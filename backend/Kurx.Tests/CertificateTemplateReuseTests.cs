@@ -58,6 +58,11 @@ public class CertificateTemplateReuseTests : IClassFixture<KurxApiFactory>
             Rotation: 0, ZOrder: 1, FontFamily: "sans", FontSizePt: 40, Color: "#334155",
             HorizontalAlignment: "center"),
         new("qrcode", null, null, null, 80, 78, 14, 14, Rotation: 0, ZOrder: 2),
+        // A detected line the creator has not changed: a handle on the artwork's own words, drawing and
+        // covering nothing (D-356). Carried through a copy like any other state.
+        new("text", null, null, "has successfully completed", 10, 55, 80, 5,
+            Rotation: 0, ZOrder: 3, IsMasking: false, MirrorsArtwork: true,
+            BackgroundColor: "#FDF6E3", FontSizePt: 12, HorizontalAlignment: "center"),
     ];
 
     private async Task<Fixture> SeedAsync()
@@ -174,7 +179,7 @@ public class CertificateTemplateReuseTests : IClassFixture<KurxApiFactory>
 
         Assert.True(used.Ok, used.Error);
         Assert.Equal(f.OtherEventId, used.Value!.EventId);
-        Assert.Equal(3, used.Value.Fields.Count);
+        Assert.Equal(RichLayout().Count, used.Value.Fields.Count);
     }
 
     /// <summary>The copy starts fresh. Version tracks what a given certificate was rendered from, so
@@ -229,14 +234,18 @@ public class CertificateTemplateReuseTests : IClassFixture<KurxApiFactory>
             Assert.Equal(
                 (original.Kind, original.FieldKey, original.Label, original.StaticText,
                  original.X, original.Y, original.Width, original.Height, original.Rotation,
-                 original.ZOrder, original.IsRequired, original.IsMasking, original.BackgroundColor,
+                 original.ZOrder, original.IsRequired, original.IsMasking, original.MirrorsArtwork,
+                 original.BackgroundColor,
                  original.FontFamily, original.FontSizePt, original.FontWeight, original.Color,
-                 original.HorizontalAlignment, original.VerticalAlignment),
+                 original.HorizontalAlignment, original.VerticalAlignment,
+                 original.FontStyle, original.Underline, original.LineHeight, original.LetterSpacing),
                 (duplicate.Kind, duplicate.FieldKey, duplicate.Label, duplicate.StaticText,
                  duplicate.X, duplicate.Y, duplicate.Width, duplicate.Height, duplicate.Rotation,
-                 duplicate.ZOrder, duplicate.IsRequired, duplicate.IsMasking, duplicate.BackgroundColor,
+                 duplicate.ZOrder, duplicate.IsRequired, duplicate.IsMasking, duplicate.MirrorsArtwork,
+                 duplicate.BackgroundColor,
                  duplicate.FontFamily, duplicate.FontSizePt, duplicate.FontWeight, duplicate.Color,
-                 duplicate.HorizontalAlignment, duplicate.VerticalAlignment));
+                 duplicate.HorizontalAlignment, duplicate.VerticalAlignment,
+                 duplicate.FontStyle, duplicate.Underline, duplicate.LineHeight, duplicate.LetterSpacing));
 
             // New rows, not the same rows re-pointed.
             Assert.NotEqual(original.Id, duplicate.Id);
@@ -308,7 +317,7 @@ public class CertificateTemplateReuseTests : IClassFixture<KurxApiFactory>
         var original = await Templates(scope).GetAsync(f.OwnerId, source, false);
 
         Assert.Equal("Participation", original.Value!.Name);
-        Assert.Equal(3, original.Value.Fields.Count);
+        Assert.Equal(RichLayout().Count, original.Value.Fields.Count);
     }
 
     [Fact]
@@ -324,7 +333,7 @@ public class CertificateTemplateReuseTests : IClassFixture<KurxApiFactory>
 
         var saved = await Templates(scope).GetAsync(f.OwnerId, copy.Value!.Id, false);
 
-        Assert.Equal(3, saved.Value!.Fields.Count);
+        Assert.Equal(RichLayout().Count, saved.Value!.Fields.Count);
     }
 
     /// <summary>Archiving one leaves the other alone — impossible if they shared storage.</summary>

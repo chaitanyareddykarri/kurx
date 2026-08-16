@@ -24,8 +24,14 @@ RUN dotnet publish Kurx.Api/Kurx.Api.csproj -c Release -o /app --no-restore /p:U
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+# `tesseract-ocr` backs ITextDetector (D-355). Deliberately the CLI rather than a managed wrapper: a
+# wrapper pins a native libtesseract ABI and the two drift, which on arm64 shows up as a load failure at
+# runtime rather than a build error. The binary's TSV output already carries per-word boxes and
+# confidence, which is exactly the boundary's shape, so the wrapper would add a dependency and no
+# capability. `eng` is the only language pack installed — certificates in other scripts fall back to the
+# unavailable answer rather than to a bad transcription.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app .
 # Run unprivileged (D-256). APP_UID is the non-root user the aspnet base image already provides, so

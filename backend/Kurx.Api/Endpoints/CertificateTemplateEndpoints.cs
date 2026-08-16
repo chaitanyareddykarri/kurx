@@ -149,7 +149,7 @@ public static class CertificateTemplateEndpoints
         {
             var r = await svc.DetectBackgroundTextAsync(UserId(p), templateId, IsAdmin(p), ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<TextDetectionResult>();
+        }).Produces<CertificateTextScan>();
 
         // The editor's save. Whole-set rather than per-field, because that is what the canvas holds.
         byId.MapPut("/fields", async (Guid templateId, ReplaceCertificateFieldsBody body, ClaimsPrincipal p,

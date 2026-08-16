@@ -367,10 +367,15 @@ public class CertificateTemplateService(
                 ZOrder = field.ZOrder,
                 IsRequired = field.IsRequired,
                 IsMasking = field.IsMasking,
+                MirrorsArtwork = field.MirrorsArtwork,
                 BackgroundColor = field.BackgroundColor,
                 FontFamily = field.FontFamily,
                 FontSizePt = field.FontSizePt,
                 FontWeight = field.FontWeight,
+                FontStyle = field.FontStyle,
+                Underline = field.Underline,
+                LineHeight = field.LineHeight,
+                LetterSpacing = field.LetterSpacing,
                 Color = field.Color,
                 HorizontalAlignment = field.HorizontalAlignment,
                 VerticalAlignment = field.VerticalAlignment,
@@ -519,6 +524,10 @@ public class CertificateTemplateService(
     /// <para>Sampled from a band just OUTSIDE the region and from its top and bottom margins, never from
     /// the middle. The middle is the printed text being covered, and including it would drag the patch
     /// toward the ink — the classic grey-box-over-black-text result.</para></summary>
+    /// <summary>How far from the paper's modal colour a pixel can be and still count as paper rather than
+    /// ink. Wide enough to include a watermark's strokes, narrow enough to exclude text.</summary>
+    private const int NearPaper = 24;
+
     private static string SampleGround(byte[] artwork, CertificateRegion region)
     {
         using var image = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(artwork);
@@ -536,13 +545,19 @@ public class CertificateTemplateService(
         var marginY = Math.Max(2, (y1 - y0) / 6);
         var marginX = Math.Max(2, (x1 - x0) / 12);
 
-        var histogram = new Dictionary<int, int>();
+        // Buckets at 5-bit precision so near-identical paper pixels count as one colour, but each bucket
+        // keeps the SUM of the real pixels that landed in it. The bucket is for grouping; the colour that
+        // comes back is the average of what was actually there. Returning the bucket's floor instead would
+        // paint pure white as #F8F8F8 — a grey patch on white paper, which is exactly the "this was
+        // edited" tell the covering is meant to avoid.
+        var histogram = new Dictionary<int, (int Count, long R, long G, long B)>();
         void Count(int x, int y)
         {
             if (x < 0 || y < 0 || x >= image.Width || y >= image.Height) return;
             var p = image[x, y];
             var key = ((p.R >> 3) << 10) | ((p.G >> 3) << 5) | (p.B >> 3);
-            histogram[key] = histogram.TryGetValue(key, out var n) ? n + 1 : 1;
+            var e = histogram.TryGetValue(key, out var v) ? v : default;
+            histogram[key] = (e.Count + 1, e.R + p.R, e.G + p.G, e.B + p.B);
         }
 
         for (var x = x0 - marginX; x <= x1 + marginX; x++)
@@ -556,58 +571,97 @@ public class CertificateTemplateService(
 
         if (histogram.Count == 0) return "#FFFFFF";
 
-        var dominant = histogram.MaxBy(kv => kv.Value).Key;
-        int r = ((dominant >> 10) & 31) << 3, g = ((dominant >> 5) & 31) << 3, b = (dominant & 31) << 3;
-        return $"#{r:X2}{g:X2}{b:X2}";
+        // The most common colour in the band — the paper itself.
+        var dominant = histogram.MaxBy(kv => kv.Value.Count).Value;
+        int mr = (int)(dominant.R / dominant.Count), mg = (int)(dominant.G / dominant.Count),
+            mb = (int)(dominant.B / dominant.Count);
+
+        // Then the average of everything close to it. Certificate stock is rarely flat: a watermark or
+        // guilloche makes the paper a mix of the base tone and slightly darker strokes, and a patch filled
+        // with the base tone alone reads LIGHTER than what surrounds it — a pale rectangle where the
+        // texture stops. Averaging the near-paper pixels lands on the tone the eye actually reads.
+        //
+        // Pixels far from the mode are the ink of neighbouring text and are excluded, because letting them
+        // in is what produces the grey smear this whole method exists to avoid. On uniform stock every
+        // pixel is the mode, so the answer is unchanged and still exact.
+        long ar = 0, ag = 0, ab = 0, n = 0;
+        foreach (var (_, v) in histogram)
+        {
+            int r = (int)(v.R / v.Count), g = (int)(v.G / v.Count), b = (int)(v.B / v.Count);
+            if (Math.Abs(r - mr) > NearPaper || Math.Abs(g - mg) > NearPaper || Math.Abs(b - mb) > NearPaper)
+                continue;
+            ar += v.R; ag += v.G; ab += v.B; n += v.Count;
+        }
+
+        return n == 0
+            ? $"#{mr:X2}{mg:X2}{mb:X2}"
+            : $"#{(int)(ar / n):X2}{(int)(ag / n):X2}{(int)(ab / n):X2}";
     }
 
     // ── OCR extension point (Phase 12) ──────────────────────────────────────────────────────────
 
-    public async Task<ServiceResult<TextDetectionResult>> DetectBackgroundTextAsync(
+    public async Task<ServiceResult<CertificateTextScan>> DetectBackgroundTextAsync(
         Guid userId, Guid templateId, bool isAdmin, CancellationToken ct = default)
     {
         var (template, error) = await LoadAsync(userId, templateId, isAdmin, ct);
-        if (error is not null) return ServiceResult<TextDetectionResult>.Fail(error);
+        if (error is not null) return ServiceResult<CertificateTextScan>.Fail(error);
+
+        CertificateTextScan Unavailable(string reason) => new(false, [], reason);
 
         // Asked before the artwork is fetched. With no engine configured there is nothing to analyse and
         // no reason to pull megabytes out of storage to prove it.
         if (!textDetector.IsAvailable)
-            return ServiceResult<TextDetectionResult>.Success(
-                TextDetectionResult.Unavailable(
-                    "Automatic text detection is not enabled on this deployment. Place fields by hand."));
+            return ServiceResult<CertificateTextScan>.Success(Unavailable(
+                "Automatic text detection is not enabled on this deployment. Place fields by hand."));
 
         if (template!.BackgroundStorageKey is null)
-            return ServiceResult<TextDetectionResult>.Success(
-                TextDetectionResult.Unavailable("This design has no artwork to look at yet."));
+            return ServiceResult<CertificateTextScan>.Success(
+                Unavailable("This design has no artwork to look at yet."));
 
         byte[] artwork;
         try
         {
             if (!await storage.ExistsAsync(template.BackgroundStorageKey, ct))
-                return ServiceResult<TextDetectionResult>.Success(
-                    TextDetectionResult.Unavailable("The design's artwork could not be read."));
+                return ServiceResult<CertificateTextScan>.Success(
+                    Unavailable("The design's artwork could not be read."));
             artwork = await storage.GetAsync(template.BackgroundStorageKey, ct);
         }
         catch (Exception)
         {
-            // Storage being unreachable must not break the editor that is showing the design. It is a
-            // missing convenience, not a failed page.
-            return ServiceResult<TextDetectionResult>.Success(
-                TextDetectionResult.Unavailable("The design's artwork could not be read."));
+            // Storage being unreachable must not break the editor that is showing the design.
+            return ServiceResult<CertificateTextScan>.Success(
+                Unavailable("The design's artwork could not be read."));
         }
 
+        TextDetectionResult detected;
         try
         {
-            return ServiceResult<TextDetectionResult>.Success(await textDetector.DetectAsync(
-                artwork, template.BackgroundContentType ?? "image/png", ct));
+            detected = await textDetector.DetectAsync(
+                artwork, template.BackgroundContentType ?? "image/png", ct);
         }
         catch (Exception)
         {
-            // A future engine throwing is contained here for the same reason: detection is an assist, and
-            // an assist that can break saving a design is worse than no assist.
-            return ServiceResult<TextDetectionResult>.Success(
-                TextDetectionResult.Unavailable("Automatic text detection did not run. Place fields by hand."));
+            // An engine throwing is contained here for the same reason: detection is an assist, and an
+            // assist that can break opening a design is worse than no assist.
+            return ServiceResult<CertificateTextScan>.Success(
+                Unavailable("Automatic text detection did not run. Place fields by hand."));
         }
+
+        if (!detected.Available)
+            return ServiceResult<CertificateTextScan>.Success(
+                Unavailable(detected.Reason ?? "Text detection is not available."));
+
+        // Each region carries the paper colour behind it, sampled here where the artwork is already
+        // decoded. Without this the editor would have to ask per region, and the creator would end up
+        // covering each block by hand — which is the manual work detection exists to remove.
+        var regions = detected.Regions
+            .Select(r => new CertificateDetectedText(
+                r.Text, r.X, r.Y, r.Width, r.Height, r.Confidence,
+                SampleGround(artwork, new CertificateRegion(r.X, r.Y, r.Width, r.Height)),
+                r.Lines))
+            .ToList();
+
+        return ServiceResult<CertificateTextScan>.Success(new CertificateTextScan(true, regions));
     }
 
     // ── Validation ──────────────────────────────────────────────────────────────────────────────
@@ -722,7 +776,8 @@ public class CertificateTemplateService(
     private static CertificateFieldView ToView(CertificateTemplateField f) => new(
         f.Id, f.Kind.ToString().ToLowerInvariant(), f.FieldKey, f.Label, f.StaticText,
         f.X, f.Y, f.Width, f.Height, f.Rotation, f.ZOrder, f.IsRequired, f.IsMasking,
-        f.BackgroundColor, f.FontFamily, f.FontSizePt, f.FontWeight, f.Color,
+        f.MirrorsArtwork, f.BackgroundColor, f.FontFamily, f.FontSizePt, f.FontWeight, f.FontStyle, f.Underline,
+                f.LineHeight, f.LetterSpacing, f.Color,
         f.HorizontalAlignment.ToString().ToLowerInvariant(),
         f.VerticalAlignment.ToString().ToLowerInvariant());
 
@@ -738,10 +793,15 @@ public class CertificateTemplateService(
         ZOrder = f.ZOrder,
         IsRequired = f.IsRequired,
         IsMasking = f.IsMasking,
+        MirrorsArtwork = f.MirrorsArtwork,
         BackgroundColor = Trim(f.BackgroundColor),
         FontFamily = Trim(f.FontFamily),
         FontSizePt = f.FontSizePt,
         FontWeight = Trim(f.FontWeight),
+        FontStyle = Trim(f.FontStyle),
+        Underline = f.Underline,
+        LineHeight = f.LineHeight,
+        LetterSpacing = f.LetterSpacing,
         Color = Trim(f.Color),
         HorizontalAlignment = ParseHorizontal(f.HorizontalAlignment) ?? CertificateHorizontalAlignment.Left,
         VerticalAlignment = ParseVertical(f.VerticalAlignment) ?? CertificateVerticalAlignment.Middle,

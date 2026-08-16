@@ -67,7 +67,17 @@ public sealed record CertificateRenderElement(
     string? FontWeight,
     string? Color,
     string HorizontalAlignment,
-    string VerticalAlignment);
+    string VerticalAlignment,
+    /// <summary><c>italic</c> or null. Separate from weight because a design can be bold AND italic.</summary>
+    string? FontStyle = null,
+    bool Underline = false,
+    /// <summary>Multiplier on the line box; null uses the renderer's default.</summary>
+    double? LineHeight = null,
+    /// <summary>Tracking in ems. Small positive values are what make a title read as a title.</summary>
+    double? LetterSpacing = null,
+    /// <summary>True means the artwork already shows these words: draw nothing, fill nothing. Covering
+    /// unchanged text to redraw it identically erases the design's texture for no gain.</summary>
+    bool MirrorsArtwork = false);
 
 /// <summary>Everything a render needs beyond the design.</summary>
 /// <param name="Values">Field key → value. A key with no value renders as its own placeholder rather than

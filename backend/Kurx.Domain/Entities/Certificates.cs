@@ -127,6 +127,22 @@ public class CertificateTemplateField
     /// has to tell the organiser that moving one reveals the original underneath.</para></summary>
     public bool IsMasking { get; set; }
 
+    /// <summary>Whether this element is only a HANDLE on text the artwork already prints, rather than
+    /// something drawn.
+    ///
+    /// <para>Detection makes every line of an uploaded design clickable, so a creator can reach for words
+    /// they can see. But most of those lines are never changed — and covering unchanged text to redraw it
+    /// identically is destructive: the flat fill erases the design's watermark and texture, leaving a
+    /// smooth rectangle with hard edges where there was paper. That is the "this was edited" tell.</para>
+    ///
+    /// <para>While true the renderer draws nothing and fills nothing; the artwork speaks for itself. The
+    /// moment the creator actually edits the words it becomes false, and the element starts covering and
+    /// drawing like any other. So a design is altered exactly where it was altered, and nowhere else.</para>
+    ///
+    /// <para><see cref="BackgroundColor"/> is still carried while this is true — it is the paper colour
+    /// sampled at detection time, held ready for the edit that may never come.</para></summary>
+    public bool MirrorsArtwork { get; set; }
+
     /// <summary>Fill painted behind this element, or null for transparent. On a masking field this is the
     /// colour sampled from just OUTSIDE the covered text — sampled from inside, it is a blend of ink and
     /// paper and shows as a smear exactly where it was meant to be invisible.</summary>
@@ -136,6 +152,20 @@ public class CertificateTemplateField
     public string? FontFamily { get; set; }
     public double? FontSizePt { get; set; }
     public string? FontWeight { get; set; }
+
+    /// <summary><c>italic</c>, or null for upright. Its own column rather than folded into
+    /// <see cref="FontWeight"/>: a design can be bold AND italic, and one string cannot say both.</summary>
+    public string? FontStyle { get; set; }
+
+    public bool Underline { get; set; }
+
+    /// <summary>Multiplier on the line box, e.g. <c>1.4</c>. Null renders at the renderer's default —
+    /// certificates use generous leading on names and tight leading on addresses.</summary>
+    public double? LineHeight { get; set; }
+
+    /// <summary>Extra tracking in ems. Small positive values are what make a title read as a title.</summary>
+    public double? LetterSpacing { get; set; }
+
     public string? Color { get; set; }
     public CertificateHorizontalAlignment HorizontalAlignment { get; set; } = CertificateHorizontalAlignment.Left;
     public CertificateVerticalAlignment VerticalAlignment { get; set; } = CertificateVerticalAlignment.Middle;

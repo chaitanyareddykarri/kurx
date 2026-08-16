@@ -357,12 +357,27 @@ public static class DependencyInjection
         AddProvider<IPaymentGateway, MockPaymentGateway>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IRouteClient, MockRouteClient>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IKycProvider, MockKycProvider>(services, config, "KYC_PROVIDER", "mock");
-        // Certificate OCR (D-355 Phase 12). Deferred by decision: the editor places every field by hand and
-        // must keep working with no engine at all. Registered through AddProvider precisely because that
-        // helper REFUSES every value but the development one — so TEXT_DETECTOR=tesseract fails loudly at
-        // boot rather than silently resolving to a detector that detects nothing.
-        AddProvider<ITextDetector, Certificates.UnavailableTextDetector>(
-            services, config, "TEXT_DETECTOR", "none");
+        // Certificate text detection (D-355). Two real choices now, so this is hand-registered rather than
+        // going through AddProvider — that helper exists to refuse everything but the development value.
+        //
+        // `tesseract` shells out to the binary installed in the runtime image. `none` keeps the honest
+        // stub, which reports unavailable and never fabricates a region. Anything else fails closed at
+        // boot: a misspelled value must not silently resolve to a detector that detects nothing, because
+        // the editor would then offer a feature that never returns a result.
+        switch ((config["TEXT_DETECTOR"] ?? "none").Trim().ToLowerInvariant())
+        {
+            case "none":
+                services.AddSingleton<ITextDetector, Certificates.UnavailableTextDetector>();
+                Resolved[nameof(ITextDetector)] = "none (UnavailableTextDetector — no detection)";
+                break;
+            case "tesseract":
+                services.AddSingleton<ITextDetector, Certificates.TesseractTextDetector>();
+                Resolved[nameof(ITextDetector)] = "tesseract (TesseractTextDetector)";
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"TEXT_DETECTOR={config["TEXT_DETECTOR"]} is not supported; use 'tesseract' or 'none'.");
+        }
         // Object storage (D-355 Phase 2). Hand-registered rather than through AddProvider, which exists
         // to REFUSE every value but the development one — there are now two real choices.
         switch ((config["STORAGE_PROVIDER"] ?? "localdisk").Trim().ToLowerInvariant())

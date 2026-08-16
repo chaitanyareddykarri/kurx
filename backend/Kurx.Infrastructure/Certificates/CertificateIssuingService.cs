@@ -310,7 +310,8 @@ public class CertificateIssuingService(
                 ImageKey: null,
                 f.FontFamily, f.FontSizePt, f.FontWeight, f.Color,
                 f.HorizontalAlignment.ToString().ToLowerInvariant(),
-                f.VerticalAlignment.ToString().ToLowerInvariant()))
+                f.VerticalAlignment.ToString().ToLowerInvariant(),
+                f.FontStyle, f.Underline, f.LineHeight, f.LetterSpacing, f.MirrorsArtwork))
                 .ToList());
     }
 

@@ -129,8 +129,8 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
     return (
       <div className="space-y-6">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Check these before you continue</h3>
-          <p className="mt-1 text-sm text-slate-600">
+          <h3 className="text-base font-semibold text-text">Check these before you continue</h3>
+          <p className="mt-1 text-sm text-muted">
             These are real certificates from your file, rendered exactly as the rest will be.
             {" "}{batch.row_count.toLocaleString()} will be generated.
           </p>
@@ -140,14 +140,14 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
           {batch.preview_urls.map((url, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img key={url} src={url} alt={`Sample certificate ${i + 1}`}
-                 className="w-full rounded border border-slate-200" />
+                 className="w-full rounded border border-border" />
           ))}
         </div>
 
-        {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
-        <div className="rounded-md bg-amber-50 p-4">
-          <p className="text-sm text-amber-900">
+        <div className="rounded-md bg-warning/10 p-4">
+          <p className="text-sm text-warning">
             Generating creates {batch.row_count.toLocaleString()} certificates. Correcting a mistake
             afterwards means revoking and reissuing every one of them, so check the spelling, the dates and
             the names now.
@@ -159,7 +159,7 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
             type="button"
             disabled={busy}
             onClick={() => void approve()}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
           >
             {busy ? "Starting…" : `Generate ${batch.row_count.toLocaleString()} certificates`}
           </button>
@@ -167,7 +167,7 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
             type="button"
             disabled={busy}
             onClick={() => { setBatch(null); setStage("map"); setError(null); }}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm"
+            className="rounded-md border border-border-strong px-4 py-2 text-sm"
           >
             Start over
           </button>
@@ -193,13 +193,13 @@ function MapStage({ eventId, fields, busy, error, onConfirmed }: {
   return (
     <div className="space-y-6">
       <label className="block">
-        <span className="text-sm font-medium text-slate-900">Name this run</span>
+        <span className="text-sm font-medium text-text">Name this run</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={120}
           placeholder="Participation certificates"
-          className="mt-1 w-full rounded border-slate-300 text-sm"
+          className="mt-1 w-full rounded border-border-strong text-sm"
         />
       </label>
 
@@ -212,8 +212,8 @@ function MapStage({ eventId, fields, busy, error, onConfirmed }: {
         }}
       />
 
-      {busy && <p className="text-sm text-slate-600">Reading your file and rendering samples…</p>}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {busy && <p className="text-sm text-muted">Reading your file and rendering samples…</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </div>
   );
 }
@@ -233,23 +233,23 @@ function RunningStage({ eventId, batch, busy, error, onCancel }: {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold text-slate-900">{batch.name}</h3>
+      <h3 className="text-base font-semibold text-text">{batch.name}</h3>
 
-      <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
-        <div className="h-full bg-slate-900 transition-all" style={{ width: `${percent}%` }} />
+      <div className="h-2 w-full overflow-hidden rounded bg-border">
+        <div className="h-full bg-accent transition-all" style={{ width: `${percent}%` }} />
       </div>
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-text">
         {done.toLocaleString()} of {batch.row_count.toLocaleString()} certificates generated.
       </p>
 
       {batch.status === "completed" && (
-        <p className="rounded-md bg-green-50 p-3 text-sm text-green-900">All certificates are ready.</p>
+        <p className="rounded-md bg-success/10 p-3 text-sm text-success">All certificates are ready.</p>
       )}
 
       {/* A partial run says so. Showing a full bar on a run that dropped four people is how nobody finds
           out those four never got theirs. */}
       {batch.status === "failed" && (
-        <div role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+        <div role="alert" className="rounded-md bg-danger/10 p-3 text-sm text-danger">
           <p>
             {(batch.row_count - batch.issued_count).toLocaleString()} of {batch.row_count.toLocaleString()}{" "}
             certificates could not be generated.
@@ -264,20 +264,20 @@ function RunningStage({ eventId, batch, busy, error, onCancel }: {
       )}
 
       {batch.status === "cancelled" && (
-        <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-700">
+        <p className="rounded-md bg-elevated p-3 text-sm text-text">
           This run was stopped. The {batch.issued_count.toLocaleString()} certificates it had already
           generated still exist.
         </p>
       )}
 
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       {!finished && (
         <button
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm disabled:opacity-50"
+          className="rounded-md border border-border-strong px-4 py-2 text-sm disabled:opacity-50"
         >
           Stop this run
         </button>
@@ -286,8 +286,8 @@ function RunningStage({ eventId, batch, busy, error, onCancel }: {
       {/* Sending is offered only once generating has stopped. Emailing a run that is still producing
           certificates would send some people theirs and quietly leave the rest out. */}
       {finished && batch.issued_count > 0 && (
-        <div className="border-t border-slate-200 pt-4">
-          <h4 className="text-sm font-semibold text-slate-900">Send them out</h4>
+        <div className="border-t border-border pt-4">
+          <h4 className="text-sm font-semibold text-text">Send them out</h4>
           <div className="mt-3">
             <BatchSender eventId={eventId} batch={batch} />
           </div>
@@ -297,7 +297,7 @@ function RunningStage({ eventId, batch, busy, error, onCancel }: {
       {/* Kept at the bottom and behind a link rather than beside the send button: withdrawing a whole run
           is permanent and publicly visible, and it should take a deliberate reach to get to. */}
       {finished && batch.issued_count > 0 && (
-        <div className="border-t border-slate-200 pt-4">
+        <div className="border-t border-border pt-4">
           <BatchWithdrawal
             eventId={eventId}
             batchId={batch.id}

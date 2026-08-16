@@ -46,7 +46,7 @@ export function CertificateSteps({ steps, current, onGo }: {
                 aria-hidden
                 className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-base font-bold ${
                   isCurrent
-                    ? "bg-accent text-white ring-4 ring-accent/25"
+                    ? "bg-accent text-on-accent ring-4 ring-accent/25"
                     : step.done
                       ? "bg-success/15 text-success ring-1 ring-success/40"
                       : "bg-elevated text-muted ring-1 ring-border"

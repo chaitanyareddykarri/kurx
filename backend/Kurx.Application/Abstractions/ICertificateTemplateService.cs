@@ -147,12 +147,18 @@ public sealed record CertificateRegion(double X, double Y, double Width, double 
 public sealed record CertificateArtworkMap(int Columns, int Rows, string Cells, bool Analysed);
 
 /// <param name="Name">1–200 characters.</param>
-/// <param name="PageSize">`a4-landscape` | `a4-portrait`.</param>
+/// <param name="PageSize">A preset slug from <see cref="CertificatePageSizes"/> — `a4-portrait`,
+/// `letter-landscape`, `12x16-portrait` … — or `custom`, in which case
+/// <paramref name="PageWidthMm"/> and <paramref name="PageHeightMm"/> carry the size (D-361).</param>
+/// <param name="PageWidthMm">Required with `custom`, ignored otherwise: a preset's dimensions come from
+/// the catalogue, never from the caller, so a client cannot claim A4 is 500 mm wide.</param>
 /// <param name="Status">`draft` | `ready`. Archiving goes through <c>ArchiveAsync</c>.</param>
 public sealed record CertificateTemplateInput(
     string? Name = null,
     string? PageSize = null,
-    string? Status = null);
+    string? Status = null,
+    double? PageWidthMm = null,
+    double? PageHeightMm = null);
 
 /// <param name="StorageKey">The key that was presigned and successfully written.</param>
 /// <param name="WidthPx">Natural pixel size of the upload, so the editor knows the aspect ratio without
@@ -193,6 +199,10 @@ public sealed record CertificateTemplateView(
     Guid OwnerUserId,
     string Name,
     string PageSize,
+    /// <summary>The page in millimetres — authoritative (D-361). The client derives its aspect ratio from
+    /// these rather than keeping its own name → size table.</summary>
+    double PageWidthMm,
+    double PageHeightMm,
     string Status,
     int Version,
     string? BackgroundStorageKey,

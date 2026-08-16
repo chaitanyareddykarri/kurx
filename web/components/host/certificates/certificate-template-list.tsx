@@ -112,7 +112,7 @@ export function CertificateTemplateList({ eventId, templates, canManage, library
             <li key={t.id}>
               <Card>
                 <CertificateCanvas
-                  pageSize={t.page_size}
+                  pageSize={t.page_size} pageWidthMm={t.page_width_mm} pageHeightMm={t.page_height_mm}
                   backgroundUrl={t.background_url}
                   fields={t.fields.map(toDraft)}
                   width={280}

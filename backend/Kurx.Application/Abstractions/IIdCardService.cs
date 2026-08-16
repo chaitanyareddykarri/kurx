@@ -15,6 +15,21 @@ public interface IIdCardService
     Task<ServiceResult<IReadOnlyList<BadgeRecipient>>> ListRecipientsAsync(
         Guid eventId, Guid actorId, bool isAdmin, CancellationToken ct = default);
 
+    /// <summary>Issues real ID cards: creates an <c>id_cards</c> row per recipient, allocates its card
+    /// number and verify code, renders the artefacts and stores them (D-362).
+    ///
+    /// <para><b>This is what makes a badge a record rather than a printout.</b> An issued card has an
+    /// identity that outlives the PDF — it can be looked up, revoked, reissued, and verified from the code
+    /// on its face. Rendering straight to a download, which is what this replaces, produced paper that the
+    /// platform had no knowledge of the moment it was saved.</para>
+    ///
+    /// <para><b>Idempotent per (event, holder).</b> Re-running regenerates the artefacts and keeps the
+    /// existing card number, so reprinting a damaged badge does not silently issue a second identity for
+    /// the same person. A genuine reissue — after a loss — is a separate act that takes a new number
+    /// (D-331), and is not this.</para></summary>
+    Task<ServiceResult<BadgeIssueReport>> GenerateAsync(
+        Guid eventId, Guid actorId, bool isAdmin, BadgeIssueRequest request, CancellationToken ct = default);
+
     /// <summary>One badge, print-ready.</summary>
     Task<ServiceResult<byte[]>> RenderOneAsync(
         Guid eventId, Guid actorId, bool isAdmin, Guid recipientUserId, string sizeKey,
@@ -33,6 +48,18 @@ public interface IIdCardService
 /// QR encodes, not in how they are rendered (D-331).</summary>
 public enum BadgeKind { Attendee, Staff }
 
+/// <param name="SizeKey">The size the cards are rendered at. Stored artefacts are size-specific, so
+/// changing it and regenerating replaces them.</param>
+/// <param name="UserIds">Null or empty issues to everyone matching <paramref name="Kinds"/>.</param>
+public sealed record BadgeIssueRequest(
+    string SizeKey,
+    IReadOnlyList<BadgeKind> Kinds,
+    IReadOnlyList<Guid>? UserIds = null);
+
+/// <param name="Issued">Cards created for the first time.</param>
+/// <param name="Regenerated">Existing cards whose artefacts were re-rendered, keeping their number.</param>
+public sealed record BadgeIssueReport(int Issued, int Regenerated);
+
 /// <param name="Kind">Attendee or staff.</param>
 /// <param name="Subtitle">Ticket tier for an attendee, role for a staff member — the line under the name.</param>
 /// <param name="AccessLevel">Staff only. What the badge authorises on site.</param>
@@ -47,7 +74,22 @@ public sealed record BadgeRecipient(
     string? Subtitle,
     string? AccessLevel,
     string? PhotoKey,
-    string QrPayload);
+    string QrPayload,
+    /// <summary>The issued card, when one exists. Null means this person has no <c>id_cards</c> row yet —
+    /// which is what the console shows as "not issued", and is a different state from "issued and
+    /// revoked".</summary>
+    IssuedCard? Card = null);
+
+/// <param name="CardNumber">The human-facing number printed on the card.</param>
+/// <param name="VerifyCode">The code its QR-adjacent lookup resolves. Ten characters, same shape as a
+/// certificate's, so one verification convention covers both (D-331).</param>
+public sealed record IssuedCard(
+    Guid Id,
+    string CardNumber,
+    string VerifyCode,
+    string Status,
+    bool IsRevoked,
+    DateTime? GeneratedAt);
 
 /// <param name="SizeKey">One of <see cref="BadgeSize.All"/>. The organizer picks per print run — badge
 /// stock differs by event and by printer, so this is a choice rather than a constant.</param>

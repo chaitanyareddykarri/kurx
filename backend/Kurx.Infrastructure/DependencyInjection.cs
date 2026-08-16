@@ -201,6 +201,8 @@ public static class DependencyInjection
         // D-362 — event badges. Reuses the certificate document renderer above rather than shipping a
         // second one; this service is the layout and the authority check, not an engine.
         services.AddScoped<IIdCardService, IdCards.IdCardService>();
+        // The editable card design, stored on DesignTemplate with Kind = IdCard.
+        services.AddScoped<IIdCardTemplateService, IdCards.IdCardTemplateService>();
         services.AddScoped<IEntitlementService, Events.EntitlementService>();   // D-334
         services.AddScoped<Analytics.IAnalyticsFactSource, Analytics.LeafFactSource>();   // V3 §16 (Phase 17) internal fact source
         services.AddScoped<IAnalyticsService, Analytics.AnalyticsService>();

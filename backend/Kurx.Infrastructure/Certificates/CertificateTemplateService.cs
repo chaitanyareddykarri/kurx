@@ -83,15 +83,17 @@ public class CertificateTemplateService(
         var name = (input.Name ?? "").Trim();
         if (name.Length is < 1 or > 200) return ServiceResult<CertificateTemplateView>.Fail("invalid_name");
 
-        if (ParsePageSize(input.PageSize) is not { } pageSize)
-            return ServiceResult<CertificateTemplateView>.Fail("invalid_page_size");
+        var page = ResolvePage(input, CertificatePageSize.A4Landscape, 297, 210);
+        if (page.Error is not null) return ServiceResult<CertificateTemplateView>.Fail(page.Error);
 
         var template = new CertificateTemplate
         {
             EventId = eventId,
             OwnerUserId = userId,
             Name = name,
-            PageSize = pageSize,
+            PageSize = page.Size,
+            PageWidthMm = page.WidthMm,
+            PageHeightMm = page.HeightMm,
             Status = CertificateTemplateStatus.Draft,
         };
         db.CertificateTemplates.Add(template);
@@ -115,12 +117,19 @@ public class CertificateTemplateService(
 
         if (input.PageSize is not null)
         {
-            if (ParsePageSize(input.PageSize) is not { } pageSize)
-                return ServiceResult<CertificateTemplateView>.Fail("invalid_page_size");
-            // The page size IS the coordinate space every percentage is relative to, so changing it moves
-            // every field. That makes it a render-affecting change like any other.
-            if (pageSize != template!.PageSize) await BumpVersionIfIssuedAsync(template, ct);
-            template.PageSize = pageSize;
+            var page = ResolvePage(input, template!.PageSize, template.PageWidthMm, template.PageHeightMm);
+            if (page.Error is not null) return ServiceResult<CertificateTemplateView>.Fail(page.Error);
+
+            // The page IS the coordinate space every percentage is relative to, so changing it moves every
+            // field. That makes it a render-affecting change like any other — and the DIMENSIONS are what
+            // matters, not the label: two different customs of the same size are the same page, and A4
+            // relabelled as a 210 × 297 custom must not be treated as a redesign.
+            var moved = Math.Abs(page.WidthMm - template.PageWidthMm) > 0.01
+                     || Math.Abs(page.HeightMm - template.PageHeightMm) > 0.01;
+            if (moved) await BumpVersionIfIssuedAsync(template, ct);
+            template.PageSize = page.Size;
+            template.PageWidthMm = page.WidthMm;
+            template.PageHeightMm = page.HeightMm;
         }
 
         if (input.Status is not null)
@@ -299,6 +308,8 @@ public class CertificateTemplateService(
             OwnerUserId = userId,
             Name = copyName,
             PageSize = source.PageSize,
+            PageWidthMm = source.PageWidthMm,
+            PageHeightMm = source.PageHeightMm,
             BackgroundContentType = source.BackgroundContentType,
             BackgroundWidthPx = source.BackgroundWidthPx,
             BackgroundHeightPx = source.BackgroundHeightPx,
@@ -672,8 +683,10 @@ public class CertificateTemplateService(
         if (ParseKind(f.Kind) is not { } kind) return "invalid_field_kind";
 
         // A dynamic field with no key has nothing to substitute and would render as a blank space on
-        // every certificate.
-        if (kind == CertificateFieldKind.DynamicField && string.IsNullOrWhiteSpace(f.FieldKey))
+        // every certificate. An image field is the same problem in a different medium: its key names
+        // which picture to paint (`participant_photo`), so without one it draws nothing.
+        if (kind is CertificateFieldKind.DynamicField or CertificateFieldKind.Image
+            && string.IsNullOrWhiteSpace(f.FieldKey))
             return "field_key_required";
         if (f.FieldKey is { Length: > 100 }) return "invalid_field_key";
         if (f.Label is { Length: > 200 }) return "invalid_label";
@@ -766,7 +779,7 @@ public class CertificateTemplateService(
 
         return new CertificateTemplateView(
             t.Id, t.EventId, t.OwnerUserId, t.Name,
-            Slug(t.PageSize), t.Status.ToString().ToLowerInvariant(), t.Version,
+            Slug(t.PageSize), t.PageWidthMm, t.PageHeightMm, t.Status.ToString().ToLowerInvariant(), t.Version,
             t.BackgroundStorageKey, backgroundUrl, t.BackgroundWidthPx, t.BackgroundHeightPx,
             await db.IssuedCertificates.AnyAsync(c => c.TemplateId == t.Id, ct),
             fields.Select(ToView).ToList(),
@@ -836,13 +849,33 @@ public class CertificateTemplateService(
             _ => null,
         };
 
-    private static CertificatePageSize? ParsePageSize(string? value) => value?.Trim().ToLowerInvariant() switch
+    /// <summary>Turns a request's page fields into a size to store (D-361).
+    ///
+    /// <para>A preset's dimensions come from <see cref="CertificatePageSizes"/> and never from the caller:
+    /// accepting client-supplied millimetres alongside a preset name would let one request claim A4 is
+    /// 500 mm wide, and every certificate issued from it would print wrong with the label saying A4.
+    /// Only <c>custom</c> takes dimensions, and only within the clamped range.</para></summary>
+    private static (CertificatePageSize Size, double WidthMm, double HeightMm, string? Error) ResolvePage(
+        CertificateTemplateInput input, CertificatePageSize fallbackSize, double fallbackW, double fallbackH)
     {
-        null or "" or "a4-landscape" => CertificatePageSize.A4Landscape,
-        "a4-portrait" => CertificatePageSize.A4Portrait,
-        _ => null,
-    };
+        var slug = input.PageSize?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(slug)) return (fallbackSize, fallbackW, fallbackH, null);
 
-    private static string Slug(CertificatePageSize size) =>
-        size == CertificatePageSize.A4Portrait ? "a4-portrait" : "a4-landscape";
+        if (slug == "custom")
+        {
+            // Absent dimensions on a custom page are a client bug, not a default worth guessing: a page
+            // silently rendered at A4 while labelled Custom is a certificate printed at the wrong size.
+            if (input.PageWidthMm is not { } w || input.PageHeightMm is not { } h)
+                return (fallbackSize, fallbackW, fallbackH, "page_size_required");
+            if (CertificatePageSizes.ValidateCustom(w, h) is { } invalid)
+                return (fallbackSize, fallbackW, fallbackH, invalid);
+            return (CertificatePageSize.Custom, Math.Round(w, 2), Math.Round(h, 2), null);
+        }
+
+        if (CertificatePageSizes.BySlug(slug) is not { } preset)
+            return (fallbackSize, fallbackW, fallbackH, "invalid_page_size");
+        return (preset.Size, preset.WidthMm, preset.HeightMm, null);
+    }
+
+    private static string Slug(CertificatePageSize size) => CertificatePageSizes.SlugFor(size);
 }

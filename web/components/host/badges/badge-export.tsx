@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Badge, Checkbox, Field, Select, Spinner } from "@kurx/ui";
-import { downloadBadgeSheet, type BadgeRecipient, type BadgeSize } from "@/lib/badge-api";
+import {
+  downloadBadgeSheet, generateIdCards, type BadgeRecipient, type BadgeSize
+} from "@/lib/badge-api";
 
 type Props = {
   eventId: string;
@@ -21,9 +24,12 @@ type Kind = "attendee" | "staff";
  * actually does here is produce it.
  */
 export function BadgeExport({ eventId, accessToken, sizes, recipients }: Props) {
+  const router = useRouter();
   const [sizeKey, setSizeKey] = useState(sizes[0]?.key ?? "");
   const [kinds, setKinds] = useState<Kind[]>(["attendee", "staff"]);
   const [busy, setBusy] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const counts = useMemo(
@@ -40,6 +46,25 @@ export function BadgeExport({ eventId, accessToken, sizes, recipients }: Props) 
 
   function toggleKind(kind: Kind, on: boolean) {
     setKinds((current) => (on ? [...new Set([...current, kind])] : current.filter((k) => k !== kind)));
+  }
+
+  async function issue() {
+    setIssuing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await generateIdCards(accessToken, eventId, { sizeKey, kinds });
+      setNotice(
+        `${r.issued} card${r.issued === 1 ? "" : "s"} issued` +
+          (r.regenerated > 0 ? `, ${r.regenerated} regenerated (existing numbers kept).` : ".")
+      );
+      // Re-read the roster so the newly issued card numbers show without a manual refresh.
+      router.refresh();
+    } catch {
+      setError("The cards couldn't be issued. Nothing was created — try again.");
+    } finally {
+      setIssuing(false);
+    }
   }
 
   async function print() {
@@ -110,12 +135,19 @@ export function BadgeExport({ eventId, accessToken, sizes, recipients }: Props) 
             </Alert>
           )}
 
+          {notice && <Alert tone="success">{notice}</Alert>}
           {error && <Alert tone="danger">{error}</Alert>}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={print} disabled={busy || selectedCount === 0 || !size}>
+            {/* Issuing is the primary action: it creates the card records the platform can later verify
+                and revoke. Downloading without issuing prints paper nothing knows about. */}
+            <Button onClick={issue} disabled={issuing || busy || selectedCount === 0 || !size}>
+              {issuing ? <Spinner size={16} /> : null}
+              {issuing ? "Issuing…" : `Issue ${selectedCount} ID card${selectedCount === 1 ? "" : "s"}`}
+            </Button>
+            <Button variant="secondary" onClick={print} disabled={busy || issuing || selectedCount === 0 || !size}>
               {busy ? <Spinner size={16} /> : null}
-              {busy ? "Preparing…" : `Download ${selectedCount} badge${selectedCount === 1 ? "" : "s"}`}
+              {busy ? "Preparing…" : "Download print sheet"}
             </Button>
             {size && (
               <p className="text-sm text-muted">
@@ -135,9 +167,19 @@ export function BadgeExport({ eventId, accessToken, sizes, recipients }: Props) 
               <li key={r.user_id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-text">{r.name}</p>
-                  {r.subtitle && <p className="truncate text-xs text-muted">{r.subtitle}</p>}
+                  <p className="truncate text-xs text-muted">
+                    {r.card ? (
+                      <>
+                        <span className="font-mono">{r.card.card_number}</span>
+                        {r.subtitle ? ` · ${r.subtitle}` : ""}
+                      </>
+                    ) : (
+                      <>Not issued{r.subtitle ? ` · ${r.subtitle}` : ""}</>
+                    )}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {r.card?.is_revoked && <Badge tone="danger">Revoked</Badge>}
                   {r.access_level && <Badge tone="warning">{r.access_level}</Badge>}
                   <Badge tone={r.kind === "staff" ? "accent" : "muted"}>
                     {r.kind === "staff" ? "Staff" : "Attendee"}

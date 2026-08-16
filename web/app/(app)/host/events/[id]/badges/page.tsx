@@ -3,6 +3,7 @@ import { can } from "@/lib/capabilities";
 import { section } from "@/lib/api";
 import { listBadgeRecipients, listBadgeSizes } from "@/lib/badge-api";
 import { BadgeExport } from "@/components/host/badges/badge-export";
+import { BadgeTemplateEditor } from "@/components/host/badges/badge-template-editor";
 import { Card, PermissionDeniedState } from "@kurx/ui";
 
 /**
@@ -51,12 +52,21 @@ export default async function EventBadgesPage({ params }: { params: { id: string
           </p>
         </Card>
       ) : (
-        <BadgeExport
-          eventId={params.id}
-          accessToken={session.accessToken}
-          sizes={sizes.data}
-          recipients={recipients.data}
-        />
+        <>
+          {/* Design first, then who gets one: an organiser sets the card up once and prints many times,
+              so the editor leads and the print run follows it. */}
+          <BadgeTemplateEditor
+            eventId={params.id}
+            accessToken={session.accessToken}
+            sizes={sizes.data}
+          />
+          <BadgeExport
+            eventId={params.id}
+            accessToken={session.accessToken}
+            sizes={sizes.data}
+            recipients={recipients.data}
+          />
+        </>
       )}
     </div>
   );

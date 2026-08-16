@@ -51,9 +51,23 @@ public class CertificateTemplate
     public int? BackgroundWidthPx { get; set; }
     public int? BackgroundHeightPx { get; set; }
 
-    /// <summary>The page this design renders onto. Named rather than a pixel pair, so the document
-    /// carries no resolution and the renderer owns the millimetres.</summary>
+    /// <summary>Which page this design prints onto — the LABEL for the size below (D-361). Kept so the
+    /// editor can say "A4 · Portrait" rather than "210 × 297", and so a preset survives a round-trip
+    /// without being re-derived from the numbers.</summary>
     public CertificatePageSize PageSize { get; set; } = CertificatePageSize.A4Landscape;
+
+    /// <summary>The page in millimetres — the authoritative size (D-361).
+    ///
+    /// <para>Physical, not pixels: a certificate has to print at the size it was designed for rather than
+    /// whatever the printer infers. The renderer reads these directly, which is what lets
+    /// <see cref="CertificatePageSize.Custom"/> exist and what removed the name → millimetre table that
+    /// previously had to be kept in step across the server and the browser.</para>
+    ///
+    /// <para>Double rather than int because the imperial presets are not whole millimetres: US Letter is
+    /// 215.9 × 279.4 mm exactly, and rounding it would print a certificate a fifth of a millimetre wrong
+    /// on every edge.</para></summary>
+    public double PageWidthMm { get; set; } = 297;
+    public double PageHeightMm { get; set; } = 210;
 
     public CertificateTemplateStatus Status { get; set; } = CertificateTemplateStatus.Draft;
 

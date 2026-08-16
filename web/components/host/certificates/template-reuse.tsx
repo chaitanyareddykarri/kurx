@@ -29,7 +29,7 @@ export function SaveToLibrary({ eventId, template }: {
 
   if (saved) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-muted">
         Saved to your designs. This event&apos;s copy is unchanged — the two are separate from now on.
       </p>
     );
@@ -44,22 +44,22 @@ export function SaveToLibrary({ eventId, template }: {
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold text-slate-900">Save a copy to your designs</h4>
-      <p className="text-sm text-slate-600">
+    <div className="space-y-3 rounded-md border border-border p-4">
+      <h4 className="text-sm font-semibold text-text">Save a copy to your designs</h4>
+      <p className="text-sm text-muted">
         You&apos;ll be able to reuse it on future events. It&apos;s a copy: editing it later won&apos;t
         change this event&apos;s certificates.
       </p>
       <label className="block">
-        <span className="text-sm font-medium text-slate-900">Name</span>
+        <span className="text-sm font-medium text-text">Name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={200}
-          className="mt-1 w-full rounded border-slate-300 text-sm"
+          className="mt-1 w-full rounded border-border-strong text-sm"
         />
       </label>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">
         <Button
           type="button"
@@ -106,9 +106,9 @@ export function UseSavedDesign({ eventId, library }: {
   }
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold text-slate-900">Your saved designs</h4>
-      <p className="text-sm text-slate-600">
+    <div className="space-y-3 rounded-md border border-border p-4">
+      <h4 className="text-sm font-semibold text-text">Your saved designs</h4>
+      <p className="text-sm text-muted">
         A copy is added to this event. Your saved one stays as it is.
       </p>
 
@@ -119,11 +119,11 @@ export function UseSavedDesign({ eventId, library }: {
               {template.background_url && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={template.background_url} alt="" aria-hidden="true"
-                     className="h-10 w-16 rounded border border-slate-200 object-cover" />
+                     className="h-10 w-16 rounded border border-border object-cover" />
               )}
               <div>
-                <div className="text-sm font-medium text-slate-900">{template.name}</div>
-                <div className="text-xs text-slate-500">
+                <div className="text-sm font-medium text-text">{template.name}</div>
+                <div className="text-xs text-muted">
                   {template.page_size === "a4-portrait" ? "A4 portrait" : "A4 landscape"} ·{" "}
                   {template.fields.length} {template.fields.length === 1 ? "field" : "fields"}
                 </div>
@@ -148,7 +148,7 @@ export function UseSavedDesign({ eventId, library }: {
         ))}
       </ul>
 
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(false)}>
         Cancel

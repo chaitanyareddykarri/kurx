@@ -49,9 +49,77 @@ public static class IdCardEndpoints
                     has_photo = !string.IsNullOrWhiteSpace(x.PhotoKey),
                     // The QR payload itself is NOT returned. It is a credential: a marshal's console
                     // listing everyone's scannable code would hand out working badges as JSON.
+                    //
+                    // The issued card IS returned — its number and verify code are printed on the badge's
+                    // face, so they are not secrets, and the console needs them to show what exists.
+                    card = x.Card is null ? null : new
+                    {
+                        id = x.Card.Id, card_number = x.Card.CardNumber, verify_code = x.Card.VerifyCode,
+                        status = x.Card.Status.ToLowerInvariant(), is_revoked = x.Card.IsRevoked,
+                        generated_at = x.Card.GeneratedAt,
+                    },
                 }))
                 : Fail(r.Error);
         }).WithSummary("Everyone at this event who can be given a badge");
+
+        // ── The card design (D-362 editor) ──────────────────────────────────────────────────────
+        //
+        // One design per event, stored on DesignTemplate with Kind = IdCard. GET answers the shipped
+        // default when nothing has been saved, so the editor always opens on a working card.
+
+        g.MapGet("/template", async (Guid eventId, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.GetAsync(eventId, UserId(p), IsAdmin(p), ct);
+            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
+        }).WithSummary("This event's ID card design");
+
+        g.MapPut("/template", async (
+            Guid eventId, IdCardTemplateSpec body, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.SaveAsync(eventId, UserId(p), IsAdmin(p), body, ct);
+            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
+        }).WithSummary("Save this event's ID card design");
+
+        // Renders the spec in the request body, NOT the saved one — the editor previews unsaved edits,
+        // and through the same renderer that prints, so preview and output cannot drift.
+        g.MapPost("/template/preview", async (
+            Guid eventId, TemplatePreviewBody body, ClaimsPrincipal p, IIdCardTemplateService svc,
+            CancellationToken ct) =>
+        {
+            var kind = string.Equals(body.Kind, "staff", StringComparison.OrdinalIgnoreCase)
+                ? BadgeKind.Staff : BadgeKind.Attendee;
+            var r = await svc.PreviewAsync(eventId, UserId(p), IsAdmin(p), body.Spec, kind, ct);
+            return r.Ok ? Results.File(r.Value!, "image/png") : Fail(r.Error);
+        })
+            .WithSummary("Render a sample card from an unsaved design")
+            .Produces(StatusCodes.Status200OK, typeof(byte[]), "image/png");
+
+        g.MapPost("/template/asset/presign", async (
+            Guid eventId, AssetPresignBody body, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.PresignAssetAsync(eventId, UserId(p), IsAdmin(p), body.ContentType, body.Purpose, ct);
+            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
+        }).WithSummary("Presigned upload for the card's artwork or logo");
+
+        g.MapGet("/template/asset-url", async (
+            Guid eventId, string key, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.AssetUrlAsync(eventId, UserId(p), IsAdmin(p), key, ct);
+            return r.Ok ? Results.Ok(new { url = r.Value }) : Fail(r.Error);
+        }).WithSummary("Readable URL for an uploaded card asset, for the editor canvas");
+
+        g.MapPost("/generate", async (
+            Guid eventId, BadgeSheetBody body, ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
+        {
+            var r = await svc.GenerateAsync(
+                eventId, UserId(p), IsAdmin(p),
+                new BadgeIssueRequest(body.SizeKey, ParseKinds(body.Kinds), body.UserIds), ct);
+
+            return r.Ok
+                ? Results.Ok(new { issued = r.Value!.Issued, regenerated = r.Value.Regenerated })
+                : Fail(r.Error);
+        })
+            .WithSummary("Issue ID cards: create the id_cards rows, render and store their artefacts");
 
         g.MapPost("/sheet", async (
             Guid eventId, BadgeSheetBody body, ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
@@ -85,6 +153,13 @@ public static class IdCardEndpoints
     /// <param name="Kinds">`attendee`, `staff`, or both. Absent means both.</param>
     /// <param name="UserIds">Absent or empty prints everyone matching <paramref name="Kinds"/>.</param>
     public record BadgeSheetBody(string SizeKey, string[]? Kinds, Guid[]? UserIds);
+
+    /// <param name="Kind">`attendee` or `staff` — which sample card to draw. They differ: only a staff
+    /// card carries an access band, so previewing one tells you nothing about the other.</param>
+    public record TemplatePreviewBody(IdCardTemplateSpec Spec, string? Kind);
+
+    /// <param name="Purpose">`background` or `logo` (default).</param>
+    public record AssetPresignBody(string ContentType, string? Purpose);
 
     private static IReadOnlyList<BadgeKind> ParseKinds(string[]? kinds)
     {

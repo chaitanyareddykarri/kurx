@@ -2,8 +2,23 @@
 
 import { useEffect, useRef } from "react";
 import type { DraftField } from "@/lib/certificate-editor";
-import { PAGE_ASPECT } from "@/lib/certificate-editor";
+import { pageAspect } from "@/lib/certificate-editor";
 import { fieldLabel, fieldSample } from "@/lib/certificate-fields";
+
+/**
+ * The editor's chrome colours, read from the design system rather than pasted from it.
+ *
+ * These are inline styles on absolutely-positioned overlays, so Tailwind classes are not available —
+ * but the CSS custom properties are, and they are the same tokens every other surface uses. The
+ * literals these replace (`#2563EB`, `white`) happened to equal `--color-accent` and `--color-on-accent`
+ * exactly, which is the worst kind of duplication: correct until someone changes the token, then wrong
+ * in a place nobody thinks to look.
+ *
+ * Scoped to chrome only. A FIELD's colour is document content — it is printed onto the certificate,
+ * which has no theme — so it stays a literal and is not touched here.
+ */
+const ACCENT = "rgb(var(--color-accent))";
+const ON_ACCENT = "rgb(var(--color-on-accent))";
 
 /**
  * The certificate itself, as the editing surface (D-355).
@@ -21,11 +36,15 @@ import { fieldLabel, fieldSample } from "@/lib/certificate-fields";
  * Every coordinate is a percentage, which is what CSS wants, so positioning needs no scale factor.
  */
 export function CertificateCanvas({
-  pageSize, backgroundUrl, fields, width, selectedId, interactive = false, editingId,
+  pageSize, pageWidthMm, pageHeightMm, backgroundUrl, fields, width, selectedId, interactive = false, editingId,
   showEditable = false,
   onSelect, onPointerDown, onBackgroundClick, onTextChange, onEditDone, onStartEditing
 }: {
   pageSize: string;
+  /** The page in millimetres (D-361) — what the aspect is actually computed from, so a custom page and
+   *  every new preset scale correctly without the canvas knowing any size names. */
+  pageWidthMm?: number | null;
+  pageHeightMm?: number | null;
   backgroundUrl?: string | null;
   fields: DraftField[];
   width: number;
@@ -46,7 +65,7 @@ export function CertificateCanvas({
   onEditDone?: () => void;
   onStartEditing?: (id: string) => void;
 }) {
-  const aspect = PAGE_ASPECT[pageSize] ?? PAGE_ASPECT["a4-landscape"];
+  const aspect = pageAspect(pageSize, pageWidthMm, pageHeightMm);
   const height = Math.round(width / aspect);
 
   return (
@@ -165,8 +184,8 @@ function FieldBox({
     // filling over it here would show the creator a patch the certificate will not have.
     backgroundColor: field.mirrors_artwork ? undefined : (field.background_color ?? undefined),
     // Chrome ONLY when this element is the one being worked on. An unselected canvas is the certificate.
-    outline: editing ? "2px solid #2563EB"
-      : selected ? "1.5px solid #2563EB"
+    outline: editing ? `2px solid ${ACCENT}`
+      : selected ? `1.5px solid ${ACCENT}`
       : editableHint ? "2px dashed rgba(37,99,235,.45)"
       : interactive ? "1px solid transparent"
       : undefined,
@@ -250,7 +269,7 @@ function FieldBox({
           style={{
             position: "absolute", right: -9, top: -9,
             width: 18, height: 18, borderRadius: 9,
-            background: "#2563EB", color: "white",
+            background: ACCENT, color: ON_ACCENT,
             fontSize: 10, lineHeight: "18px", textAlign: "center",
             fontFamily: "system-ui, sans-serif", fontStyle: "normal", textDecoration: "none",
             letterSpacing: 0, fontWeight: 700,
@@ -267,7 +286,7 @@ function FieldBox({
           style={{
             position: "absolute", left: 0, top: -18, whiteSpace: "nowrap",
             fontSize: 11, lineHeight: "16px", padding: "0 6px", borderRadius: 4,
-            background: "#2563EB", color: "white", fontWeight: 600, letterSpacing: 0,
+            background: ACCENT, color: ON_ACCENT, fontWeight: 600, letterSpacing: 0,
             fontFamily: "system-ui, sans-serif", fontStyle: "normal", textDecoration: "none",
           }}
         >
@@ -286,7 +305,7 @@ function FieldBox({
           onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(e, field.id, "resize"); }}
           style={{
             position: "absolute", right: -6, bottom: -6, width: 12, height: 12,
-            borderRadius: 3, background: "#2563EB", border: "2px solid white", cursor: "nwse-resize",
+            borderRadius: 3, background: ACCENT, border: `2px solid ${ON_ACCENT}`, cursor: "nwse-resize",
           }}
         />
       ) : null}

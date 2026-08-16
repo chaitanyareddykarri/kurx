@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireEventOrg } from "@/lib/event-org";
 import { can } from "@/lib/capabilities";
-import { getTemplate } from "@/lib/certificate-api";
+import { getTemplate, listPageSizes } from "@/lib/certificate-api";
 import { CertificateTemplateEditor } from "@/components/host/certificates/certificate-template-editor";
 import { SaveToLibrary } from "@/components/host/certificates/template-reuse";
 
@@ -15,6 +15,10 @@ export default async function CertificateTemplatePage(
   const canManage = can(caps, "events", "update");
 
   const template = await getTemplate(session.accessToken, params.templateId).catch(() => null);
+  // The page-size catalogue (D-361). Fetched here rather than kept in the client, so the dimensions of
+  // A4 are written down once — on the server that renders with them. An empty list on failure leaves the
+  // picker offering Custom only: degraded, but the editor still opens.
+  const pageSizes = await listPageSizes(session.accessToken).then((c) => c.presets).catch(() => []);
   // Belt and braces: the API already scopes by event, and this refuses a template id pasted from a
   // different event's URL even if that ever stopped being true.
   if (!template || template.event_id !== params.id) notFound();
@@ -24,7 +28,7 @@ export default async function CertificateTemplatePage(
       <Link href={`/host/events/${params.id}/certificates`} className="text-sm text-accent-text hover:underline">
         ← Back to Certificates
       </Link>
-      <CertificateTemplateEditor template={template} canManage={canManage} />
+      <CertificateTemplateEditor template={template} canManage={canManage} pageSizes={pageSizes} />
 
       {/* Below the editor, not inside its toolbar: keeping a design for next time is a thing you do when
           you have finished, not while you are placing fields. */}

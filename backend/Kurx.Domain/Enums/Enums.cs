@@ -605,7 +605,25 @@ public enum EntitlementGrantStatus
 
 /// <summary>The page a certificate design renders onto. A named size, not a pixel pair: the document
 /// carries no resolution and the renderer owns the millimetres.</summary>
-public enum CertificatePageSize { A4Landscape, A4Portrait }
+/// <summary>Which page a certificate prints onto (D-361). This is the LABEL — the authoritative size is
+/// <c>CertificateTemplate.PageWidthMm</c>/<c>PageHeightMm</c>, which is why <see cref="Custom"/> can
+/// exist at all.
+///
+/// <para><b>Appended, never reordered.</b> The column stores the member NAME, so inserting a value ahead
+/// of an existing one would silently reinterpret every stored template as a different page.</para></summary>
+public enum CertificatePageSize
+{
+    A4Landscape, A4Portrait,
+    A5Landscape, A5Portrait,
+    LetterLandscape, LetterPortrait,
+    LegalLandscape, LegalPortrait,
+    // Photo-print sizes, named in inches the way a print shop names them.
+    Photo8x10Landscape, Photo8x10Portrait,
+    Photo11x14Landscape, Photo11x14Portrait,
+    Photo12x16Landscape, Photo12x16Portrait,
+    /// <summary>A page with no standard name. The dimensions on the template are the whole truth.</summary>
+    Custom,
+}
 
 /// <summary>Draft is editable and cannot issue. Ready may issue. Archived is retained for the
 /// certificates already issued from it but offered nowhere new.</summary>

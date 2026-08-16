@@ -12,11 +12,58 @@ import type { CertificateField, CertificateFieldInput, CertificateFieldKind } fr
  * the editor's pixel size. Pixel→percent conversion happens once, at the drag handler.
  */
 
+/**
+ * Aspect for the two page names that existed before D-361.
+ *
+ * **Not the path new code takes.** A template now carries `page_width_mm`/`page_height_mm` and the aspect
+ * is computed from those by `pageAspect` below — which is what lets a custom page work at all, and what
+ * removed the duplicate size table this map used to be half of. It survives only so a payload cached
+ * before the dimensions travelled with it still renders rather than dividing by zero.
+ */
 export const PAGE_ASPECT: Record<string, number> = {
-  // A4 is 297×210mm landscape; portrait is the reverse.
   "a4-landscape": 297 / 210,
   "a4-portrait": 210 / 297
 };
+
+/** Width ÷ height for a page. Prefers the millimetres the server sent; falls back to the name, then to
+ *  A4 landscape. Zero and negative dimensions fall through rather than producing Infinity or a negative
+ *  height, which would collapse or invert the canvas. */
+export function pageAspect(
+  pageSize: string,
+  widthMm?: number | null,
+  heightMm?: number | null
+): number {
+  if (typeof widthMm === "number" && typeof heightMm === "number" && widthMm > 0 && heightMm > 0) {
+    return widthMm / heightMm;
+  }
+  return PAGE_ASPECT[pageSize] ?? PAGE_ASPECT["a4-landscape"];
+}
+
+/** Millimetres → PostScript points, the unit the renderer measures type in. 1 in = 25.4 mm = 72 pt. */
+export function mmToPoints(mm: number): number {
+  return (mm / 25.4) * 72;
+}
+
+/** The bounds the server enforces on a custom page (D-361), mirrored so the form can refuse a value
+ *  before a round-trip. The server re-checks: this is a courtesy, not the control. */
+export const CUSTOM_PAGE_MIN_MM = 50;
+export const CUSTOM_PAGE_MAX_MM = 1000;
+
+/**
+ * Validates a custom page, returning a sentence or null.
+ *
+ * Written as words rather than a code because it is shown directly to an organiser (D-359: errors say
+ * what to do next). `Number.isFinite` rather than a range test alone — NaN fails every comparison, so
+ * `< min || > max` lets it through, and a NaN page reaches the renderer as a page of undefined size.
+ */
+export function validateCustomPage(widthMm: number, heightMm: number): string | null {
+  for (const [label, value] of [["Width", widthMm], ["Height", heightMm]] as const) {
+    if (!Number.isFinite(value)) return `${label} needs to be a number.`;
+    if (value < CUSTOM_PAGE_MIN_MM) return `${label} needs to be at least ${CUSTOM_PAGE_MIN_MM} mm.`;
+    if (value > CUSTOM_PAGE_MAX_MM) return `${label} can be at most ${CUSTOM_PAGE_MAX_MM} mm.`;
+  }
+  return null;
+}
 
 export const FONT_FAMILIES = ["sans", "serif", "mono"] as const;
 export const FONT_WEIGHTS = ["normal", "bold"] as const;
@@ -134,9 +181,15 @@ export function nextFreeSlot(
 }
 
 /** A box that is square on the page, given the page it sits on. */
-export function squareOnPage(widthPercent: number, pageSize: string): { width: number; height: number } {
-  const aspect = PAGE_ASPECT[pageSize] ?? 1;
-  return { width: widthPercent, height: widthPercent * aspect };
+export function squareOnPage(
+  widthPercent: number,
+  pageSize: string,
+  widthMm?: number | null,
+  heightMm?: number | null
+): { width: number; height: number } {
+  // Width and height are percentages of DIFFERENT edges, so equal percentages are only square on a
+  // square page — and a QR that is not square does not scan.
+  return { width: widthPercent, height: widthPercent * pageAspect(pageSize, widthMm, heightMm) };
 }
 
 /**

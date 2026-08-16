@@ -83,9 +83,9 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
 
   if (!preview) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center">
-        <h3 className="text-base font-semibold text-slate-900">Upload your participant list</h3>
-        <p className="mt-1 text-sm text-slate-600">
+      <div className="rounded-lg border border-dashed border-border-strong p-8 text-center">
+        <h3 className="text-base font-semibold text-text">Upload your participant list</h3>
+        <p className="mt-1 text-sm text-muted">
           A .csv or .xlsx file with one row per participant and a header row naming each column.
         </p>
         <input
@@ -96,8 +96,8 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
           className="mt-4 mx-auto block text-sm"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void pick(f); }}
         />
-        {busy && <p className="mt-3 text-sm text-slate-600">Reading your file…</p>}
-        {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+        {busy && <p className="mt-3 text-sm text-muted">Reading your file…</p>}
+        {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
       </div>
     );
   }
@@ -105,7 +105,7 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">
+        <h3 className="text-base font-semibold text-text">
           {preview.totalRows.toLocaleString()} participants
         </h3>
         <button
@@ -120,7 +120,7 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
       {/* Truncation is said out loud. "We generated 1000 of your 1500" must never be discovered by
           counting the results. */}
       {preview.truncated && (
-        <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+        <p role="alert" className="rounded-md bg-warning/10 p-3 text-sm text-warning">
           Only the first {preview.totalRows.toLocaleString()} rows were read. Split the file and upload
           the rest separately.
         </p>
@@ -132,11 +132,11 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
             <tr>
               {preview.columns.map((column, index) => (
                 <th key={`${column}-${index}`} className="border-b p-2 align-top">
-                  <div className="font-semibold text-slate-900">{column || <em>Unnamed</em>}</div>
+                  <div className="font-semibold text-text">{column || <em>Unnamed</em>}</div>
                   <select
                     aria-label={`What is “${column}”?`}
                     value={mapping[column] ?? ""}
-                    className="mt-1 w-full rounded border-slate-300 text-sm font-normal"
+                    className="mt-1 w-full rounded border-border-strong text-sm font-normal"
                     onChange={(e) => setMapping(assign(mapping, column, e.target.value))}
                   >
                     <option value="">Don’t use this column</option>
@@ -156,7 +156,7 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
             {preview.sampleRows.map((row, r) => (
               <tr key={r}>
                 {preview.columns.map((column, c) => (
-                  <td key={`${column}-${c}`} className="border-b p-2 text-slate-700">{row[c] ?? ""}</td>
+                  <td key={`${column}-${c}`} className="border-b p-2 text-text">{row[c] ?? ""}</td>
                 ))}
               </tr>
             ))}
@@ -165,13 +165,13 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
       </div>
 
       {ignored.length > 0 && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           Not used: {ignored.join(", ")}.
         </p>
       )}
 
       {blankRows.length > 0 && (
-        <p role="alert" className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+        <p role="alert" className="rounded-md bg-warning/10 p-3 text-sm text-warning">
           {blankRows.length === 1
             ? "One of the rows shown is missing a required value."
             : `${blankRows.length} of the rows shown are missing a required value.`}{" "}
@@ -180,14 +180,14 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
       )}
 
       {blocking.length > 0 ? (
-        <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+        <p role="alert" className="rounded-md bg-danger/10 p-3 text-sm text-danger">
           Still needed: {blocking.map((f) => f.label).join(", ")}. Choose the column that holds{" "}
           {blocking.length === 1 ? "it" : "each of them"}.
         </p>
       ) : (
         <button
           type="button"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
           onClick={() => onConfirmed({ preview, mapping })}
         >
           Continue with this mapping

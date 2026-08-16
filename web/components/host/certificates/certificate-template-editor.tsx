@@ -14,10 +14,12 @@ import { autoLayout, foldDetection } from "@/lib/certificate-autolayout";
 import type { TextDetection } from "@/lib/certificate-detection";
 import { toKey } from "@/lib/certificate-fields";
 import { BackgroundUpload } from "@/components/host/certificates/background-upload";
+import { CertificateSizePicker } from "@/components/host/certificates/certificate-size-picker";
 import { CertificateCanvas } from "@/components/host/certificates/certificate-canvas";
-import type { CertificateTemplate } from "@/lib/certificate-api";
+import type { PageSizePreset, CertificateTemplate, CertificateFieldKind } from "@/lib/certificate-api";
 import {
-  PAGE_ASPECT,
+  pageAspect,
+  mmToPoints,
   addField, canRedo, canUndo, commit, initHistory, moveField, newField, normaliseOrder,
   coverArtwork, nextFreeSlot, redo, removeField, resizeField, same,
   toDraft, toInput, undo, updateField,
@@ -46,11 +48,15 @@ import {
  * Every mutation still goes through the pure functions in `lib/certificate-editor` and lands in history via
  * `commit`, so Undo is a stack of whole field lists rather than a stack of inverse operations.
  */
-export function CertificateTemplateEditor({ template: initial, canManage }: {
+export function CertificateTemplateEditor({ template: initial, canManage, pageSizes }: {
   template: CertificateTemplate;
   canManage: boolean;
+  /** The page-size catalogue (D-361), fetched on the server so the dimensions have one home. Defaulted
+   *  to empty: the picker then offers only Custom, which is degraded but not broken. */
+  pageSizes?: PageSizePreset[];
 }) {
   const router = useRouter();
+  const sizes = pageSizes ?? [];
   const [template, setTemplate] = useState(initial);
   const [history, setHistory] = useState<History>(() => initHistory(initial.fields.map(toDraft)));
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -71,13 +77,36 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
   const [readFailed, setReadFailed] = useState<string | null>(null);
   /** The step the user asked for. Null means "wherever the design actually is" — see `step`. */
   const [goneTo, setGoneTo] = useState<StepId | null>(null);
+  const [savingSize, setSavingSize] = useState(false);
+
+  /**
+   * Persists a page-size change (D-361).
+   *
+   * Saved immediately rather than gathered into the main Save, because the page is the coordinate space
+   * every field's percentage is relative to — the canvas has to redraw at the new shape straight away or
+   * the creator is placing fields against a page they are not on. The server is authoritative for a
+   * preset's dimensions, so the returned template replaces local state wholesale rather than being
+   * patched from what was sent.
+   */
+  async function changeSize(next: { pageSize: string; pageWidthMm?: number; pageHeightMm?: number }) {
+    if (!canManage) return;
+    setSavingSize(true);
+    setMessage(null);
+    const result = await updateTemplateAction(template.id, next, template.event_id);
+    setSavingSize(false);
+    if ("error" in result && result.error) {
+      setMessage({ ok: false, text: "That size could not be saved. Please try again." });
+      return;
+    }
+    if ("template" in result && result.template) setTemplate(result.template);
+  }
   const dragRef = useRef<{ id: string; mode: "move" | "resize"; x: number; y: number } | null>(null);
 
   const fields = history.present;
   const selected = fields.find((f) => f.id === selectedId) ?? null;
   const dirty = !same(initial.fields.map(toDraft), fields) || name !== template.name;
 
-  const aspect = PAGE_ASPECT[template.page_size] ?? PAGE_ASPECT["a4-landscape"];
+  const aspect = pageAspect(template.page_size, template.page_width_mm, template.page_height_mm);
   const width = 720;
   const height = Math.round(width / aspect);
   const backgroundUrl = localBackground ?? template.background_url ?? null;
@@ -224,7 +253,13 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
     setMessage(null);
 
     const detection = await detectTemplateTextAction(initial.id);
-    const result = autoLayout(detection, template.page_size === "a4-portrait" ? 1191 : 842);
+    // The page's real height in points, from its millimetres (D-361). `autoLayout` scales detected
+    // type by it, so it has to be the HEIGHT of the actual page — this previously read
+    // `page_size === "a4-portrait" ? 1191 : 842`, which was one axis out in both orientations (A4 is
+    // 842pt tall portrait and 595pt tall landscape, and 1191pt is A3), so every automatically-sized
+    // field came out around 40% too large. Computed now, so it is also right for the twelve sizes
+    // that did not exist when those constants were written.
+    const result = autoLayout(detection, mmToPoints(template.page_height_mm));
     setScanning(false);
 
     if (!detection.available || result.fields.length === 0) {
@@ -247,8 +282,10 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
     });
   }
 
-  function addNamedField(fieldKey: string | null, label: string) {
-    const base = newField("dynamicfield", { fieldKey: fieldKey ?? toKey(label), label });
+  /// `kind` defaults to a text field — the overwhelming case. A participant photo is an `image` field
+  /// whose key names which picture the server paints, which is why the kind travels with the key.
+  function addNamedField(fieldKey: string | null, label: string, kind: CertificateFieldKind = "dynamicfield") {
+    const base = newField(kind, { fieldKey: fieldKey ?? toKey(label), label });
     const field = { ...base, ...nextFreeSlot(fields, base, (c) => overlapsArtwork(artwork, c)) };
     apply(addField(fields, field));
     setSelectedId(field.id);
@@ -329,7 +366,8 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
 
       {step === "upload" ? (
         <UploadStep template={template} canManage={canManage}
-          onUploaded={(next, preview) => { setTemplate(next); setLocalBackground(preview); }} />
+          onUploaded={(next, preview) => { setTemplate(next); setLocalBackground(preview); }}
+          pageSizes={sizes} savingSize={savingSize} onSizeChange={changeSize} />
       ) : null}
 
       {step === "detect" ? (
@@ -340,7 +378,8 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
           onRead={() => void read()}
           onSkip={() => setGoneTo("edit")}
           preview={
-            <CertificateCanvas pageSize={template.page_size} backgroundUrl={backgroundUrl}
+            <CertificateCanvas pageSize={template.page_size}
+              pageWidthMm={template.page_width_mm} pageHeightMm={template.page_height_mm} backgroundUrl={backgroundUrl}
               fields={[]} width={480} interactive={false} />
           }
         />
@@ -387,6 +426,9 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
           }}
           onSave={() => void save()}
           onNext={() => setGoneTo("preview")}
+          pageSizes={sizes}
+          savingSize={savingSize}
+          onSizeChange={changeSize}
         />
       ) : null}
 
@@ -407,10 +449,13 @@ export function CertificateTemplateEditor({ template: initial, canManage }: {
 }
 
 /** A big icon, a big heading, one sentence, one button. Nothing else on the screen. */
-function UploadStep({ template, canManage, onUploaded }: {
+function UploadStep({ template, canManage, onUploaded, pageSizes, savingSize, onSizeChange }: {
   template: CertificateTemplate;
   canManage: boolean;
   onUploaded: (t: CertificateTemplate, preview: string) => void;
+  pageSizes: PageSizePreset[];
+  savingSize: boolean;
+  onSizeChange: (next: { pageSize: string; pageWidthMm?: number; pageHeightMm?: number }) => void;
 }) {
   return (
     <section className="rounded-2xl border-2 border-dashed border-border bg-surface px-6 py-14 text-center">
@@ -427,6 +472,20 @@ function UploadStep({ template, canManage, onUploaded }: {
         )}
       </div>
       <p className="mt-4 text-sm text-muted">PNG, JPG or WebP · up to 15MB</p>
+
+      {/* The page belongs with the artwork: they are one decision, and changing the size after fields are
+          placed moves every one of them. Left-aligned inside a centred panel because a form read
+          centre-aligned is harder to scan than the prose above it. */}
+      <div className="mx-auto mt-8 max-w-md text-left">
+        <CertificateSizePicker
+          presets={pageSizes}
+          pageSize={template.page_size}
+          pageWidthMm={template.page_width_mm}
+          pageHeightMm={template.page_height_mm}
+          disabled={!canManage || savingSize}
+          onChange={onSizeChange}
+        />
+      </div>
     </section>
   );
 }
@@ -509,6 +568,9 @@ function EditStep(props: {
   onCover: () => void;
   onSave: () => void;
   onNext: () => void;
+  pageSizes: PageSizePreset[];
+  savingSize: boolean;
+  onSizeChange: (next: { pageSize: string; pageWidthMm?: number; pageHeightMm?: number }) => void;
 }) {
   const { selected, canManage } = props;
   const overlapping = selected && props.artwork
@@ -533,6 +595,8 @@ function EditStep(props: {
           >
             <CertificateCanvas
               pageSize={props.template.page_size}
+              pageWidthMm={props.template.page_width_mm}
+              pageHeightMm={props.template.page_height_mm}
               backgroundUrl={props.backgroundUrl}
               fields={props.fields}
               width={props.width}
@@ -591,6 +655,19 @@ function EditStep(props: {
             onChangeText={props.onChangeText}
             onDelete={props.onDelete}
             onAdd={props.onAdd}
+          />
+
+          {/* Last in the column, under the text tools. Someone on this step came to fix wording; the page
+              is a thing they occasionally need to correct, not the job in front of them, so it sits below
+              the work rather than competing with it. */}
+          <CertificateSizePicker
+            presets={props.pageSizes}
+            pageSize={props.template.page_size}
+            pageWidthMm={props.template.page_width_mm}
+            pageHeightMm={props.template.page_height_mm}
+            disabled={!canManage || props.savingSize}
+            warnArtworkWillRescale={Boolean(props.backgroundUrl)}
+            onChange={props.onSizeChange}
           />
         </div>
       </div>

@@ -21,10 +21,19 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
 {
     static CertificateDocumentRenderer() => QuestPDF.Settings.License = LicenseType.Community;
 
-    /// <summary>A4 in millimetres, either orientation. Physical size, so a certificate prints at the size
-    /// it was designed for rather than whatever the printer guesses.</summary>
-    private static (float W, float H) PageMillimetres(string pageSize) =>
-        pageSize?.Trim().ToLowerInvariant() == "a4-portrait" ? (210f, 297f) : (297f, 210f);
+    /// <summary>The page in millimetres (D-361). Physical size, so a certificate prints at the size it
+    /// was designed for rather than whatever the printer guesses.
+    ///
+    /// <para>Taken from the document itself. The name → millimetre switch this replaced could only ever
+    /// answer for the sizes it had been told about, which is why a custom page was not expressible; the
+    /// slug is consulted only as a fallback for a document written before the dimensions travelled with
+    /// it.</para></summary>
+    private static (float W, float H) PageMillimetres(CertificateDocument document)
+    {
+        if (document.PageWidthMm > 0 && document.PageHeightMm > 0)
+            return ((float)document.PageWidthMm, (float)document.PageHeightMm);
+        return document.PageSize?.Trim().ToLowerInvariant() == "a4-portrait" ? (210f, 297f) : (297f, 210f);
+    }
 
     private const float MmToPoints = 72f / 25.4f;
 
@@ -51,7 +60,7 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
     /// cannot diverge from the certificate it previews.</summary>
     private IDocument Build(CertificateDocument document, CertificateRenderData data)
     {
-        var (mmW, mmH) = PageMillimetres(document.PageSize);
+        var (mmW, mmH) = PageMillimetres(document);
         var ptW = mmW * MmToPoints;
         var ptH = mmH * MmToPoints;
 

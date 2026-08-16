@@ -14078,6 +14078,53 @@ real re-issue could collide with.
 Audited for the same hazard elsewhere: no other signed or HMAC'd payload in the repository carries a
 `DateTime`. Presigned storage URLs use unix **seconds** and never round-trip through the database.
 
+## D-361 · A certificate's page is millimetres, not a name (2026-08-16)
+
+**Status: ACCEPTED.** Extends [D-359](#) rather than reopening it.
+
+**Context.** `CertificatePageSize` was an enum of two — `A4Landscape`, `A4Portrait` — and the physical size
+lived in two hardcoded lookup tables that had to agree: `CertificateDocumentRenderer.PageMillimetres`
+(slug → mm) and `PAGE_ASPECT` in `certificate-editor.ts` (slug → ratio). Adding A5, Letter, Legal, 8×10,
+11×14 and 12×16 in both orientations means fourteen names; adding *custom* means a size the enum cannot
+express at all. Fourteen more members and a third table is the wrong shape for the same reason the second
+table was.
+
+**Decision.** **Millimetres are the source of truth.** `CertificateTemplate` gains `PageWidthMm` and
+`PageHeightMm`; the renderer reads them and no longer maps a name to a size. The enum survives as a
+*label* — which preset the organiser picked, so the UI can say "A4 · Portrait" instead of "210 × 297" —
+and gains a `Custom` member for a page that has no name. A name is now a description of the size; the size
+is not derived from the name.
+
+**Why not keep the name authoritative and add fourteen members.** Every consumer would still need its own
+name→mm table, and `Custom` would have to carry its dimensions somewhere else anyway — so the model would
+be "mm, except when it isn't", which is the worst of both. One field is authoritative and the other is
+decoration, and it is worth being explicit about which.
+
+**Existing templates are untouched.** The migration backfills mm from the stored name (`A4Portrait` →
+210 × 297, everything else → 297 × 210), so every saved template and every certificate already issued
+renders byte-identically. Nothing re-renders on deploy. `PageSize` widens from 20 to 32 characters because
+the longest new name is 19 and a limit two characters from the longest value is a trap.
+
+**Bounds, and why they are not opinions.** Custom is clamped to 50–1000 mm per side. Below 50 the QR cannot
+carry a scannable verification code at any sensible DPI; above 1000 an A0-and-beyond page at 300dpi is a
+multi-hundred-megabyte raster, and the render endpoint is reachable by request. Both ends are refused with
+the measurement in the message, not "invalid input".
+
+**Where the control lives, given D-359.** D-359 removed zoom, rotation and z-order from this editor on the
+principle that showing every option to someone who wants to fix a spelling has failed them. Page size is
+kept because it is not a design preference: printing A5 artwork onto an A4 page produces a physically wrong
+certificate, and the person cannot discover that until it is printed. It is presented the way D-359 asks —
+one control, words with every option, dimensions shown on each so the choice needs no outside knowledge,
+and orientation as two labelled buttons rather than a concept to infer.
+
+**Consequences.**
+- `CertificatePageSize` gains twelve preset members and `Custom`, **appended** — the column stores the
+  member *name*, so reordering would silently reinterpret every stored row.
+- `PageMillimetres(string)` in the renderer is replaced by the template's own dimensions; the slug table
+  survives only as the migration's backfill and as a fallback for a row written before this change.
+- The client derives aspect from `page_width_mm / page_height_mm`. `PAGE_ASPECT` remains for the two
+  original slugs so an older cached payload still renders, and is no longer the path new code takes.
+
 ## D-362 · Event badges are printed by the organizer, and staff carry a signed pass because they hold no ticket (2026-08-16)
 
 **Status: ACCEPTED. Rendering, authority and printing shipped. One deferred piece is named at the end.**

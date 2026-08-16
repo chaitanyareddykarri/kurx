@@ -69,14 +69,14 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
         onConfirm={submit}
       >
         <label className="block">
-          <span className="text-sm font-medium text-slate-900">Why?</span>
+          <span className="text-sm font-medium text-text">Why?</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={500}
             rows={3}
             placeholder="Issued to the wrong person"
-            className="mt-1 w-full rounded border-slate-300 text-sm"
+            className="mt-1 w-full rounded border-border-strong text-sm"
           />
         </label>
       </Form>
@@ -96,23 +96,23 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
         onConfirm={submit}
       >
         <label className="block">
-          <span className="text-sm font-medium text-slate-900">Name as it should read</span>
+          <span className="text-sm font-medium text-text">Name as it should read</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={200}
-            className="mt-1 w-full rounded border-slate-300 text-sm"
+            className="mt-1 w-full rounded border-border-strong text-sm"
           />
         </label>
         <label className="block">
-          <span className="text-sm font-medium text-slate-900">What was wrong?</span>
+          <span className="text-sm font-medium text-text">What was wrong?</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={500}
             rows={2}
             placeholder="Name was misspelled"
-            className="mt-1 w-full rounded border-slate-300 text-sm"
+            className="mt-1 w-full rounded border-border-strong text-sm"
           />
         </label>
       </Form>
@@ -127,14 +127,14 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
             <button
               type="button"
               onClick={() => setMode("reissue")}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              className="rounded-md border border-border-strong px-3 py-1.5 text-sm"
             >
               Correct
             </button>
             <button
               type="button"
               onClick={() => setMode("revoke")}
-              className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-700"
+              className="rounded-md border border-danger/40 px-3 py-1.5 text-sm text-danger"
             >
               Withdraw
             </button>
@@ -146,25 +146,25 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
       </div>
 
       {!live && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           {certificate.status === "revoked"
             ? "This certificate was withdrawn."
             : "This certificate was replaced by a corrected one."}
         </p>
       )}
 
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       {lineage && (
-        <ol className="space-y-2 border-l border-slate-200 pl-4 text-sm">
+        <ol className="space-y-2 border-l border-border pl-4 text-sm">
           {lineage.map((link) => (
             <li key={link.id}>
               <span className="font-mono text-xs">{link.certificate_id}</span>{" "}
-              <span className="text-slate-600">
+              <span className="text-muted">
                 — {link.recipient_name}, {statusWords(link.status)}
               </span>
               {link.revocation_reason && (
-                <div className="text-xs text-slate-500">{link.revocation_reason}</div>
+                <div className="text-xs text-muted">{link.revocation_reason}</div>
               )}
             </li>
           ))}
@@ -189,7 +189,7 @@ export function BatchWithdrawal({ eventId, batchId, issuedCount, onChanged }: {
 
   if (done) {
     return (
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-text">
         {done.revoked.toLocaleString()} certificates withdrawn
         {done.skipped > 0 && ` (${done.skipped.toLocaleString()} were already not live)`}.
       </p>
@@ -198,7 +198,7 @@ export function BatchWithdrawal({ eventId, batchId, issuedCount, onChanged }: {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-sm text-red-700 underline">
+      <button type="button" onClick={() => setOpen(true)} className="text-sm text-danger underline">
         Withdraw all {issuedCount.toLocaleString()} certificates from this run
       </button>
     );
@@ -223,14 +223,14 @@ export function BatchWithdrawal({ eventId, batchId, issuedCount, onChanged }: {
       }}
     >
       <label className="block">
-        <span className="text-sm font-medium text-slate-900">Why?</span>
+        <span className="text-sm font-medium text-text">Why?</span>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           maxLength={500}
           rows={3}
           placeholder="The wrong event date was printed on all of them"
-          className="mt-1 w-full rounded border-slate-300 text-sm"
+          className="mt-1 w-full rounded border-border-strong text-sm"
         />
       </label>
     </Form>
@@ -248,17 +248,17 @@ function Form({ title, note, confirmLabel, busy, error, children, onCancel, onCo
   onConfirm: () => void;
 }) {
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
-      <p className="text-sm text-slate-600">{note}</p>
+    <div className="space-y-3 rounded-md border border-border p-4">
+      <h4 className="text-sm font-semibold text-text">{title}</h4>
+      <p className="text-sm text-muted">{note}</p>
       {children}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">
         <button
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
         >
           {busy ? "Working…" : confirmLabel}
         </button>
@@ -266,7 +266,7 @@ function Form({ title, note, confirmLabel, busy, error, children, onCancel, onCo
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-border-strong px-3 py-1.5 text-sm"
         >
           Cancel
         </button>

@@ -22,7 +22,7 @@ export function GenerateCertificates({ eventId, templates }: {
 
   if (usable.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600">
+      <p className="rounded-lg border border-dashed border-border-strong p-8 text-center text-sm text-muted">
         None of your designs have artwork on them yet. Upload a certificate image to a design first.
       </p>
     );
@@ -31,11 +31,11 @@ export function GenerateCertificates({ eventId, templates }: {
   return (
     <div className="space-y-6">
       <label className="block max-w-md">
-        <span className="text-sm font-medium text-slate-900">Which design?</span>
+        <span className="text-sm font-medium text-text">Which design?</span>
         <select
           value={templateId}
           onChange={(e) => setTemplateId(e.target.value)}
-          className="mt-1 w-full rounded border-slate-300 text-sm"
+          className="mt-1 w-full rounded border-border-strong text-sm"
         >
           {usable.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>

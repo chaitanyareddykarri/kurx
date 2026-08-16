@@ -7,6 +7,7 @@ using Kurx.Infrastructure.Certificates;
 using Kurx.Infrastructure.IdCards;
 using Kurx.Infrastructure.Persistence;
 using Kurx.Infrastructure.Providers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -306,6 +307,401 @@ public class EventBadgeTests : IClassFixture<KurxApiFactory>
         Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(result.Value!, 0, 4));
     }
 
+    // ── The card design (editor) ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task An_event_with_no_saved_design_gets_the_default()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var result = await svc.GetAsync(seeded.EventId, seeded.OwnerId, false);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(IdCardTemplateSpec.Default, result.Value);
+        // Null fields means "the built-in layout", which is what the editor opens on.
+        Assert.Null(result.Value!.Fields);
+    }
+
+    /// <summary>The built-in layout is expressed as placements so the editor can load and drag them. If it
+    /// were not, the editor would open on an empty card and an organiser would have to rebuild it.</summary>
+    [Fact]
+    public void The_built_in_layout_is_available_as_placements()
+    {
+        var portrait = BadgeLayout.Defaults(BadgeSize.Lanyard, isStaff: true);
+        var landscape = BadgeLayout.Defaults(BadgeSize.Card, isStaff: true);
+
+        Assert.NotEmpty(portrait);
+        Assert.NotEmpty(landscape);
+        Assert.All(portrait, f => Assert.Contains(f.Key, IdCardField.Keys));
+        Assert.All(landscape, f => Assert.Contains(f.Key, IdCardField.Keys));
+
+        // Every placement is on the card.
+        Assert.All(portrait, f =>
+        {
+            Assert.InRange(f.X, 0, 100);
+            Assert.InRange(f.Y, 0, 100);
+        });
+    }
+
+    [Fact]
+    public async Task A_saved_design_round_trips()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var spec = IdCardTemplateSpec.Default with
+        {
+            AccentColor = "#7f1d1d",
+            SizeKey = BadgeSize.Card.Key,
+            Fields =
+            [
+                new IdCardField(IdCardField.Name, 10, 20, 50, 8, 14, "#000000", "left", "bold"),
+                new IdCardField(IdCardField.Qr, 70, 60, 25, 25),
+            ],
+        };
+
+        var saved = await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false, spec);
+        Assert.True(saved.Ok, saved.Error);
+
+        var read = (await svc.GetAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        Assert.Equal("#7f1d1d", read.AccentColor);
+        Assert.Equal(BadgeSize.Card.Key, read.SizeKey);
+        Assert.Equal(2, read.Fields!.Count);
+
+        var name = read.Fields.Single(f => f.Key == IdCardField.Name);
+        Assert.Equal(10, name.X);
+        Assert.Equal(20, name.Y);
+        Assert.Equal("left", name.Align);
+        Assert.Equal("bold", name.Weight);
+    }
+
+    /// <summary>Saving twice must update the one design rather than accumulate rows — otherwise "this
+    /// event's card" stops having a single answer.</summary>
+    [Fact]
+    public async Task Saving_twice_updates_one_design()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false, IdCardTemplateSpec.Default);
+        await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false,
+            IdCardTemplateSpec.Default with { AccentColor = "#14532d" });
+
+        var rows = await db.DesignTemplates.AsNoTracking()
+            .Where(t => t.EventId == seeded.EventId && t.Kind == TemplateKind.IdCard).CountAsync();
+
+        Assert.Equal(1, rows);
+        Assert.Equal("#14532d", (await svc.GetAsync(seeded.EventId, seeded.OwnerId, false)).Value!.AccentColor);
+    }
+
+    /// <summary>Colours reach a rendered document, so an unparseable one must be dropped rather than
+    /// stored and handed to every later reader.</summary>
+    [Theory]
+    [InlineData("red")]
+    [InlineData("#12")]
+    [InlineData("#zzzzzz")]
+    [InlineData("javascript:alert(1)")]
+    public async Task A_bad_colour_is_discarded_not_stored(string colour)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var saved = await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false,
+            IdCardTemplateSpec.Default with { AccentColor = colour });
+
+        Assert.True(saved.Ok);
+        Assert.Null(saved.Value!.AccentColor);
+    }
+
+    /// <summary>A field dragged off the page would render partly outside the card, and the organiser would
+    /// only discover it on paper. Geometry is clamped on the way in.</summary>
+    [Fact]
+    public async Task Placements_are_clamped_onto_the_card()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var saved = await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false,
+            IdCardTemplateSpec.Default with
+            {
+                Fields = [new IdCardField(IdCardField.Name, -50, 400, 900, -3, 999)],
+            });
+
+        var f = saved.Value!.Fields!.Single();
+        Assert.InRange(f.X, 0, 99);
+        Assert.InRange(f.Y, 0, 99);
+        Assert.InRange(f.Width, 1, 100);
+        Assert.InRange(f.Height, 1, 100);
+        Assert.InRange(f.FontSizePt!.Value, 4, 72);
+    }
+
+    /// <summary>An unknown field key means a client sent something this build does not have. Dropped
+    /// rather than rendered as a placeholder on somebody's printed badge.</summary>
+    [Fact]
+    public async Task An_unknown_field_key_is_dropped()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var saved = await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false,
+            IdCardTemplateSpec.Default with
+            {
+                Fields =
+                [
+                    new IdCardField("salary", 10, 10, 20, 5),
+                    new IdCardField(IdCardField.Name, 10, 20, 50, 8),
+                ],
+            });
+
+        Assert.Single(saved.Value!.Fields!);
+        Assert.Equal(IdCardField.Name, saved.Value.Fields!.Single().Key);
+    }
+
+    /// <summary>Both artwork and logo keys are storage paths the renderer reads. Accepting an arbitrary one
+    /// would turn saving a design into a read primitive over the whole bucket.</summary>
+    [Theory]
+    [InlineData("logo")]
+    [InlineData("background")]
+    public async Task An_asset_key_outside_the_event_is_refused(string which)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var outside = "users/someone-else/avatar.png";
+        var spec = which == "logo"
+            ? IdCardTemplateSpec.Default with { LogoKey = outside }
+            : IdCardTemplateSpec.Default with { BackgroundKey = outside };
+
+        var result = await svc.SaveAsync(seeded.EventId, seeded.OwnerId, false, spec);
+
+        Assert.False(result.Ok);
+        Assert.Equal($"invalid_{which}_key", result.Error);
+    }
+
+    /// <summary>The design must actually change the printed card. If it did not, the editor would be a
+    /// form that saves rows nothing reads.</summary>
+    [Fact]
+    public async Task The_saved_design_changes_the_rendered_card()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var cards = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var templates = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var before = await cards.RenderOneAsync(
+            seeded.EventId, seeded.OwnerId, false, seeded.AttendeeId, BadgeSize.Lanyard.Key);
+
+        // Move the name and drop everything else — a change no default layout could produce.
+        await templates.SaveAsync(seeded.EventId, seeded.OwnerId, false,
+            IdCardTemplateSpec.Default with
+            {
+                AccentColor = "#7f1d1d",
+                Fields = [new IdCardField(IdCardField.Name, 5, 70, 90, 10, 20, "#7f1d1d", "left", "bold")],
+            });
+
+        var after = await cards.RenderOneAsync(
+            seeded.EventId, seeded.OwnerId, false, seeded.AttendeeId, BadgeSize.Lanyard.Key);
+
+        Assert.True(before.Ok && after.Ok);
+        Assert.NotEqual(Convert.ToBase64String(before.Value!), Convert.ToBase64String(after.Value!));
+    }
+
+    [Fact]
+    public async Task A_preview_renders_for_both_kinds()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        foreach (var kind in new[] { BadgeKind.Attendee, BadgeKind.Staff })
+        {
+            var r = await svc.PreviewAsync(
+                seeded.EventId, seeded.OwnerId, false, IdCardTemplateSpec.Default, kind);
+            Assert.True(r.Ok, r.Error);
+            Assert.NotEmpty(r.Value!);
+        }
+    }
+
+    [Fact]
+    public async Task A_stranger_cannot_read_or_change_the_design()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+        var stranger = SeedUser(scope, "+919000000096");
+
+        Assert.Equal("not_found", (await svc.GetAsync(seeded.EventId, stranger, false)).Error);
+        Assert.Equal("not_found",
+            (await svc.SaveAsync(seeded.EventId, stranger, false, IdCardTemplateSpec.Default)).Error);
+    }
+
+    [Fact]
+    public async Task An_svg_asset_is_refused()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        // SVG is a script-capable document, and this one is fetched by the renderer and served in a page.
+        var result = await svc.PresignAssetAsync(
+            seeded.EventId, seeded.OwnerId, false, "image/svg+xml", "background");
+
+        Assert.False(result.Ok);
+        Assert.Equal("unsupported_content_type", result.Error);
+    }
+
+    /// <summary>Artwork and logo land under different prefixes with different ceilings, and both stay
+    /// inside the event so the save-time check can accept them.</summary>
+    [Theory]
+    [InlineData("background")]
+    [InlineData("logo")]
+    public async Task A_presigned_asset_key_is_inside_the_event(string purpose)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardTemplateService>();
+
+        var r = await svc.PresignAssetAsync(seeded.EventId, seeded.OwnerId, false, "image/png", purpose);
+
+        Assert.True(r.Ok, r.Error);
+        Assert.StartsWith($"events/{seeded.EventId}/id-cards/{purpose}/", r.Value!.Key);
+    }
+
+    // ── Issuing real cards ──────────────────────────────────────────────────────────────────────
+    //
+    // The distinction these pin: generating a badge must create a RECORD, not just paper. A card that
+    // exists only as a downloaded PDF cannot be looked up, revoked, or verified from the code on its face.
+
+    [Fact]
+    public async Task Generating_creates_real_id_card_rows_with_stored_artefacts()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var storage = scope.ServiceProvider.GetRequiredService<IStorage>();
+
+        var report = await svc.GenerateAsync(
+            seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee, BadgeKind.Staff]));
+
+        Assert.True(report.Ok, report.Error);
+        Assert.Equal(2, report.Value!.Issued);          // one attendee, one staff
+        Assert.Equal(0, report.Value.Regenerated);
+
+        var cards = await db.IdCards.AsNoTracking().Where(c => c.EventId == seeded.EventId).ToListAsync();
+        Assert.Equal(2, cards.Count);
+
+        foreach (var card in cards)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(card.CardNumber));
+            Assert.Equal(10, card.VerifyCode.Length);   // same shape as Certificate.VerifyCode (D-331)
+            Assert.Equal(IdCardStatus.Active, card.Status);
+            Assert.Equal(seeded.OwnerId, card.IssuedBy);
+            Assert.NotNull(card.GeneratedAt);
+
+            // The artefacts are not merely named — they were actually written.
+            Assert.True(await storage.ExistsAsync(card.PdfKey!), $"missing PDF for {card.CardNumber}");
+            Assert.True(await storage.ExistsAsync(card.PngKey!), $"missing PNG for {card.CardNumber}");
+        }
+    }
+
+    /// <summary>Reprinting a damaged badge must not mint a second identity for the same person. A genuine
+    /// reissue after a loss takes a new number, and that is a different act (D-331).</summary>
+    [Fact]
+    public async Task Regenerating_keeps_the_existing_card_number()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        var request = new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee]);
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false, request);
+
+        var first = await db.IdCards.AsNoTracking()
+            .Where(c => c.EventId == seeded.EventId && c.UserId == seeded.AttendeeId).SingleAsync();
+
+        var second = await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false, request);
+        Assert.Equal(0, second.Value!.Issued);
+        Assert.Equal(1, second.Value.Regenerated);
+
+        var after = await db.IdCards.AsNoTracking()
+            .Where(c => c.EventId == seeded.EventId && c.UserId == seeded.AttendeeId).SingleAsync();
+
+        Assert.Equal(first.Id, after.Id);
+        Assert.Equal(first.CardNumber, after.CardNumber);
+        Assert.Equal(first.VerifyCode, after.VerifyCode);
+    }
+
+    /// <summary>Card numbers are unique per issuing org — the database enforces it, and the allocator has
+    /// to agree with that or a print run fails halfway through with a constraint violation.</summary>
+    [Fact]
+    public async Task Card_numbers_are_unique_within_the_org()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee, BadgeKind.Staff]));
+
+        var numbers = await db.IdCards.AsNoTracking()
+            .Where(c => c.EventId == seeded.EventId).Select(c => c.CardNumber).ToListAsync();
+
+        Assert.Equal(numbers.Count, numbers.Distinct().Count());
+    }
+
+    /// <summary>Once issued, the roster reports the card — which is how the console distinguishes
+    /// "not issued" from "issued", a distinction the previous print-only version could not make.</summary>
+    [Fact]
+    public async Task The_roster_reports_issued_cards()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        var before = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        Assert.All(before, r => Assert.Null(r.Card));
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee]));
+
+        var after = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        var attendee = after.First(r => r.UserId == seeded.AttendeeId);
+
+        Assert.NotNull(attendee.Card);
+        Assert.Equal("Active", attendee.Card!.Status);
+        Assert.False(attendee.Card.IsRevoked);
+        // Staff were not in this run, so they stay un-issued rather than being swept in.
+        Assert.Null(after.First(r => r.UserId == seeded.StaffId).Card);
+    }
+
+    [Fact]
+    public async Task A_stranger_cannot_issue_cards()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        var stranger = SeedUser(scope, "+919000000097");
+        var result = await svc.GenerateAsync(seeded.EventId, stranger, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee]));
+
+        Assert.False(result.Ok);
+        Assert.Equal("not_found", result.Error);
+    }
+
     // ── The badge actually scans ────────────────────────────────────────────────────────────────
 
     /// <summary>The claim the whole feature rests on: a printed attendee badge is admitted by the real
@@ -443,6 +839,72 @@ public class EventBadgeTests : IClassFixture<KurxApiFactory>
         var res = await stranger.GetAsync($"/v1/events/{eventId}/badges/recipients");
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound, res.StatusCode);
+    }
+
+    /// <summary>The card design goes out snake_case, because <c>IdCardTemplateSpec</c> lives in
+    /// <c>Kurx.Application.Abstractions</c> and <c>SnakeCaseResponseConverter</c> rewrites those.
+    ///
+    /// <para>Written after the editor shipped broken: the web client parsed camelCase, every response
+    /// failed its schema, and the page reported "the card design couldn't be loaded". The service-level
+    /// tests could not see it — they never crossed the wire. This one asserts the actual bytes.</para></summary>
+    [Fact]
+    public async Task The_card_design_is_served_snake_case()
+    {
+        var (client, ownerId) = await AuthedClientAsync();
+
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+            eventId = Seed(scope, ownerId).EventId;
+
+        var res = await client.GetAsync($"/v1/events/{eventId}/badges/template");
+        Assert.Equal(System.Net.HttpStatusCode.OK, res.StatusCode);
+
+        var json = await res.Content.ReadAsStringAsync();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        foreach (var name in new[] { "accent_color", "text_color", "logo_key", "background_key", "size_key", "fields" })
+            Assert.True(root.TryGetProperty(name, out _), $"missing {name} — the client parses this exact name");
+
+        // And emphatically not the camelCase the client used to expect.
+        Assert.False(root.TryGetProperty("accentColor", out _));
+        Assert.False(root.TryGetProperty("backgroundKey", out _));
+    }
+
+    /// <summary>Requests bind camelCase even though responses do not — the other half of the platform's
+    /// naming contract, and the half a round-trip through the editor depends on.</summary>
+    [Fact]
+    public async Task The_card_design_is_saved_from_camel_case()
+    {
+        var (client, ownerId) = await AuthedClientAsync();
+
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+            eventId = Seed(scope, ownerId).EventId;
+
+        var res = await client.PutAsJsonAsync($"/v1/events/{eventId}/badges/template", new
+        {
+            accentColor = "#7f1d1d", textColor = (string?)null, logoKey = (string?)null,
+            backgroundKey = (string?)null, sizeKey = "card",
+            // Nested records get the same treatment, which is the part most likely to be missed.
+            fields = new[]
+            {
+                new { key = "holder_name", x = 10.0, y = 20.0, width = 50.0, height = 8.0, fontSizePt = 14.0, align = "left", weight = "bold", zOrder = 1, enabled = true },
+            },
+        });
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, res.StatusCode);
+
+        var saved = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("#7f1d1d", saved.GetProperty("accent_color").GetString());
+        Assert.Equal("card", saved.GetProperty("size_key").GetString());
+
+        var field = saved.GetProperty("fields")[0];
+        Assert.Equal("holder_name", field.GetProperty("key").GetString());
+        Assert.Equal(10.0, field.GetProperty("x").GetDouble());
+        // snake_case reaches nested records too — font_size_pt, not fontSizePt.
+        Assert.True(field.TryGetProperty("font_size_pt", out _));
+        Assert.True(field.TryGetProperty("z_order", out _));
     }
 
     private async Task<(HttpClient Client, Guid UserId)> AuthedClientAsync()

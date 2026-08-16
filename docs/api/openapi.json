@@ -1325,6 +1325,22 @@
         ],
         "type": "object"
       },
+      "AssetPresignBody": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "purpose": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentType"
+        ],
+        "type": "object"
+      },
       "AssignBody": {
         "additionalProperties": false,
         "properties": {
@@ -1965,6 +1981,33 @@
         ],
         "type": "object"
       },
+      "BadgeSheetBody": {
+        "additionalProperties": false,
+        "properties": {
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "sizeKey": {
+            "type": "string"
+          },
+          "userIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "sizeKey"
+        ],
+        "type": "object"
+      },
       "BadgeView": {
         "additionalProperties": false,
         "properties": {
@@ -2309,6 +2352,855 @@
           "name",
           "slug",
           "sort"
+        ],
+        "type": "object"
+      },
+      "CertificateAccessLinkView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_accessed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "recipient_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "recipient_id",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "CertificateArtworkMap": {
+        "additionalProperties": false,
+        "properties": {
+          "analysed": {
+            "type": "boolean"
+          },
+          "cells": {
+            "type": "string"
+          },
+          "columns": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "rows": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "analysed",
+          "cells",
+          "columns",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "CertificateBatchRevocationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "revoked": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "CertificateBatchView": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "failed_rows": {
+            "items": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "issued_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "preview_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "preview_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "row_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "source_file_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "template_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "template_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "event_id",
+          "failed_rows",
+          "id",
+          "issued_count",
+          "name",
+          "preview_count",
+          "preview_urls",
+          "row_count",
+          "status",
+          "template_id",
+          "template_version"
+        ],
+        "type": "object"
+      },
+      "CertificateDailyCount": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "day"
+        ],
+        "type": "object"
+      },
+      "CertificateDashboard": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "batches_in_progress": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "failed_delivery": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "live": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "no_destination": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "pending_delivery": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "recent_verifications": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateDailyCount"
+            },
+            "type": "array"
+          },
+          "revoked": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sent": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "superseded": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "templates": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "verifications": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "views": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batches",
+          "batches_in_progress",
+          "failed_delivery",
+          "live",
+          "no_destination",
+          "pending_delivery",
+          "recent_verifications",
+          "revoked",
+          "sent",
+          "superseded",
+          "templates",
+          "verifications",
+          "views"
+        ],
+        "type": "object"
+      },
+      "CertificateDeliverySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "failed": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "no_destination": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "pending": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateDeliveryView"
+            },
+            "type": "array"
+          },
+          "sent": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch_id",
+          "failed",
+          "no_destination",
+          "pending",
+          "recent",
+          "sent",
+          "total"
+        ],
+        "type": "object"
+      },
+      "CertificateDeliveryView": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "certificate_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "destination": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_count",
+          "certificate_id",
+          "channel",
+          "created_at",
+          "id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "CertificateDetectedText": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "format": "double",
+            "type": "number"
+          },
+          "ground": {
+            "type": "string"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "lines": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "confidence",
+          "ground",
+          "height",
+          "lines",
+          "text",
+          "width",
+          "x",
+          "y"
+        ],
+        "type": "object"
+      },
+      "CertificateFieldInput": {
+        "additionalProperties": false,
+        "properties": {
+          "backgroundColor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "color": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fieldKey": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fontFamily": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fontSizePt": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "fontStyle": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fontWeight": {
+            "nullable": true,
+            "type": "string"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "horizontalAlignment": {
+            "nullable": true,
+            "type": "string"
+          },
+          "isMasking": {
+            "type": "boolean"
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "nullable": true,
+            "type": "string"
+          },
+          "letterSpacing": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "lineHeight": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "mirrorsArtwork": {
+            "type": "boolean"
+          },
+          "rotation": {
+            "format": "double",
+            "type": "number"
+          },
+          "staticText": {
+            "nullable": true,
+            "type": "string"
+          },
+          "underline": {
+            "type": "boolean"
+          },
+          "verticalAlignment": {
+            "nullable": true,
+            "type": "string"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          },
+          "zOrder": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "height",
+          "isMasking",
+          "isRequired",
+          "kind",
+          "mirrorsArtwork",
+          "rotation",
+          "underline",
+          "width",
+          "x",
+          "y",
+          "zOrder"
+        ],
+        "type": "object"
+      },
+      "CertificateFieldView": {
+        "additionalProperties": false,
+        "properties": {
+          "background_color": {
+            "nullable": true,
+            "type": "string"
+          },
+          "color": {
+            "nullable": true,
+            "type": "string"
+          },
+          "field_key": {
+            "nullable": true,
+            "type": "string"
+          },
+          "font_family": {
+            "nullable": true,
+            "type": "string"
+          },
+          "font_size_pt": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "font_style": {
+            "nullable": true,
+            "type": "string"
+          },
+          "font_weight": {
+            "nullable": true,
+            "type": "string"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "horizontal_alignment": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_masking": {
+            "type": "boolean"
+          },
+          "is_required": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "nullable": true,
+            "type": "string"
+          },
+          "letter_spacing": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "line_height": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "mirrors_artwork": {
+            "type": "boolean"
+          },
+          "rotation": {
+            "format": "double",
+            "type": "number"
+          },
+          "static_text": {
+            "nullable": true,
+            "type": "string"
+          },
+          "underline": {
+            "type": "boolean"
+          },
+          "vertical_alignment": {
+            "type": "string"
+          },
+          "width": {
+            "format": "double",
+            "type": "number"
+          },
+          "x": {
+            "format": "double",
+            "type": "number"
+          },
+          "y": {
+            "format": "double",
+            "type": "number"
+          },
+          "z_order": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "height",
+          "horizontal_alignment",
+          "id",
+          "is_masking",
+          "is_required",
+          "kind",
+          "mirrors_artwork",
+          "rotation",
+          "underline",
+          "vertical_alignment",
+          "width",
+          "x",
+          "y",
+          "z_order"
+        ],
+        "type": "object"
+      },
+      "CertificateLineageView": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate_id": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recipient_name": {
+            "type": "string"
+          },
+          "revocation_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "superseded_by": {
+            "nullable": true,
+            "type": "string"
+          },
+          "supersedes": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "certificate_id",
+          "id",
+          "issued_at",
+          "recipient_name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "CertificateTemplateView": {
+        "additionalProperties": false,
+        "properties": {
+          "background_height_px": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "background_storage_key": {
+            "nullable": true,
+            "type": "string"
+          },
+          "background_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "background_width_px": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateFieldView"
+            },
+            "type": "array"
+          },
+          "has_issued_certificates": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "page_height_mm": {
+            "format": "double",
+            "type": "number"
+          },
+          "page_size": {
+            "type": "string"
+          },
+          "page_width_mm": {
+            "format": "double",
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "fields",
+          "has_issued_certificates",
+          "id",
+          "name",
+          "owner_user_id",
+          "page_height_mm",
+          "page_size",
+          "page_width_mm",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "CertificateTextScan": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateDetectedText"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "regions"
+        ],
+        "type": "object"
+      },
+      "CertificateVerificationOutcome": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "format": "int32",
+        "type": "integer"
+      },
+      "CertificateVerificationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "object"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/CertificateVerificationOutcome"
+          },
+          "preview_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "replacement_certificate_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "revocation_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "signing_key_compromised": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "outcome",
+          "signing_key_compromised"
         ],
         "type": "object"
       },
@@ -3019,6 +3911,16 @@
         ],
         "type": "object"
       },
+      "CopyCertificateTemplateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CorrectBody": {
         "additionalProperties": false,
         "properties": {
@@ -3237,6 +4139,32 @@
         ],
         "type": "object"
       },
+      "CreateCertificateTemplateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "pageHeightMm": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "pageSize": {
+            "nullable": true,
+            "type": "string"
+          },
+          "pageWidthMm": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "CreateCouponBody": {
         "additionalProperties": false,
         "properties": {
@@ -3285,34 +4213,6 @@
           "kind",
           "maxPerUser",
           "minOrderPaise"
-        ],
-        "type": "object"
-      },
-      "CreateDesignBody": {
-        "additionalProperties": false,
-        "properties": {
-          "accentColor": {
-            "nullable": true,
-            "type": "string"
-          },
-          "document": {
-            "$ref": "#/components/schemas/DesignDocument"
-          },
-          "kind": {
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "presetSlug": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "document",
-          "name"
         ],
         "type": "object"
       },
@@ -3789,295 +4689,6 @@
         ],
         "type": "object"
       },
-      "DesignCanvas": {
-        "additionalProperties": false,
-        "properties": {
-          "background_color": {
-            "nullable": true,
-            "type": "string"
-          },
-          "background_image_key": {
-            "nullable": true,
-            "type": "string"
-          },
-          "size": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "size"
-        ],
-        "type": "object"
-      },
-      "DesignDocument": {
-        "additionalProperties": false,
-        "properties": {
-          "canvas": {
-            "$ref": "#/components/schemas/DesignCanvas"
-          },
-          "layers": {
-            "items": {
-              "$ref": "#/components/schemas/DesignLayer"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "canvas",
-          "layers"
-        ],
-        "type": "object"
-      },
-      "DesignGenerationOutcome": {
-        "additionalProperties": false,
-        "properties": {
-          "download_url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "error": {
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "ok": {
-            "type": "boolean"
-          },
-          "user_id": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "ok",
-          "user_id"
-        ],
-        "type": "object"
-      },
-      "DesignGenerationReport": {
-        "additionalProperties": false,
-        "properties": {
-          "failed": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "outcomes": {
-            "items": {
-              "$ref": "#/components/schemas/DesignGenerationOutcome"
-            },
-            "type": "array"
-          },
-          "requested": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "succeeded": {
-            "format": "int32",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "failed",
-          "outcomes",
-          "requested",
-          "succeeded"
-        ],
-        "type": "object"
-      },
-      "DesignLayer": {
-        "additionalProperties": false,
-        "properties": {
-          "align": {
-            "nullable": true,
-            "type": "string"
-          },
-          "background_color": {
-            "nullable": true,
-            "type": "string"
-          },
-          "color": {
-            "nullable": true,
-            "type": "string"
-          },
-          "field": {
-            "nullable": true,
-            "type": "string"
-          },
-          "fit": {
-            "nullable": true,
-            "type": "string"
-          },
-          "font_family": {
-            "nullable": true,
-            "type": "string"
-          },
-          "font_size": {
-            "format": "double",
-            "nullable": true,
-            "type": "number"
-          },
-          "font_weight": {
-            "nullable": true,
-            "type": "string"
-          },
-          "h": {
-            "format": "double",
-            "type": "number"
-          },
-          "id": {
-            "type": "string"
-          },
-          "image_key": {
-            "nullable": true,
-            "type": "string"
-          },
-          "locked": {
-            "type": "boolean"
-          },
-          "rotation": {
-            "format": "double",
-            "type": "number"
-          },
-          "text": {
-            "nullable": true,
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          },
-          "w": {
-            "format": "double",
-            "type": "number"
-          },
-          "x": {
-            "format": "double",
-            "type": "number"
-          },
-          "y": {
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "h",
-          "id",
-          "locked",
-          "rotation",
-          "type",
-          "w",
-          "x",
-          "y"
-        ],
-        "type": "object"
-      },
-      "DesignPreset": {
-        "additionalProperties": false,
-        "properties": {
-          "description": {
-            "type": "string"
-          },
-          "document": {
-            "$ref": "#/components/schemas/DesignDocument"
-          },
-          "label": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "description",
-          "document",
-          "label",
-          "slug"
-        ],
-        "type": "object"
-      },
-      "DesignRecipient": {
-        "additionalProperties": false,
-        "properties": {
-          "already_issued": {
-            "type": "boolean"
-          },
-          "email": {
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "role": {
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "already_issued",
-          "name",
-          "role",
-          "user_id"
-        ],
-        "type": "object"
-      },
-      "DesignView": {
-        "additionalProperties": false,
-        "properties": {
-          "accent_color": {
-            "nullable": true,
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "document": {
-            "$ref": "#/components/schemas/DesignDocument"
-          },
-          "event_id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "is_default": {
-            "type": "boolean"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "preset_slug": {
-            "nullable": true,
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "created_at",
-          "document",
-          "event_id",
-          "id",
-          "is_default",
-          "kind",
-          "name"
-        ],
-        "type": "object"
-      },
       "DeviceView": {
         "additionalProperties": false,
         "properties": {
@@ -4199,16 +4810,6 @@
           "room_id",
           "unread_count"
         ],
-        "type": "object"
-      },
-      "DuplicateDesignBody": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
         "type": "object"
       },
       "EditChatMessageBody": {
@@ -6046,30 +6647,6 @@
         ],
         "type": "object"
       },
-      "FieldDef": {
-        "additionalProperties": false,
-        "properties": {
-          "id_card_only": {
-            "type": "boolean"
-          },
-          "label": {
-            "type": "string"
-          },
-          "sample": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id_card_only",
-          "label",
-          "sample",
-          "token"
-        ],
-        "type": "object"
-      },
       "FieldPresetResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6430,22 +7007,6 @@
         ],
         "type": "object"
       },
-      "GenerateFromDesignBody": {
-        "additionalProperties": false,
-        "properties": {
-          "userIds": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "userIds"
-        ],
-        "type": "object"
-      },
       "GovtIdBody": {
         "additionalProperties": false,
         "properties": {
@@ -6606,152 +7167,96 @@
         ],
         "type": "object"
       },
-      "HolderEditBody": {
+      "IdCardField": {
         "additionalProperties": false,
         "properties": {
-          "address": {
+          "align": {
+            "type": "string"
+          },
+          "color": {
             "nullable": true,
             "type": "string"
           },
-          "bloodGroup": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "font_size_pt": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "height": {
+            "format": "double",
+            "type": "number"
+          },
+          "key": {
+            "type": "string"
+          },
+          "weight": {
             "nullable": true,
             "type": "string"
           },
-          "emergencyContactName": {
-            "nullable": true,
-            "type": "string"
+          "width": {
+            "format": "double",
+            "type": "number"
           },
-          "emergencyContactPhone": {
-            "nullable": true,
-            "type": "string"
+          "x": {
+            "format": "double",
+            "type": "number"
           },
-          "layoutJson": {
-            "nullable": true,
-            "type": "string"
+          "y": {
+            "format": "double",
+            "type": "number"
           },
-          "photoKey": {
-            "nullable": true,
-            "type": "string"
-          },
-          "signatureKey": {
-            "nullable": true,
-            "type": "string"
-          },
-          "template": {
-            "nullable": true,
-            "type": "string"
+          "z_order": {
+            "format": "int32",
+            "type": "integer"
           }
         },
+        "required": [
+          "align",
+          "enabled",
+          "height",
+          "key",
+          "width",
+          "x",
+          "y",
+          "z_order"
+        ],
         "type": "object"
       },
-      "IdCardView": {
+      "IdCardTemplateSpec": {
         "additionalProperties": false,
         "properties": {
-          "card_number": {
-            "type": "string"
-          },
-          "course": {
+          "accent_color": {
             "nullable": true,
             "type": "string"
           },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "department": {
+          "background_key": {
             "nullable": true,
             "type": "string"
           },
-          "generated_at": {
-            "format": "date-time",
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/IdCardField"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "logo_key": {
             "nullable": true,
             "type": "string"
           },
-          "holder_name": {
+          "size_key": {
             "type": "string"
           },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "is_revoked": {
-            "type": "boolean"
-          },
-          "meal_line": {
-            "nullable": true,
-            "type": "string"
-          },
-          "org_id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "org_name": {
-            "type": "string"
-          },
-          "pdf_url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "photo_url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "png_url": {
-            "nullable": true,
-            "type": "string"
-          },
-          "revoked_reason": {
-            "nullable": true,
-            "type": "string"
-          },
-          "show_meal_info": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string"
-          },
-          "student_id": {
-            "nullable": true,
-            "type": "string"
-          },
-          "template": {
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "valid_from": {
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "valid_until": {
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "verify_code": {
-            "type": "string"
-          },
-          "year": {
+          "text_color": {
             "nullable": true,
             "type": "string"
           }
         },
         "required": [
-          "card_number",
-          "created_at",
-          "holder_name",
-          "id",
-          "is_revoked",
-          "org_id",
-          "org_name",
-          "show_meal_info",
-          "status",
-          "template",
-          "user_id",
-          "verify_code"
+          "size_key"
         ],
         "type": "object"
       },
@@ -7288,50 +7793,79 @@
         ],
         "type": "object"
       },
-      "IssueBody": {
+      "IssueCertificateBody": {
         "additionalProperties": false,
         "properties": {
-          "course": {
+          "email": {
             "nullable": true,
             "type": "string"
           },
-          "department": {
+          "recipientName": {
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
             "nullable": true,
-            "type": "string"
-          },
-          "showMealInfo": {
-            "type": "boolean"
-          },
-          "studentId": {
-            "nullable": true,
-            "type": "string"
-          },
-          "template": {
-            "nullable": true,
-            "type": "string"
-          },
-          "userId": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "validFrom": {
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "validUntil": {
-            "format": "date",
-            "nullable": true,
-            "type": "string"
-          },
-          "year": {
-            "nullable": true,
-            "type": "string"
+            "type": "object"
           }
         },
         "required": [
-          "showMealInfo",
-          "userId"
+          "recipientName"
+        ],
+        "type": "object"
+      },
+      "IssuedCertificateView": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate_id": {
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pdf_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "png_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "recipient_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "template_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "template_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "certificate_id",
+          "event_id",
+          "id",
+          "issued_at",
+          "recipient_name",
+          "status",
+          "template_id",
+          "template_version"
         ],
         "type": "object"
       },
@@ -7851,18 +8385,6 @@
           "platform_roles",
           "privacy",
           "trust"
-        ],
-        "type": "object"
-      },
-      "MealDisplayBody": {
-        "additionalProperties": false,
-        "properties": {
-          "show": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "show"
         ],
         "type": "object"
       },
@@ -9088,6 +9610,70 @@
         ],
         "type": "object"
       },
+      "ParticipantCertificateView": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate_id": {
+            "type": "string"
+          },
+          "download_pdf_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "download_png_url": {
+            "nullable": true,
+            "type": "string"
+          },
+          "event_title": {
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "replaced_by": {
+            "nullable": true,
+            "type": "string"
+          },
+          "revocation_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "verification_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "certificate_id",
+          "event_title",
+          "issued_at",
+          "status",
+          "verification_url"
+        ],
+        "type": "object"
+      },
+      "ParticipantCertificatesView": {
+        "additionalProperties": false,
+        "properties": {
+          "certificates": {
+            "items": {
+              "$ref": "#/components/schemas/ParticipantCertificateView"
+            },
+            "type": "array"
+          },
+          "recipient_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "certificates",
+          "recipient_name"
+        ],
+        "type": "object"
+      },
       "ParticipantRoleView": {
         "additionalProperties": false,
         "properties": {
@@ -10248,7 +10834,7 @@
         ],
         "type": "object"
       },
-      "PresignDesignAssetBody": {
+      "PresignCertificateBackgroundBody": {
         "additionalProperties": false,
         "properties": {
           "contentType": {
@@ -11490,6 +12076,27 @@
         ],
         "type": "object"
       },
+      "ReissueCertificateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "recipientName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "ReorderBody": {
         "additionalProperties": false,
         "properties": {
@@ -11541,6 +12148,21 @@
         },
         "required": [
           "sessionIds"
+        ],
+        "type": "object"
+      },
+      "ReplaceCertificateFieldsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/CertificateFieldInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
         ],
         "type": "object"
       },
@@ -11746,6 +12368,16 @@
         "required": [
           "reason"
         ],
+        "type": "object"
+      },
+      "ResendCertificateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ResolvedCapabilityResponse": {
@@ -11978,28 +12610,14 @@
         ],
         "type": "object"
       },
-      "RevokeBody": {
+      "RevokeCertificateRequest": {
         "additionalProperties": false,
         "properties": {
           "reason": {
+            "nullable": true,
             "type": "string"
           }
         },
-        "required": [
-          "reason"
-        ],
-        "type": "object"
-      },
-      "RevokeCertificateBody": {
-        "additionalProperties": false,
-        "properties": {
-          "reason": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "reason"
-        ],
         "type": "object"
       },
       "RevokedAck": {
@@ -12975,6 +13593,32 @@
         ],
         "type": "object"
       },
+      "SetCertificateBackgroundBody": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "heightPx": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "storageKey": {
+            "type": "string"
+          },
+          "widthPx": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contentType",
+          "heightPx",
+          "storageKey",
+          "widthPx"
+        ],
+        "type": "object"
+      },
       "SetPasswordBody": {
         "additionalProperties": false,
         "properties": {
@@ -13258,6 +13902,47 @@
           "priority",
           "tier",
           "website"
+        ],
+        "type": "object"
+      },
+      "SpreadsheetPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sampleRows": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "suggestedMapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "totalRows": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "sampleRows",
+          "suggestedMapping",
+          "totalRows",
+          "truncated"
         ],
         "type": "object"
       },
@@ -14270,6 +14955,22 @@
         ],
         "type": "object"
       },
+      "TemplatePreviewBody": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "nullable": true,
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/IdCardTemplateSpec"
+          }
+        },
+        "required": [
+          "spec"
+        ],
+        "type": "object"
+      },
       "TemplateView": {
         "additionalProperties": false,
         "properties": {
@@ -14750,6 +15451,9 @@
           },
           "level": {
             "type": "string"
+          },
+          "requires_representation": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -14760,7 +15464,8 @@
           "can_organize_paid",
           "can_receive_payout",
           "identity_verified",
-          "level"
+          "level",
+          "requires_representation"
         ],
         "type": "object"
       },
@@ -14938,6 +15643,34 @@
         },
         "type": "object"
       },
+      "UpdateCertificateTemplateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "pageHeightMm": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "pageSize": {
+            "nullable": true,
+            "type": "string"
+          },
+          "pageWidthMm": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "status": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "UpdateCouponBody": {
         "additionalProperties": false,
         "properties": {
@@ -14971,26 +15704,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "UpdateDesignBody": {
-        "additionalProperties": false,
-        "properties": {
-          "accentColor": {
-            "nullable": true,
-            "type": "string"
-          },
-          "document": {
-            "$ref": "#/components/schemas/DesignDocument"
-          },
-          "name": {
-            "nullable": true,
-            "type": "string"
-          }
-        },
-        "required": [
-          "document"
-        ],
         "type": "object"
       },
       "UpdateDeviceBody": {
@@ -22721,12 +23434,281 @@
         ]
       }
     },
-    "/v1/certificates/{certificateId}/revoke": {
+    "/v1/certificate-access-links/{linkId}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "linkId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Close a capability link (the certificates are untouched)",
+        "tags": [
+          "certificate-access"
+        ]
+      }
+    },
+    "/v1/certificate-access/{token}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParticipantCertificatesView"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "A participant's certificates, reached by capability link",
+        "tags": [
+          "certificate-access"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBatchView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Read a certificate run's status",
+        "tags": [
+          "certificate-batches"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}/approve": {
       "post": {
         "parameters": [
           {
             "in": "path",
-            "name": "certificateId",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBatchView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Approve the preview and queue the full run",
+        "tags": [
+          "certificate-batches"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}/cancel": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBatchView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Stop a run that has not finished",
+        "tags": [
+          "certificate-batches"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}/deliveries": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateDeliverySummary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "What happened to a run's sends",
+        "tags": [
+          "certificate-deliveries"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}/preview": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBatchView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Render sample certificates for inspection",
+        "tags": [
+          "certificate-batches"
+        ]
+      }
+    },
+    "/v1/certificate-batches/{batchId}/revoke": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
             "required": true,
             "schema": {
               "format": "uuid",
@@ -22738,7 +23720,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RevokeCertificateBody"
+                "$ref": "#/components/schemas/RevokeCertificateRequest"
               }
             }
           },
@@ -22749,7 +23731,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationAck"
+                  "$ref": "#/components/schemas/CertificateBatchRevocationResult"
                 }
               }
             },
@@ -22776,19 +23758,832 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "Revoke a certificate",
+        "summary": "Withdraw every live certificate in a run",
         "tags": [
-          "certificates"
+          "certificate-revocations"
         ]
       }
     },
-    "/v1/certificates/{code}": {
+    "/v1/certificate-batches/{batchId}/send": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batchId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateDeliverySummary"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Queue a run's certificates for emailing",
+        "tags": [
+          "certificate-deliveries"
+        ]
+      }
+    },
+    "/v1/certificate-page-sizes": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-recipients/{recipientId}/access-link": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipientId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateAccessLinkView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Mint a capability link (the token is shown once)",
+        "tags": [
+          "certificate-access"
+        ]
+      }
+    },
+    "/v1/certificate-recipients/{recipientId}/access-links": {
       "get": {
         "parameters": [
           {
             "in": "path",
-            "name": "code",
+            "name": "recipientId",
             "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CertificateAccessLinkView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "A recipient's links, without their tokens",
+        "tags": [
+          "certificate-access"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationAck"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      },
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCertificateTemplateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/artwork-colour": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "x",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "y",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "width",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "height",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/artwork-map": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateArtworkMap"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/background": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCertificateBackgroundBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/background/presign": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignCertificateBackgroundBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignedUpload"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/copy-to-event/{eventId}": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyCertificateTemplateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/copy-to-library": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyCertificateTemplateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/detect-text": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTextScan"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/fields": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceCertificateFieldsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/issue": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCertificateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedCertificateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificate-templates/{templateId}/preview": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
             "schema": {
               "type": "string"
             }
@@ -22797,10 +24592,246 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
         "tags": [
-          "certificates"
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/certificates/{certificateId}/send": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendCertificateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateDeliveryView"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Queue one certificate for emailing",
+        "tags": [
+          "certificate-deliveries"
+        ]
+      }
+    },
+    "/v1/certificates/{certificateRowId}/lineage": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateRowId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CertificateLineageView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "The full chain a certificate belongs to, oldest first",
+        "tags": [
+          "certificate-revocations"
+        ]
+      }
+    },
+    "/v1/certificates/{certificateRowId}/reissue": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateRowId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReissueCertificateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateLineageView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Issue a corrected replacement",
+        "tags": [
+          "certificate-revocations"
+        ]
+      }
+    },
+    "/v1/certificates/{certificateRowId}/revoke": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateRowId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeCertificateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateLineageView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Withdraw a certificate",
+        "tags": [
+          "certificate-revocations"
         ]
       }
     },
@@ -24551,414 +26582,6 @@
         ]
       }
     },
-    "/v1/design-fields": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FieldDef"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/design-presets": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "kind",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DesignPreset"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/designs/{designId}": {
-      "delete": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationAck"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      },
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDesignBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/designs/{designId}/default": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/designs/{designId}/duplicate": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DuplicateDesignBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/designs/{designId}/generate": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GenerateFromDesignBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignGenerationReport"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/designs/{designId}/preview": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "designId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "format",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
     "/v1/devices/register": {
       "post": {
         "requestBody": {
@@ -26229,7 +27852,61 @@
         ]
       }
     },
-    "/v1/events/{eventId}/certificates": {
+    "/v1/events/{eventId}/badges/generate": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BadgeSheetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Issue ID cards: create the id_cards rows, render and store their artefacts",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/recipients": {
       "get": {
         "parameters": [
           {
@@ -26257,14 +27934,99 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "Certificate roster for an event",
+        "summary": "Everyone at this event who can be given a badge",
         "tags": [
-          "certificates"
+          "badges"
         ]
       }
     },
-    "/v1/events/{eventId}/certificates/generate": {
+    "/v1/events/{eventId}/badges/sheet": {
       "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BadgeSheetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Print-ready sheet of badges, laid out N-up on A4 with cut guides",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/sizes": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Badge sizes available for printing",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/template": {
+      "get": {
         "parameters": [
           {
             "in": "path",
@@ -26291,9 +28053,666 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "Bulk-generate certificates for eligible tickets on an event",
+        "summary": "This event's ID card design",
         "tags": [
-          "certificates"
+          "badges"
+        ]
+      },
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdCardTemplateSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Save this event's ID card design",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/template/asset-url": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Readable URL for an uploaded card asset, for the editor canvas",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/template/asset/presign": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetPresignBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Presigned upload for the card's artwork or logo",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/template/preview": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplatePreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Render a sample card from an unsaved design",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/{recipientUserId}.pdf": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recipientUserId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "One badge, print-ready",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/certificate-batches": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "List an event's certificate runs",
+        "tags": [
+          "certificate-batches"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "templateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mapping",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateBatchView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Create a certificate run from a participant list",
+        "tags": [
+          "certificate-batches"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/certificate-dashboard": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateDashboard"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Certificate counts and verification activity for an event",
+        "tags": [
+          "certificate-analytics"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/certificate-participants/preview": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpreadsheetPreviewResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Read a participant list and propose a column mapping",
+        "tags": [
+          "certificate-participants"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/certificate-templates": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CertificateTemplateView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCertificateTemplateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/certificates/export": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batchId",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Download the issued-certificate record as CSV",
+        "tags": [
+          "certificate-analytics"
         ]
       }
     },
@@ -26498,217 +28917,6 @@
         "summary": "Price a code against a basket total. Consumes nothing.",
         "tags": [
           "coupons"
-        ]
-      }
-    },
-    "/v1/events/{eventId}/designs": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "kind",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DesignView"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDesignBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DesignView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/events/{eventId}/designs/assets/presign": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PresignDesignAssetBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PresignedUpload"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
-        ]
-      }
-    },
-    "/v1/events/{eventId}/designs/recipients": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DesignRecipient"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "designs"
         ]
       }
     },
@@ -26951,114 +29159,6 @@
         },
         "tags": [
           "entitlements"
-        ]
-      }
-    },
-    "/v1/events/{eventId}/id-cards": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/IdCardView"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "eventId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/IssueBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IdCardView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
         ]
       }
     },
@@ -28922,286 +31022,6 @@
         ]
       }
     },
-    "/v1/id-cards/verify/{code}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      }
-    },
-    "/v1/id-cards/{cardId}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cardId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IdCardView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cardId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HolderEditBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IdCardView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      }
-    },
-    "/v1/id-cards/{cardId}/generate": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cardId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IdCardView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      }
-    },
-    "/v1/id-cards/{cardId}/meal-display": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cardId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MealDisplayBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IdCardView"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      }
-    },
-    "/v1/id-cards/{cardId}/revoke": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "cardId",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RevokeBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationAck"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "The request body failed validation, or could not be parsed."
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
-        ]
-      }
-    },
     "/v1/invitations/{invitationId}": {
       "delete": {
         "parameters": [
@@ -29990,10 +31810,20 @@
         ]
       }
     },
-    "/v1/me/certificates": {
+    "/v1/me/certificate-templates": {
       "get": {
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CertificateTemplateView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {
@@ -30008,7 +31838,84 @@
           }
         },
         "tags": [
-          "certificates"
+          "certificate-templates"
+        ]
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCertificateTemplateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateTemplateView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "tags": [
+          "certificate-templates"
+        ]
+      }
+    },
+    "/v1/me/certificates": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParticipantCertificatesView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "The signed-in user's own certificates",
+        "tags": [
+          "certificate-access"
         ]
       }
     },
@@ -30561,38 +32468,6 @@
         },
         "tags": [
           "me"
-        ]
-      }
-    },
-    "/v1/me/id-cards": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/IdCardView"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "No token, or a token that is expired, revoked or malformed."
-          }
-        },
-        "tags": [
-          "id-cards"
         ]
       }
     },
@@ -42040,7 +43915,7 @@
         },
         "summary": "Real, scannable QR image for a ticket",
         "tags": [
-          "certificates"
+          "tickets"
         ]
       }
     },
@@ -42293,6 +44168,36 @@
         },
         "tags": [
           "invitations"
+        ]
+      }
+    },
+    "/v1/verify/{certificateId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertificateVerificationResult"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Verify a certificate by its public id",
+        "tags": [
+          "certificate-verification"
         ]
       }
     },

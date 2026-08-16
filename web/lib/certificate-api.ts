@@ -51,7 +51,13 @@ export const certificateTemplateSchema = z.object({
   event_id: z.string().nullable().optional(),
   owner_user_id: z.string(),
   name: z.string(),
-  page_size: z.enum(["a4-landscape", "a4-portrait"]),
+  // A slug from the server's catalogue (D-361) — seven papers × two orientations, plus `custom`.
+  // A plain string rather than an enum: the catalogue lives on the server, and pinning the list here
+  // would recreate the duplicate table the decision removed.
+  page_size: z.string(),
+  /// The page in millimetres — authoritative. The canvas derives its aspect from these.
+  page_width_mm: z.number(),
+  page_height_mm: z.number(),
   status: z.enum(["draft", "ready", "archived"]),
   version: z.number(),
   background_storage_key: z.string().nullable().optional(),
@@ -109,14 +115,14 @@ export async function getTemplate(accessToken: string, templateId: string) {
 }
 
 export async function createEventTemplate(
-  accessToken: string, eventId: string, body: { name: string; pageSize?: string }
+  accessToken: string, eventId: string, body: { name: string; pageSize?: string; pageWidthMm?: number; pageHeightMm?: number }
 ) {
   const { data } = await api.post(`/v1/events/${eventId}/certificate-templates`, body, authHeaders(accessToken));
   return certificateTemplateSchema.parse(data);
 }
 
 export async function updateTemplate(
-  accessToken: string, templateId: string, body: { name?: string; pageSize?: string; status?: string }
+  accessToken: string, templateId: string, body: { name?: string; pageSize?: string; status?: string; pageWidthMm?: number; pageHeightMm?: number }
 ) {
   const { data } = await api.patch(`/v1/certificate-templates/${templateId}`, body, authHeaders(accessToken));
   return certificateTemplateSchema.parse(data);
@@ -481,4 +487,26 @@ export async function getArtworkColour(
   const { data } = await api.get(
     `/v1/certificate-templates/${templateId}/artwork-colour?${query}`, authHeaders(accessToken));
   return z.object({ colour: z.string() }).parse(data).colour;
+}
+
+export const pageSizePresetSchema = z.object({
+  slug: z.string(),
+  family: z.string(),
+  label: z.string(),
+  landscape: z.boolean(),
+  width_mm: z.number(),
+  height_mm: z.number()
+});
+export type PageSizePreset = z.infer<typeof pageSizePresetSchema>;
+
+export const pageSizeCatalogueSchema = z.object({
+  presets: z.array(pageSizePresetSchema),
+  custom: z.object({ min_mm: z.number(), max_mm: z.number() })
+});
+export type PageSizeCatalogue = z.infer<typeof pageSizeCatalogueSchema>;
+
+/** The page-size catalogue (D-361). Fetched rather than hardcoded so the dimensions have one home. */
+export async function listPageSizes(accessToken: string) {
+  const { data } = await api.get("/v1/certificate-page-sizes", authHeaders(accessToken));
+  return pageSizeCatalogueSchema.parse(data);
 }

@@ -43,9 +43,9 @@ export function CertificateDashboardPanel({ eventId, data }: {
       )}
 
       <section>
-        <h3 className="text-sm font-semibold text-slate-900">Verifications, last 30 days</h3>
+        <h3 className="text-sm font-semibold text-text">Verifications, last 30 days</h3>
         {data.verifications === 0 ? (
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-muted">
             Nobody has checked one of these certificates yet. That is normal until recipients start
             sharing them.
           </p>
@@ -57,7 +57,7 @@ export function CertificateDashboardPanel({ eventId, data }: {
                 key={day.day}
                 title={`${day.day}: ${day.count}`}
                 style={{ height: `${Math.max(2, (day.count / peak) * 100)}%` }}
-                className={`flex-1 rounded-t ${day.count > 0 ? "bg-slate-900" : "bg-slate-200"}`}
+                className={`flex-1 rounded-t ${day.count > 0 ? "bg-accent" : "bg-border"}`}
               />
             ))}
           </div>
@@ -68,7 +68,7 @@ export function CertificateDashboardPanel({ eventId, data }: {
         {/* A plain link, not a fetch: the browser downloads it with the filename the server chose. */}
         <a
           href={`/api/events/${eventId}/certificates/export`}
-          className="rounded-md border border-slate-300 px-3 py-1.5"
+          className="rounded-md border border-border-strong px-3 py-1.5"
         >
           Download the full record (CSV)
         </a>
@@ -84,11 +84,11 @@ function Stat({ label, value, emphasis, tone }: {
   tone?: "bad" | "warn";
 }) {
   const colour =
-    tone === "bad" ? "text-red-700" : tone === "warn" ? "text-amber-800" : "text-slate-900";
+    tone === "bad" ? "text-danger" : tone === "warn" ? "text-warning" : "text-text";
 
   return (
-    <div className={`rounded-md border p-3 ${emphasis ? "border-slate-300" : "border-slate-200"}`}>
-      <dt className="text-xs text-slate-500">{label}</dt>
+    <div className={`rounded-md border p-3 ${emphasis ? "border-border-strong" : "border-border"}`}>
+      <dt className="text-xs text-muted">{label}</dt>
       <dd className={`text-2xl font-semibold ${colour}`}>{value.toLocaleString()}</dd>
     </div>
   );

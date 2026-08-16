@@ -1800,7 +1800,9 @@ public class KurxDbContext : DbContext
                 t => t.HasCheckConstraint("ck_certificate_templates_status", StateVocabulary<CertificateTemplateStatus>("Status")));
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
             e.Property(x => x.Status).HasMaxLength(20);
-            e.Property(x => x.PageSize).HasMaxLength(20);
+            // 32, not 20: the longest member name is 19 characters (D-361), and a limit two characters
+            // from the longest legal value is a trap for whoever adds the next size.
+            e.Property(x => x.PageSize).HasMaxLength(32);
             e.HasIndex(x => x.OwnerUserId);
             // The reusable-library query: a creator's templates that belong to no event.
             e.HasIndex(x => new { x.OwnerUserId, x.EventId });

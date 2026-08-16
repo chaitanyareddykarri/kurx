@@ -34,6 +34,8 @@ const template = (over: Partial<CertificateTemplate> = {}): CertificateTemplate 
     owner_user_id: "u-1",
     name: "Certificate design",
     page_size: "a4-landscape",
+    page_width_mm: 297,
+    page_height_mm: 210,
     status: "draft",
     version: 1,
     background_storage_key: "k",

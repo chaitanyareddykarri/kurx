@@ -6,8 +6,10 @@ namespace Kurx.Api.Endpoints;
 using Kurx.Api;
 using Kurx.Api.ExceptionHandling;
 
-public record CreateCertificateTemplateBody(string Name, string? PageSize);
-public record UpdateCertificateTemplateBody(string? Name, string? PageSize, string? Status);
+/// <param name="PageWidthMm">Only read when <paramref name="PageSize"/> is `custom` (D-361) — a preset's
+/// dimensions come from the server's catalogue, so a request cannot redefine what A4 measures.</param>
+public record CreateCertificateTemplateBody(string Name, string? PageSize, double? PageWidthMm = null, double? PageHeightMm = null);
+public record UpdateCertificateTemplateBody(string? Name, string? PageSize, string? Status, double? PageWidthMm = null, double? PageHeightMm = null);
 public record PresignCertificateBackgroundBody(string ContentType, long MaxBytes);
 public record SetCertificateBackgroundBody(string StorageKey, string ContentType, int WidthPx, int HeightPx);
 public record ReplaceCertificateFieldsBody(IReadOnlyList<CertificateFieldInput> Fields);
@@ -38,7 +40,7 @@ public static class CertificateTemplateEndpoints
             ICertificateTemplateService svc, CancellationToken ct) =>
         {
             var r = await svc.CreateAsync(UserId(p), eventId,
-                new CertificateTemplateInput(body.Name, body.PageSize), IsAdmin(p), ct);
+                new CertificateTemplateInput(body.Name, body.PageSize, PageWidthMm: body.PageWidthMm, PageHeightMm: body.PageHeightMm), IsAdmin(p), ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
         }).Produces<CertificateTemplateView>();
 
@@ -56,9 +58,21 @@ public static class CertificateTemplateEndpoints
             ICertificateTemplateService svc, CancellationToken ct) =>
         {
             var r = await svc.CreateAsync(UserId(p), null,
-                new CertificateTemplateInput(body.Name, body.PageSize), IsAdmin(p), ct);
+                new CertificateTemplateInput(body.Name, body.PageSize, PageWidthMm: body.PageWidthMm, PageHeightMm: body.PageHeightMm), IsAdmin(p), ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
         }).Produces<CertificateTemplateView>();
+
+        // The page-size catalogue (D-361). Served rather than duplicated in the client: the dimensions
+        // had two homes before, and the whole point of the change is that they now have one.
+        app.MapGet("/v1/certificate-page-sizes", () => Results.Ok(new
+        {
+            presets = CertificatePageSizes.All.Select(x => new
+            {
+                slug = x.Slug, family = x.Family, label = x.Label,
+                landscape = x.Landscape, width_mm = x.WidthMm, height_mm = x.HeightMm,
+            }),
+            custom = new { min_mm = CertificatePageSizes.MinCustomMm, max_mm = CertificatePageSizes.MaxCustomMm },
+        })).WithTags("certificate-templates").RequireAuthorization();
 
         var byId = app.MapGroup("/v1/certificate-templates/{templateId:guid}")
             .WithTags("certificate-templates").RequireAuthorization();
@@ -73,7 +87,7 @@ public static class CertificateTemplateEndpoints
             ICertificateTemplateService svc, CancellationToken ct) =>
         {
             var r = await svc.UpdateAsync(UserId(p), templateId,
-                new CertificateTemplateInput(body.Name, body.PageSize, body.Status), IsAdmin(p), ct);
+                new CertificateTemplateInput(body.Name, body.PageSize, body.Status, body.PageWidthMm, body.PageHeightMm), IsAdmin(p), ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
         }).Produces<CertificateTemplateView>();
 

@@ -61,7 +61,9 @@ public class CertificateIssuingService(
         var values = new Dictionary<string, string>(SampleValues, StringComparer.Ordinal);
         if (template!.EventId is Guid eventId) ApplyEventValues(values, await LoadEventAsync(eventId, ct));
 
-        var data = new CertificateRenderData(values, await ResolveImagesAsync(template, ct),
+        // No recipient on a preview, so no photo: the placeholder box is the honest preview of a field
+        // whose content is per-person.
+        var data = new CertificateRenderData(values, await ResolveImagesAsync(template, null, null, ct),
             QrPayload: links.VerificationUrl("SAMPLE"));
 
         var wantsPdf = string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase);
@@ -152,7 +154,8 @@ public class CertificateIssuingService(
         // The QR resolves to this certificate's own verification page, at whatever public origin this
         // deployment is configured with.
         var renderData = new CertificateRenderData(
-            values, await ResolveImagesAsync(template, ct), links.VerificationUrl(allocation.CertificateId));
+            values, await ResolveImagesAsync(template, recipient.UserId, recipient.NormalizedEmail, ct),
+            links.VerificationUrl(allocation.CertificateId));
 
         var pdf = await renderer.RenderPdfAsync(document, renderData, ct);
         var png = await renderer.RenderPngAsync(document, renderData, PrintDpi, ct);
@@ -194,7 +197,9 @@ public class CertificateIssuingService(
             template.Version,
             eventId,
             await BuildDocumentAsync(template, ct),
-            await ResolveImagesAsync(template, ct),
+            // Template-level images only. A photo is per-recipient and cannot be shared across a plan,
+            // so it is resolved per certificate in IssuePreparedAsync.
+            await ResolveImagesAsync(template, null, null, ct),
             eventValues,
             RequiredKeys(template.Id)));
     }
@@ -242,8 +247,30 @@ public class CertificateIssuingService(
         certificate.SignatureKeyId = signature.KeyId;
         certificate.Signature = signature.Signature;
 
+        // The plan's images are shared by every certificate in the run; a photo is this person's alone,
+        // so it is resolved here and layered on top. Only when the design actually places one — a bulk run
+        // must not pay a storage read per recipient for a picture no element will paint.
+        var images = plan.Images;
+        if (plan.Document.Elements.Any(e => e.Kind == "image" && e.ImageKey == ParticipantPhotoSlot))
+        {
+            var recipient = await db.CertificateRecipients.AsNoTracking()
+                .Where(r => r.Id == recipientId)
+                .Select(r => new { r.UserId, r.NormalizedEmail })
+                .FirstOrDefaultAsync(ct);
+
+            var photo = await ResolveImagesAsync(
+                new CertificateTemplate { EventId = plan.EventId },
+                recipient?.UserId, recipient?.NormalizedEmail, ct);
+
+            if (photo.Count > 0)
+                images = new Dictionary<string, byte[]>(plan.Images, StringComparer.Ordinal)
+                {
+                    [ParticipantPhotoSlot] = photo[ParticipantPhotoSlot],
+                };
+        }
+
         var renderData = new CertificateRenderData(
-            merged, plan.Images, links.VerificationUrl(allocation.CertificateId));
+            merged, images, links.VerificationUrl(allocation.CertificateId));
 
         var pdf = await renderer.RenderPdfAsync(plan.Document, renderData, ct);
         var png = await renderer.RenderPngAsync(plan.Document, renderData, PrintDpi, ct);
@@ -298,30 +325,87 @@ public class CertificateIssuingService(
         }
 
         return new CertificateDocument(
-            template.PageSize == CertificatePageSize.A4Portrait ? "a4-portrait" : "a4-landscape",
+            CertificatePageSizes.SlugFor(template.PageSize),
             background,
             fields.Select(f => new CertificateRenderElement(
                 f.Kind.ToString().ToLowerInvariant(),
                 f.FieldKey, f.StaticText,
                 f.X, f.Y, f.Width, f.Height, f.Rotation, f.ZOrder,
                 f.IsMasking, f.BackgroundColor,
-                // Image elements carry their own storage key on the field once Phase 3's editor supports
-                // uploading one; until then they render nothing, which is the correct empty state.
-                ImageKey: null,
+                // An image element's FieldKey names WHICH picture, exactly as a dynamic field's names
+                // which value — `participant_photo` resolves to the recipient's own photo. Reusing the
+                // column the field already has avoids a schema change for what is a slot name, not an
+                // upload: a per-field uploaded image would need its own storage key and is not this.
+                ImageKey: f.Kind == CertificateFieldKind.Image ? f.FieldKey : null,
                 f.FontFamily, f.FontSizePt, f.FontWeight, f.Color,
                 f.HorizontalAlignment.ToString().ToLowerInvariant(),
                 f.VerticalAlignment.ToString().ToLowerInvariant(),
                 f.FontStyle, f.Underline, f.LineHeight, f.LetterSpacing, f.MirrorsArtwork))
-                .ToList());
+                .ToList(),
+            // The size the renderer measures (D-361). The slug above is now only a label.
+            template.PageWidthMm,
+            template.PageHeightMm);
     }
 
+    /// <summary>The slot an image field names to print the recipient's own photo.</summary>
+    public const string ParticipantPhotoSlot = "participant_photo";
+
+    /// <summary>Pictures for a render, keyed by the slot an image element names.
+    ///
+    /// <para>Only the participant photo exists today, and it comes from the recipient's linked account —
+    /// a certificate issued to a bare name and email from a spreadsheet has no photo to print, and the
+    /// field then renders nothing. That is the correct empty state, not an error: a bulk run of two
+    /// hundred certificates must not fail because eleven recipients have no avatar.</para></summary>
+    /// <param name="recipientUserId">The recipient's linked account, when one is known.</param>
+    /// <param name="normalizedEmail">Used only to find a participant of THIS event when the recipient is
+    /// not yet linked — see <see cref="ResolvePhotoUserAsync"/> for why that scope matters.</param>
     private async Task<IReadOnlyDictionary<string, byte[]>> ResolveImagesAsync(
-        CertificateTemplate template, CancellationToken ct)
+        CertificateTemplate template, Guid? recipientUserId, string? normalizedEmail, CancellationToken ct)
     {
-        // Placed elements do not carry their own uploads yet (Phase 3 places text, dynamic fields and
-        // QR). Kept as the seam so adding one is a change here rather than in the renderer.
-        await Task.CompletedTask;
-        return new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        var images = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+        var userId = await ResolvePhotoUserAsync(template.EventId, recipientUserId, normalizedEmail, ct);
+        if (userId is null) return images;
+
+        var avatarKey = await db.Users.AsNoTracking()
+            .Where(u => u.Id == userId).Select(u => u.AvatarKey).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(avatarKey)) return images;
+
+        try
+        {
+            if (await storage.ExistsAsync(avatarKey, ct))
+                images[ParticipantPhotoSlot] = await storage.GetAsync(avatarKey, ct);
+        }
+        catch { /* issue the certificate without the photo */ }
+
+        return images;
+    }
+
+    /// <summary>Whose photo, if anyone's.
+    ///
+    /// <para>An explicit link wins: <c>CertificateRecipient.UserId</c> is set when a person claims their
+    /// certificate, and is the authoritative answer.</para>
+    ///
+    /// <para>Otherwise the recipient's email is matched against **participants of this event only**. That
+    /// scope is the whole safeguard. A recipient is a name and an email typed into a spreadsheet, and an
+    /// email address is not proof of identity — matching globally would let a typo or a stale address put
+    /// a stranger's face on a printed certificate. Requiring the match to also be someone the organiser
+    /// already has at this event makes a wrong photo require two independent mistakes rather than one,
+    /// and keeps the blast radius inside the event the organiser controls.</para></summary>
+    private async Task<Guid?> ResolvePhotoUserAsync(
+        Guid? eventId, Guid? recipientUserId, string? normalizedEmail, CancellationToken ct)
+    {
+        if (recipientUserId is { } linked) return linked;
+        if (eventId is not { } id || string.IsNullOrWhiteSpace(normalizedEmail)) return null;
+
+        return await db.Users.AsNoTracking()
+            .Where(u => u.Email != null && u.Email.ToLower() == normalizedEmail)
+            .Where(u => db.EventParticipants.Any(p =>
+                p.EventId == id
+                && p.SubjectType == ParticipantSubjectType.Person
+                && p.SubjectId == u.Id))
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     // ── Event facts ─────────────────────────────────────────────────────────────────────────────

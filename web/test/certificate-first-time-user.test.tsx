@@ -35,7 +35,8 @@ import type { CertificateTemplate } from "@/lib/certificate-api";
 const template = (over: Partial<CertificateTemplate> = {}): CertificateTemplate =>
   ({
     id: "t-1", event_id: "e-1", owner_user_id: "u-1",
-    name: "Certificate design", page_size: "a4-landscape", status: "draft", version: 1,
+    name: "Certificate design", page_size: "a4-landscape",
+    page_width_mm: 297, page_height_mm: 210, status: "draft", version: 1,
     background_storage_key: "k", background_url: "http://example.test/art.jpg",
     background_width: 3508, background_height: 2480, has_issued: false, fields: [],
     created_at: "2026-08-16T00:00:00Z", updated_at: "2026-08-16T00:00:00Z",

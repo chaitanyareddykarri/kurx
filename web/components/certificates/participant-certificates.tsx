@@ -13,7 +13,7 @@ import type { ParticipantCertificates } from "@/lib/certificate-api";
 export function ParticipantCertificateList({ data }: { data: ParticipantCertificates }) {
   if (data.certificates.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600">
+      <p className="rounded-lg border border-dashed border-border-strong p-8 text-center text-sm text-muted">
         No certificates here yet. If you were expecting one, the organiser of your event is the person to
         ask.
       </p>
@@ -23,11 +23,11 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
   return (
     <ul className="space-y-4">
       {data.certificates.map((certificate) => (
-        <li key={certificate.certificate_id} className="rounded-lg border border-slate-200 p-4">
+        <li key={certificate.certificate_id} className="rounded-lg border border-border p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">{certificate.event_title}</h3>
-              <p className="mt-0.5 text-sm text-slate-600">
+              <h3 className="font-semibold text-text">{certificate.event_title}</h3>
+              <p className="mt-0.5 text-sm text-muted">
                 Issued {new Date(certificate.issued_at).toLocaleDateString()} ·{" "}
                 <span className="font-mono text-xs">{certificate.certificate_id}</span>
               </p>
@@ -36,14 +36,14 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
           </div>
 
           {certificate.status === "revoked" && (
-            <p role="alert" className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800">
+            <p role="alert" className="mt-3 rounded-md bg-danger/10 p-3 text-sm text-danger">
               This certificate was withdrawn by the organiser
               {certificate.revocation_reason ? `: ${certificate.revocation_reason}` : "."}
             </p>
           )}
 
           {certificate.status === "superseded" && (
-            <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="mt-3 rounded-md bg-warning/10 p-3 text-sm text-warning">
               This one was replaced by a corrected certificate
               {certificate.replaced_by && (
                 <> — <span className="font-mono text-xs">{certificate.replaced_by}</span>, which is in this
@@ -59,13 +59,13 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
             {certificate.download_pdf_url && (
               <a
                 href={certificate.download_pdf_url}
-                className="rounded-md bg-slate-900 px-3 py-1.5 font-semibold text-white"
+                className="rounded-md bg-accent px-3 py-1.5 font-semibold text-on-accent"
               >
                 Download PDF
               </a>
             )}
             {certificate.download_png_url && (
-              <a href={certificate.download_png_url} className="rounded-md border border-slate-300 px-3 py-1.5">
+              <a href={certificate.download_png_url} className="rounded-md border border-border-strong px-3 py-1.5">
                 Download image
               </a>
             )}
@@ -81,9 +81,9 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
 
 function StatusBadge({ status }: { status: string }) {
   const [label, tone] =
-    status === "issued" ? ["Valid", "bg-green-100 text-green-900"]
-    : status === "revoked" ? ["Withdrawn", "bg-red-100 text-red-900"]
-    : ["Replaced", "bg-amber-100 text-amber-900"];
+    status === "issued" ? ["Valid", "bg-success/15 text-success"]
+    : status === "revoked" ? ["Withdrawn", "bg-danger/15 text-danger"]
+    : ["Replaced", "bg-warning/15 text-warning"];
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</span>;
 }

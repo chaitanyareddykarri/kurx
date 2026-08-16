@@ -1,4 +1,5 @@
 using Kurx.Application.Abstractions;
+using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Kurx.Infrastructure.Auth;
 using Kurx.Infrastructure.Persistence;
@@ -31,7 +32,131 @@ public class IdCardService(
         var gate = await RequireManagerAsync(eventId, actorId, isAdmin, ct);
         if (gate is not null) return ServiceResult<IReadOnlyList<BadgeRecipient>>.Fail(gate);
 
-        return ServiceResult<IReadOnlyList<BadgeRecipient>>.Success(await LoadRecipientsAsync(eventId, ct));
+        return ServiceResult<IReadOnlyList<BadgeRecipient>>.Success(
+            await AttachIssuedCardsAsync(eventId, await LoadRecipientsAsync(eventId, ct), ct));
+    }
+
+    public async Task<ServiceResult<BadgeIssueReport>> GenerateAsync(
+        Guid eventId, Guid actorId, bool isAdmin, BadgeIssueRequest request, CancellationToken ct = default)
+    {
+        var gate = await RequireManagerAsync(eventId, actorId, isAdmin, ct);
+        if (gate is not null) return ServiceResult<BadgeIssueReport>.Fail(gate);
+
+        var size = BadgeSize.FromKey(request.SizeKey);
+        if (size is null) return ServiceResult<BadgeIssueReport>.Fail("unknown_badge_size");
+        if (request.Kinds is null || request.Kinds.Count == 0)
+            return ServiceResult<BadgeIssueReport>.Fail("no_audience_selected");
+
+        var recipients = Filter(await LoadRecipientsAsync(eventId, ct), request.Kinds, request.UserIds);
+        if (recipients.Count == 0) return ServiceResult<BadgeIssueReport>.Fail("no_recipients");
+
+        var ev = await db.Events.AsNoTracking()
+            .Where(e => e.Id == eventId)
+            .Select(e => new { e.Title, e.StartsAt, e.RepresentingOrgId })
+            .FirstAsync(ct);
+        var header = new EventHeader(ev.Title, ev.StartsAt.ToString("dd MMM yyyy"));
+
+        var existing = await db.IdCards
+            .Where(c => c.EventId == eventId)
+            .ToDictionaryAsync(c => c.UserId, ct);
+
+        var spec = await SpecAsync(eventId, ct);
+        // Read once for the whole run rather than per badge: the artwork cannot change mid-print, and a
+        // two-hundred-card run would otherwise fetch the same image two hundred times.
+        var artwork = await TryReadAsync(spec.BackgroundKey, ct);
+        var newCount = recipients.Count(r => !existing.ContainsKey(r.UserId));
+        var numbers = await IdCardCodes.AllocateCardNumbersAsync(db, ev.RepresentingOrgId, newCount, ct);
+
+        var now = DateTime.UtcNow;
+        int issued = 0, regenerated = 0;
+
+        foreach (var r in recipients)
+        {
+            if (!existing.TryGetValue(r.UserId, out var card))
+            {
+                card = new IdCard
+                {
+                    OrgId = ev.RepresentingOrgId,
+                    UserId = r.UserId,
+                    EventId = eventId,
+                    CardNumber = numbers.Dequeue(),
+                    VerifyCode = IdCardCodes.NewVerifyCode(),
+                    IssuedBy = actorId,
+                    // Snapshotted at issue time (D-331): changing an avatar later must not silently
+                    // invalidate every badge already printed from it.
+                    PhotoKey = r.PhotoKey,
+                    Template = TemplateFor(r),
+                    Status = IdCardStatus.Active,
+                    CreatedAt = now,
+                };
+                db.IdCards.Add(card);
+                existing[r.UserId] = card;
+                issued++;
+            }
+            else
+            {
+                regenerated++;
+            }
+
+            var doc = BadgeLayout.Build(r, size, spec, artwork);
+            var data = await RenderDataAsync(r, header, card, spec, ct);
+            var pdf = await renderer.RenderPdfAsync(doc, data, ct);
+            var png = await renderer.RenderPngAsync(doc, data, PrintDpi, ct);
+
+            card.PdfKey = IdCardStorageKeys.Pdf(eventId, card.Id);
+            card.PngKey = IdCardStorageKeys.Png(eventId, card.Id);
+            await storage.PutAsync(card.PdfKey, pdf, "application/pdf", ct);
+            await storage.PutAsync(card.PngKey, png, "image/png", ct);
+
+            card.GeneratedAt = now;
+            card.UpdatedAt = now;
+        }
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorType = "user", ActorId = actorId,
+            Action = "idcard.generate", Entity = "events", EntityId = eventId,
+            DetailsJson = $"{{\"issued\":{issued},\"regenerated\":{regenerated},\"size\":\"{size.Key}\"}}",
+        });
+
+        await db.SaveChangesAsync(ct);
+        return ServiceResult<BadgeIssueReport>.Success(new BadgeIssueReport(issued, regenerated));
+    }
+
+    /// <summary>Which rendering layout a recipient's card uses. Derived from what they are at this event;
+    /// the editor will later let an organizer override it per card via <c>IdCard.Template</c>.</summary>
+    private static IdCardTemplate TemplateFor(BadgeRecipient r) =>
+        r.Kind == BadgeKind.Attendee ? IdCardTemplate.EventParticipant
+        : r.AccessLevel == "Volunteer" ? IdCardTemplate.Volunteer
+        : IdCardTemplate.StaffFaculty;
+
+    private static List<BadgeRecipient> Filter(
+        IReadOnlyList<BadgeRecipient> all, IReadOnlyList<BadgeKind> kinds, IReadOnlyList<Guid>? userIds)
+    {
+        var wanted = userIds is { Count: > 0 } ? userIds.ToHashSet() : null;
+        return all.Where(r => kinds.Contains(r.Kind))
+            .Where(r => wanted is null || wanted.Contains(r.UserId))
+            .ToList();
+    }
+
+    /// <summary>Joins each recipient to their issued card, so the console can show what exists rather than
+    /// only who could be printed.</summary>
+    private async Task<IReadOnlyList<BadgeRecipient>> AttachIssuedCardsAsync(
+        Guid eventId, IReadOnlyList<BadgeRecipient> recipients, CancellationToken ct)
+    {
+        var cards = await db.IdCards.AsNoTracking()
+            .Where(c => c.EventId == eventId)
+            .ToDictionaryAsync(c => c.UserId, ct);
+
+        return recipients.Select(r => cards.TryGetValue(r.UserId, out var c)
+            ? r with
+            {
+                Card = new IssuedCard(
+                    c.Id, c.CardNumber, c.VerifyCode,
+                    c.EffectiveStatus(DateOnly.FromDateTime(DateTime.UtcNow)).ToString(),
+                    c.IsRevoked, c.GeneratedAt),
+            }
+            : r).ToList();
     }
 
     public async Task<ServiceResult<byte[]>> RenderOneAsync(
@@ -47,9 +172,19 @@ public class IdCardService(
         var recipient = (await LoadRecipientsAsync(eventId, ct)).FirstOrDefault(r => r.UserId == recipientUserId);
         if (recipient is null) return ServiceResult<byte[]>.Fail("recipient_not_found");
 
+        var card = await db.IdCards.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EventId == eventId && c.UserId == recipientUserId, ct);
+
+        // Serve the issued artefact when one exists: what the organizer downloads must be the same bytes
+        // the card was issued as, not a fresh render that could differ after a template change.
+        if (card?.PdfKey is { } key && await storage.ExistsAsync(key, ct))
+            return ServiceResult<byte[]>.Success(await storage.GetAsync(key, ct));
+
         var header = await EventHeaderAsync(eventId, ct);
+        var spec = await SpecAsync(eventId, ct);
         var pdf = await renderer.RenderPdfAsync(
-            BadgeLayout.Build(recipient, size), await RenderDataAsync(recipient, header, ct), ct);
+            BadgeLayout.Build(recipient, size, spec, await TryReadAsync(spec.BackgroundKey, ct)),
+            await RenderDataAsync(recipient, header, card, spec, ct), ct);
 
         return ServiceResult<byte[]>.Success(pdf);
     }
@@ -65,20 +200,33 @@ public class IdCardService(
         if (request.Kinds is null || request.Kinds.Count == 0)
             return ServiceResult<byte[]>.Fail("no_audience_selected");
 
-        var wanted = request.UserIds is { Count: > 0 } ? request.UserIds.ToHashSet() : null;
-        var recipients = (await LoadRecipientsAsync(eventId, ct))
-            .Where(r => request.Kinds.Contains(r.Kind))
-            .Where(r => wanted is null || wanted.Contains(r.UserId))
-            .ToList();
-
+        var recipients = Filter(await LoadRecipientsAsync(eventId, ct), request.Kinds, request.UserIds);
         if (recipients.Count == 0) return ServiceResult<byte[]>.Fail("no_recipients");
 
+        var cards = await db.IdCards.AsNoTracking()
+            .Where(c => c.EventId == eventId)
+            .ToDictionaryAsync(c => c.UserId, ct);
+
         var header = await EventHeaderAsync(eventId, ct);
+        var spec = await SpecAsync(eventId, ct);
+        var artwork = await TryReadAsync(spec.BackgroundKey, ct);
         var pngs = new List<byte[]>(recipients.Count);
         foreach (var r in recipients)
         {
-            var data = await RenderDataAsync(r, header, ct);
-            pngs.Add(await renderer.RenderPngAsync(BadgeLayout.Build(r, size), data, PrintDpi, ct));
+            cards.TryGetValue(r.UserId, out var card);
+
+            // An issued card prints from its stored raster, so the sheet and the individual download are
+            // the same artefact. Anything not yet issued still previews, which is what makes the page
+            // usable before the organizer commits to issuing.
+            if (card?.PngKey is { } key && await storage.ExistsAsync(key, ct))
+            {
+                pngs.Add(await storage.GetAsync(key, ct));
+                continue;
+            }
+
+            var data = await RenderDataAsync(r, header, card, spec, ct);
+            pngs.Add(await renderer.RenderPngAsync(
+                BadgeLayout.Build(r, size, spec, artwork), data, PrintDpi, ct));
         }
 
         return ServiceResult<byte[]>.Success(
@@ -173,8 +321,32 @@ public class IdCardService(
         _ => "Staff",
     };
 
+    /// <summary>The event's saved card design, or the shipped default when the editor has never been
+    /// opened (D-362). Read once per operation rather than per badge: a print run renders hundreds, and
+    /// the design cannot change mid-run.</summary>
+    private async Task<IdCardTemplateSpec> SpecAsync(Guid eventId, CancellationToken ct)
+    {
+        var json = await db.DesignTemplates.AsNoTracking()
+            .Where(t => t.EventId == eventId && t.Kind == TemplateKind.IdCard && t.IsActive)
+            .Select(t => t.PlacementsJson)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(json) || json == "{}") return IdCardTemplateSpec.Default;
+        try
+        {
+            return System.Text.Json.JsonSerializer
+                .Deserialize<IdCardTemplateSpec>(json, new System.Text.Json.JsonSerializerOptions(
+                    System.Text.Json.JsonSerializerDefaults.Web))?.Sanitised()
+                ?? IdCardTemplateSpec.Default;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return IdCardTemplateSpec.Default;
+        }
+    }
+
     private async Task<CertificateRenderData> RenderDataAsync(
-        BadgeRecipient r, EventHeader header, CancellationToken ct)
+        BadgeRecipient r, EventHeader header, IdCard? card, IdCardTemplateSpec spec, CancellationToken ct)
     {
         var values = new Dictionary<string, string>
         {
@@ -183,25 +355,37 @@ public class IdCardService(
             [BadgeLayout.FieldAccess] = r.AccessLevel ?? "",
             [BadgeLayout.FieldEvent] = header.Name,
             [BadgeLayout.FieldEventDate] = header.Date,
-            // Not IdCard.CardNumber: no id_cards row is created for a badge print run. The person's
-            // identifier at this event is their QR, and the printed line is a human-readable echo of it.
-            [BadgeLayout.FieldCardNumber] = ShortCode(r.QrPayload),
+            // The issued card's real number once one exists. The QR-derived fallback only covers the
+            // preview path, where nothing has been issued yet — a printed badge always carries the number
+            // its id_cards row was allocated.
+            [BadgeLayout.FieldCardNumber] = card?.CardNumber ?? ShortCode(r.QrPayload),
         };
 
+        // A missing or unreadable image must never fail a two-hundred-badge print run: the layout simply
+        // renders nothing there, which is the documented no-photo case.
         var images = new Dictionary<string, byte[]>();
-        if (!string.IsNullOrWhiteSpace(r.PhotoKey))
-        {
-            // A missing or unreadable photo must never fail a two-hundred-badge print run: the layout
-            // simply renders no image, which is the documented no-photo case.
-            try
-            {
-                if (await storage.ExistsAsync(r.PhotoKey, ct))
-                    images[BadgeLayout.PhotoSlot] = await storage.GetAsync(r.PhotoKey, ct);
-            }
-            catch { /* print the badge without a photo */ }
-        }
+        await TryAddImageAsync(images, BadgeLayout.PhotoSlot, r.PhotoKey, ct);
+        await TryAddImageAsync(images, BadgeLayout.LogoSlot, spec.LogoKey, ct);
 
         return new CertificateRenderData(values, images, r.QrPayload);
+    }
+
+    private async Task TryAddImageAsync(
+        Dictionary<string, byte[]> images, string slot, string? key, CancellationToken ct)
+    {
+        if (await TryReadAsync(key, ct) is { } bytes) images[slot] = bytes;
+    }
+
+    /// <summary>Reads an asset, or null. A missing image must never fail a print run — the badge simply
+    /// prints without it, which is the documented no-photo case.</summary>
+    private async Task<byte[]?> TryReadAsync(string? key, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        try
+        {
+            return await storage.ExistsAsync(key, ct) ? await storage.GetAsync(key, ct) : null;
+        }
+        catch { return null; }
     }
 
     /// <summary>The last eight characters of the payload, upper-cased — enough for a marshal to read one

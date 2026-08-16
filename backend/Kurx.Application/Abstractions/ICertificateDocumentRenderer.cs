@@ -43,7 +43,12 @@ public interface ICertificateDocumentRenderer
 public sealed record CertificateDocument(
     string PageSize,
     byte[]? Background,
-    IReadOnlyList<CertificateRenderElement> Elements);
+    IReadOnlyList<CertificateRenderElement> Elements,
+    /// <summary>The page in millimetres (D-361) — what the renderer actually measures. Defaulted so a
+    /// caller written before this change still compiles and still renders A4 landscape; the renderer
+    /// falls back to <see cref="PageSize"/> when these are absent.</summary>
+    double PageWidthMm = 0,
+    double PageHeightMm = 0);
 
 /// <summary>One element to paint. Geometry is percentages of the page — the document carries no
 /// resolution, so the same design lands identically on a 150dpi preview and a 300dpi print.</summary>

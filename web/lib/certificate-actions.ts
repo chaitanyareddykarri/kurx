@@ -41,10 +41,12 @@ function refresh(eventId?: string | null) {
   if (eventId) revalidatePath(`/host/events/${eventId}/certificates`);
 }
 
-export async function createTemplateAction(eventId: string, name: string, pageSize?: string) {
+export async function createTemplateAction(
+  eventId: string, name: string, pageSize?: string, pageWidthMm?: number, pageHeightMm?: number
+) {
   const session = await requireSession();
   try {
-    const template = await createEventTemplate(session.accessToken, eventId, { name, pageSize });
+    const template = await createEventTemplate(session.accessToken, eventId, { name, pageSize, pageWidthMm, pageHeightMm });
     refresh(eventId);
     return { ok: true as const, template };
   } catch (err) {
@@ -54,7 +56,7 @@ export async function createTemplateAction(eventId: string, name: string, pageSi
 
 export async function updateTemplateAction(
   templateId: string,
-  body: { name?: string; pageSize?: string; status?: string },
+  body: { name?: string; pageSize?: string; status?: string; pageWidthMm?: number; pageHeightMm?: number },
   eventId?: string | null
 ) {
   const session = await requireSession();

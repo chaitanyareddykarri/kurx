@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@kurx/ui";
+import type { CertificateFieldKind } from "@/lib/certificate-api";
 import type { DraftField } from "@/lib/certificate-editor";
 import { CANONICAL_FIELDS, fieldLabel, fieldSample, toKey } from "@/lib/certificate-fields";
 
@@ -30,7 +31,7 @@ export function CertificateTextPanel({
   onSelect: (id: string) => void;
   onChangeText: (id: string, text: string) => void;
   onDelete: (id: string) => void;
-  onAdd: (fieldKey: string | null, label: string) => void;
+  onAdd: (fieldKey: string | null, label: string, kind?: CertificateFieldKind) => void;
 }) {
   const perPerson = fields.filter((f) => f.kind === "dynamicfield");
   const fixed = fields.filter((f) => f.kind === "text");
@@ -200,7 +201,9 @@ function FixedTextRow({ field, selected, canManage, onSelect, onChangeText, onDe
  * everything is already there. Presenting a menu of twelve field names as the *first* thing is what made
  * people think they had to build the certificate by hand.
  */
-function AddSomething({ onAdd }: { onAdd: (fieldKey: string | null, label: string) => void }) {
+function AddSomething({ onAdd }: {
+  onAdd: (fieldKey: string | null, label: string, kind?: CertificateFieldKind) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("");
 
@@ -237,6 +240,22 @@ function AddSomething({ onAdd }: { onAdd: (fieldKey: string | null, label: strin
             <span className="truncate text-sm text-muted">For example: {field.sample}</span>
           </button>
         ))}
+      </div>
+
+      {/* An image, not a text field: the server fills it with the recipient's own photo, so there is
+          nothing to type. Separated from the list above because "pick what it is filled in with" reads
+          differently when the answer is a picture. */}
+      <div className="mt-3 border-t border-border pt-3">
+        <button
+          type="button"
+          onClick={() => { onAdd("participant_photo", "Participant photo", "image"); setOpen(false); }}
+          className="flex min-h-[56px] w-full flex-col justify-center rounded-lg border border-border px-3 py-2 text-left hover:border-accent hover:bg-accent/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <span className="text-sm font-semibold text-text">Participant photo</span>
+          <span className="text-sm text-muted">
+            Their profile photo, when they have one on their Kurx account.
+          </span>
+        </button>
       </div>
 
       <div className="mt-3 border-t border-border pt-3">

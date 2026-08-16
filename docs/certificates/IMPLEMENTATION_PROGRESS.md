@@ -1266,3 +1266,145 @@ says so.
 white/cream/navy/grey, edge regions, hex shape) and 8 web (styling and key preserved, sampled colour
 applied, grows for descenders, cannot reach the line above, never off-page, idempotent, no new element,
 reversible). Backend 2142 passed / 1 skipped / 0 failed; web 656 passed / 1 skipped.
+
+
+## Merged-paragraph sizing and the covering bar (2026-08-16)
+
+Merging adjacent lines into paragraphs fixed the fragmentation, and broke type size. Font size was derived
+from the region's height, which had silently assumed one line per region. A three-line paragraph is three
+times as tall as its type, so the body block came back at 33pt and the renderer fitted only
+"Ensuring expertise in" across the whole paragraph.
+
+`DetectedTextRegion` now carries `Lines` — how many lines the region covers — through the boundary, the
+scan DTO and the client schema. `autoLayout` divides the height by it, and sets `line_height: 1.35` on a
+multi-line block so the wrapped lines do not land on top of each other. Measured on the real artwork: the
+one merged region drops 33pt → 11pt, matching the 9pt body lines beside it; all fifteen single-line
+regions are byte-identical.
+
+Separately, the client's `MIN_CONFIDENCE` went 0.55 → 0.8. These elements *cover* what they sit on, so the
+bar is not "is this text" but "am I confident enough to paint over it". A stylised logo read as `© 'our`
+at 0.76 was covering the creator's own mark with three wrong characters; below the new line the artwork is
+left alone, which is the correct failure. Weaker regions are still reported by the engine — this only
+governs what gets covered automatically.
+
+Both pinned by tests naming the real misreads. Certificate + detector backend tests 295/295; web 718 pass,
+1 skip.
+
+
+## The grey band, and text editing that was never wired up (2026-08-16)
+
+Two defects visible in the same generated certificate.
+
+**The mask painted grey on white paper.** `SampleGround` bucketed colours at 5-bit precision to group
+near-identical paper pixels, then returned the *bucket's floor* as the answer. Pure white 255 becomes
+`255 >> 3 << 3` = 248, so every covering field on a white certificate was filled `#F8F8F8` — a visible
+grey band sitting exactly where the recipient's name goes, the covering announcing itself as an edit.
+Each bucket now keeps the sum of the real pixels that landed in it and returns their average: the bucket
+groups, the pixels decide. An existing test had asserted `#F8F8F8` as the expected white, so the defect
+was pinned in place; that assertion was wrong and is corrected, and the tolerance in
+`The_page_colour_is_measured_not_assumed` tightened from ±8 per channel to exact.
+
+**Nothing wired up inline editing.** `CertificateCanvas` had accepted `editingId`, `onStartEditing`,
+`onTextChange` and `onEditDone` since the redesign, and `FieldsPanel` had been written and imported — but
+the editor passed none of them and still rendered the older read-only `FieldList`. `editingId` and
+`hiddenIds` were dead state. So the feature looked complete file-by-file while the running editor offered
+no way to click text and change it. Now wired: click selects, clicking the selected text again (or
+double-clicking) types into it; the panel's hide / edit / delete and Add field are live; hidden fields
+actually disappear from the canvas. Two consequences handled — Backspace mid-word was deleting the whole
+element, since a contentEditable div is not an INPUT and the keyboard handler only excluded form
+controls; and `FieldList`, now superseded and unreferenced, was removed.
+
+Per-recipient fields stay exempt from inline editing: what they show is a sample, and typing over it would
+break the binding and print one name on every copy.
+
+New `test/certificate-canvas.test.tsx` pins the gesture, including the case that actually shipped — a
+canvas that accepts editing props and is never given them. Web 723 pass, 1 skip; certificate backend
+tests green. Both images rebuilt and redeployed.
+
+
+## Making a generated certificate look real (2026-08-16)
+
+Two fixes, both visible in a rendered certificate, both recorded as D-356.
+
+**Unchanged text is no longer covered.** Detection was turning all fifteen lines of the design into
+elements that cover the artwork and redraw it identically — thirteen of which the creator never changes.
+Each flat fill erased the watermark inside its box. Now a detected text element starts as a handle
+(`mirrors_artwork`): clickable, listed, selectable, but drawing and covering nothing until its words
+actually change. On the real artwork this took the number of patches from fifteen to two.
+
+**The fill blends with textured stock.** `SampleGround` returns the average of the real near-paper pixels
+around a region rather than the modal bucket's floor. Two defects in one: pure white was being returned as
+`#F8F8F8` (a grey band on every white certificate), and on watermarked stock the base tone alone reads
+lighter than the paper around it.
+
+Still open, stated plainly: where covering *is* required the patch remains faintly visible on textured
+paper, because a flat fill cannot reproduce a watermark. Fixing that means inpainting.
+
+Certificate + detector backend tests 300/300; web 724 pass, 1 skip. Migration
+`AddCertificateFieldMirrorsArtwork` applied on deploy; both images rebuilt.
+
+
+## Why the live app still looked old after D-356 (2026-08-16)
+
+Traced end to end against the running stack rather than the test suite.
+
+**Not the deployment.** Both containers ran images built minutes earlier; the backend assemblies and the
+`MirrorsArtwork` column were present; the web bundle contained the new modules; the service worker carries
+`skipWaiting` + `clientsClaim` + `cleanupOutdatedCaches` and HTML is served `no-store`; the client is
+correctly pointed at the backend's published port (5080).
+
+**Three real causes, all in the path from a saved template to a render.**
+
+1. **The saved data was the old representation.** Every row of the live template had `MirrorsArtwork=f`,
+   `BackgroundColor=#F8F8F8` (the grey-band defect frozen in), the paragraph at 46pt (pre-line-count), and
+   the `'our company Name` misread. D-356 changed what detection *produces*; nothing rewrites rows already
+   saved. The only route to the new representation is re-running Detect text — which led to (2).
+
+2. **Detect text appended instead of replacing.** 16 saved + 16 fresh = 32 stacked elements, the older
+   covering ones still painting on top. The new reading was invisible beneath the old one. Fixed by
+   folding (D-357).
+
+3. **The first fold still let a superseded misreading survive.** It replaced only where a fresh *block*
+   was produced, so the `'our` element — whose region the new reading correctly declines — kept covering
+   the logo. Fixed by superseding everywhere the engine *read*.
+
+A fourth defect surfaced while verifying: the CPD badge's `POINTS` was mapping to the canonical `score`
+field, covering the badge in its own purple. `points` removed as a synonym.
+
+Backend certificate + detector tests 300/300; web 738 pass, 1 skip. Deployed `BUILD_ID OBaGQ64jGYLu0l_mVrcSv`.
+
+
+## The reader was never connected to the interface (2026-08-16)
+
+`analyse()` — detection, layout, mapping, folding, confirmation — was defined in the editor and called
+from nowhere. The branch meant to expose it rendered the word "Assisted" and no button. So every fix from
+D-355 to D-357 was unreachable from the running app, and the only way to lay out a certificate was by
+hand, on designs that already printed the text.
+
+Now: a design with artwork and no fields is read automatically on open and the result applied; a design
+that already has fields offers a re-read instead; "Read my design again" replaces the dead label; the
+empty state no longer sells hand-placement as the way in.
+
+`test/certificate-template-editor.test.tsx` renders the real editor and asserts the reader runs, covering
+the defect class that unit tests structurally cannot: every layer correct, nothing calling the top of it.
+
+Web 743 pass, 1 skip. Deployed `BUILD_ID HywFovZKXRj-miir8r6up`.
+
+
+## The editor, redesigned as a guided tool (2026-08-16)
+
+Five visible steps (Upload → Find text → Edit → Preview → Download), derived from the design so the screen
+is right on arrival. Large icon-and-label actions, one primary per step. A big empty state that says what
+to do. Text shown as labelled boxes you type into, grouped as *changes for each person* and *the same on
+every certificate*, instead of a layer list. Preview and Download are the real server render, through a new
+`/api/certificate-templates/[id]/preview` proxy over an endpoint that already existed. Failures say what to
+try and give a Try Again button.
+
+Removed: zoom, rotation, z-order, duplicate, layer ordering, per-field alignment, the Advanced panel.
+
+New `test/certificate-first-time-user.test.tsx` asks the rendered page the four questions a first-time user
+has, and guards the vocabulary. It found four defects, all fixed and described in D-359 — two same-named
+buttons, a control that flickered on load, an automatic pass that erased an explicit error, and lead-in
+phrases being mistaken for the recipient's name.
+
+Web 762 pass, 1 skip. Admin 32 pass. Deployed `BUILD_ID MGqo8vlL7BXAallcjtwDg`.

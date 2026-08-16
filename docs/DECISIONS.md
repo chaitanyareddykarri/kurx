@@ -13836,3 +13836,198 @@ The editor places every field by hand and is complete without it.
 `[Recipient's Full Name]` in its own pixels, a field can cover the region with a colour sampled from the
 artwork and draw the value on top — replacement in the only sense available. The editor warns before the
 overlap is created, which is the only place the problem can actually be prevented.
+
+
+## D-356 · Detected text is a handle, not a copy: unchanged words are left untouched (2026-08-16)
+
+**Context.** D-355 made an uploaded certificate editable by detecting its printed text and turning every
+line into an element that covers what it sits on. Covering is unavoidable where text is *replaced*: the
+placeholder is pixels, so the only way to change `[Recipient's Full Name]` into a name is to paint over it
+and draw on top.
+
+But detection turns *every* line into such an element — typically fifteen on a real design, of which two
+are ever changed. The other thirteen covered the artwork in order to redraw it identically. Each flat fill
+erased the design's watermark and texture inside its box, leaving a smooth rectangle with hard edges. The
+result was a certificate that announced itself as edited across its whole face, and the reported symptom
+was exactly that: "it looks edited, I want it to look real."
+
+**Decision.** A detected text element starts as a **handle**: `mirrors_artwork = true`. While true it
+draws nothing and fills nothing — the artwork already shows these words. It is still a complete element:
+clickable on the canvas, listed in the panel, selectable, movable. It simply leaves no mark.
+
+The moment the creator actually changes the words, it stops mirroring and becomes an ordinary
+covering element. The paper colour was sampled at detection time and carried on the element ever since,
+waiting for exactly this. Retyping the same words is not a change and leaves it mirroring, so clicking
+into text and clicking away never silently costs the design a patch.
+
+So a certificate is altered exactly where it was altered, and nowhere else.
+
+**Consequences.**
+
+- One additive column, `MirrorsArtwork` on `certificate_template_fields`, defaulting false — existing
+  templates keep their current behaviour exactly.
+- The renderer returns early on a mirroring element. It is the only place that can be authoritative,
+  since it is the only renderer.
+- The canvas draws nothing for one either, or the creator would see doubled text in the browser's font
+  over the artwork's own — a preview lying about a certificate it does not match. It carries a faint
+  dashed outline while the canvas is editable, because words with nothing drawn over them give no hint
+  that they can be reached.
+- Dynamic fields are never handles. They exist precisely to replace what is printed.
+
+**What this does not fix.** Where covering *is* required, a flat fill still cannot reproduce textured
+stock: the colour is sampled from the band outside the box, and a watermark inside it has no single
+colour. The patch is now confined to the boxes whose text actually changed — but on a heavily textured
+design it remains faintly visible there. Reconstructing texture is inpainting, and is not attempted.
+Sampling was improved as far as a flat fill allows: the returned colour is the average of the real
+near-paper pixels rather than a quantisation bucket's floor, which had been painting pure white as
+`#F8F8F8` — a grey band on every white certificate.
+
+
+## D-357 · Re-reading a design replaces the previous reading, everywhere it read (2026-08-16)
+
+**Context.** D-356 changed what detection *produces*. It changed nothing about templates already saved,
+which is correct — the column is additive and existing designs keep their behaviour. But the only way to
+get the new representation onto an existing design is to run Detect text again, and that path appended:
+a design already carrying sixteen detected blocks gained sixteen more, stacked on the same words, with the
+older covering elements still painting on top. The new reading was invisible underneath the old one, so
+every improvement to detection appeared to have done nothing at all.
+
+**Decision.** A fresh reading is folded in, not appended, and it supersedes anything sitting **anywhere
+the engine read** — not merely where it produced a block.
+
+The distinction is the whole decision. The two differ exactly where the new reading was too weak to act
+on, and that is the case that matters most: an element sitting there came from a reading we would now
+refuse to make. A stylised logo read as `© 'our` at 0.76 had been saved as a covering element; re-reading
+correctly declines that region, so nothing superseded it and a misreading survived its own replacement,
+still covering the logo. Declining a region means "leave the artwork alone here", and dropping what sits
+on it is how that actually happens.
+
+Overlap is the test rather than provenance. An element covering these exact words is describing this
+exact text, whoever placed it, and keeping both would show the words twice. Anything the engine did not
+read — a signature line, a hand-placed field, a QR — is untouched.
+
+**Also decided: a decorative word is not a data field.** `POINTS`, from a CPD seal reading "8 CPD /
+POINTS", was matching the canonical `score` synonyms — so the badge was covered in its own purple and a
+score printed into it. `points` is removed as a synonym. This follows the rule the vocabulary already
+states: missing a genuine "Points:" label costs one click in Add field, while a confident mistake costs
+every certificate in the run.
+
+**Consequences.**
+
+- Superseding threshold is 60% of the old element's area. Certificate lines sit close together, and a
+  shared edge is a neighbour, not a duplicate — a lower bar would silently delete the line above on every
+  rescan.
+- The confirmation names what happened ("…replacing N that covered the same words") rather than only what
+  was added, because silently removing elements is worse than adding them.
+- `startDrawing` moved out of the editor component into `certificate-editor.ts`. It decides whether a
+  design acquires a patch, which is too load-bearing to live only inside a JSX callback where it cannot
+  be tested.
+
+**Verified against the live deployment**, starting from the saved template that prompted this: 16 stale
+elements + 15 fresh blocks folded to 15 — 13 drawing and covering nothing, 2 covering because their text
+genuinely changed, and 0 stale survivors.
+
+
+## D-358 · An uploaded design is read on sight, not on request (2026-08-16)
+
+**Context.** D-355 through D-357 built a reader: detection, layout, canonical-field mapping, covering,
+folding, a confirmation banner and an Add button. All of it shipped and all of it worked. **None of it
+was ever called.** `analyse()` was defined and referenced from nowhere; the branch meant to expose it
+rendered a heading reading "Assisted" and no control. The confirmation banner was wired to state that
+nothing in the interface could set.
+
+So the editor a creator actually met was the pre-detection one: an empty panel and a menu of field names
+to place by hand. On a design already printing `OLIVER SMITH`, `Date of Issue: 13/05/2023` and
+`Certificate ID: 75633820a`, they were asked to retype and reposition each of those by hand — precisely
+the work the reader exists to remove. Reported as: "why do I need to Add Details manually when the
+template already has it".
+
+**Decision.** A design with artwork and nothing placed on it is read **automatically**, on open, and what
+is found is applied.
+
+Applied, not offered. Asking permission to fill an empty design is a dialog whose only possible answer is
+yes, and Undo is already there if it was not. Once anything *has* been placed there is something to lose,
+so a re-read is offered rather than performed — the earlier reasoning about not replacing somebody's
+layout still holds, but it only ever applied to layouts that exist.
+
+**Consequences.**
+
+- Keyed on the artwork URL, so replacing a design re-reads the new one and the old reading means nothing.
+- Silent on failure during the automatic pass. A deployment with no engine, or a design with no legible
+  text, must leave the editor exactly what it was rather than report an error about a feature nobody
+  invoked. An explicit re-read still answers.
+- "Read my design again" replaces the dead "Assisted" label, for re-reading after replacing artwork or
+  deleting blocks.
+- The empty state no longer presents hand-placement as the route in. It says the design is being read.
+
+**The general lesson, which is the reason this is a decision and not a bug note.** Every layer here was
+tested and every test passed, because each layer was correct in isolation. What no test covered was
+whether anything *invoked* the top of the chain. A feature that is unreachable is indistinguishable from
+a feature that is absent, and unit tests cannot tell the difference. `test/certificate-template-editor.test.tsx`
+now renders the real editor and asserts the reader runs — the first test in this module that could have
+caught it.
+
+
+## D-359 · The certificate editor is a guided tool, not a design editor (2026-08-16)
+
+**Context.** The editor had grown to answer a designer's questions — what objects exist, in what order,
+at what rotation, with what mask. The person who actually uses it runs an event, has had no training, and
+opens it once every few months to put names on certificates. They met a layer list, an "Advanced" panel, a
+zoom selector and a menu of field names, and had to infer the whole process from it.
+
+**Decision.** The screen answers four questions at all times: *what step am I on, what does this button do,
+where do I click, what happens next.* Anything that does not help answer one of them is gone.
+
+**Five steps, always visible.** Upload → Find text → Edit → Preview → Download. The current step is derived
+from the design itself, so a half-finished certificate opened a week later lands where it was left, with
+nobody having clicked anything.
+
+**Status never rests on colour.** A finished step carries a tick *and* the word Done; the current one a
+ring, a bold label, the word Now, and `aria-current`. In greyscale every state is still readable.
+
+**Icons always carry words.** If a user has to guess what an icon means it is not an icon, it is a puzzle.
+Every action pairs a familiar glyph with a short label, and nothing important is a bare icon.
+
+**What was removed:** zoom, rotation, z-order, duplicate, layer ordering, per-field alignment, the layer
+list and the Advanced panel. Text size, colour and bold stayed, because "make it bigger" is asked for by
+name and needs no explaining. Removing capability is the point: a tool that shows every option to someone
+who wants to fix a spelling has failed them.
+
+**Preview is the real render.** It asks the server for a sample from the same renderer that issues
+certificates, rather than showing the browser's approximation. Since the server renders what has been
+*saved*, an unsaved change is saved first rather than quietly left out of the picture. Download is the
+same render as a PDF — a real endpoint that already existed, not a mock.
+
+**Errors are what to do next.** Never `DetectionError: element_coordinates_invalid`; instead "We couldn't
+find the text — try uploading a clearer picture of your certificate", and a Try Again button.
+
+**Vocabulary.** Nothing user-facing says element, handle, renderer, mask, z-order or OCR. It says text,
+picture, *changes for each person*, *the same on every certificate*. A test asserts this against the
+rendered page rather than trusting review.
+
+### Found by testing it as a first-time user
+
+Four defects the redesign itself introduced or exposed, all fixed:
+
+1. **Two buttons named the same thing.** The step rail's "Find text" and the action "Find Text" were
+   indistinguishable, and the rail one only navigates — so clicking the wrong one appeared to do nothing.
+   Rail items are now labelled "Go to step 2: Find text (Now)", keeping the visible words inside the
+   accessible name (WCAG 2.5.3).
+2. **A control that flickered on load.** The Find text step offered its button, withdrew it when the
+   automatic pass began, then offered it again. Working out whether a design can be read now counts as
+   busy, so the button appears once and stays.
+3. **The automatic pass could wipe an explicit failure message.** A user clicking Find Text before the
+   silent pass had run got their answer erased by it a moment later, leaving a screen that looked like the
+   button did nothing. Any read now marks the design as read.
+4. **A lead-in phrase was being treated as the name.** `presented to`, `awarded to` and `this is to
+   certify that` were synonyms for the participant's name — so a design reading *Presented to / OLIVER
+   SMITH* had the words "Presented to" replaced by the recipient's name while "OLIVER SMITH" stayed
+   printed underneath as fixed text. Every certificate in the run would carry one person's name twice and
+   lose its own label. A lead-in now says where the name *is*: `namesAnnouncedByALeadIn` promotes the line
+   directly beneath it — strictly, requiring horizontal overlap, proximity, and that the line is not
+   already something else, because promoting the wrong one prints the recipient's name over the course
+   title.
+
+**Also:** `Button` gained an `xl` size rather than four call sites overriding height in `className`. An
+existing guard forbids that, correctly — the height floor belongs to the design system, not to whoever is
+in a hurry.

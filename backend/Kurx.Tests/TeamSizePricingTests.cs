@@ -11,7 +11,7 @@ namespace Kurx.Tests;
 
 /// <summary>D-366 — a team's price depends on its size.
 ///
-/// <para>D-357 settled what a team price MEANS: charged once for the whole team, one inventory slot,
+/// <para>D-372 settled what a team price MEANS: charged once for the whole team, one inventory slot,
 /// never multiplied by the roster. What it could not express is the shape organisers actually use —
 /// 2 → ₹250, 3 → ₹300, 4–5 → ₹400 — because a <c>TicketType</c> carries one price for its whole
 /// <c>GroupMin..GroupMax</c> range.</para>
@@ -87,7 +87,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         registrationMode = "Group",
         groupMin,
         groupMax,
-        quantity = 100,                      // 100 TEAM slots (D-357), not 100 people
+        quantity = 100,                      // 100 TEAM slots (D-372), not 100 people
         saleStarts = DateTime.UtcNow.AddDays(-1),
         saleEnds = DateTime.UtcNow.AddDays(30),
         perUserLimit = 5,
@@ -184,7 +184,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         Assert.Equal(BigPrice, order.GetProperty("amount_paise").GetInt64());
     }
 
-    /// <summary>The regression that would undo D-357: a band must never be multiplied by the roster.</summary>
+    /// <summary>The regression that would undo D-372: a band must never be multiplied by the roster.</summary>
     [Fact]
     public async Task A_band_is_charged_once_for_the_whole_team()
     {
@@ -319,7 +319,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         var four = await Json(await captain2.PostAsJsonAsync($"/v1/events/{eventId}/orders",
             new { ticketTypeId = ttId, groupSize = 4, displayName = "Legacy Four" }));
 
-        // One price, every size — D-357's behaviour, untouched.
+        // One price, every size — D-372's behaviour, untouched.
         Assert.Equal(TwoPrice, two.GetProperty("amount_paise").GetInt64());
         Assert.Equal(TwoPrice, four.GetProperty("amount_paise").GetInt64());
     }

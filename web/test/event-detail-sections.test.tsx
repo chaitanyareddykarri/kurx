@@ -135,7 +135,7 @@ describe("GettingThereSection", () => {
 });
 
 /**
- * D-357 — a price must say what it buys.
+ * D-372 — a price must say what it buys.
  *
  * `pricing_unit` has been on the public ticket-type response since D-020 and no surface rendered it, so
  * an event charging ₹2,000 per TEAM and one charging ₹2,000 per PERSON looked identical to a registrant.
@@ -156,7 +156,7 @@ describe("priceLabel", () => {
    * D-366 — a banded ticket has no single price, so the headline becomes a RANGE.
    *
    * `price_paise` is the cheapest band on such a ticket. Printing it alone quotes ₹250 on an event that
-   * also charges ₹400, which is the same class of lie D-357's unit label exists to prevent.
+   * also charges ₹400, which is the same class of lie D-372's unit label exists to prevent.
    */
   describe("team-size bands", () => {
     const BANDS = [
@@ -200,7 +200,7 @@ describe("priceLabel", () => {
     });
   });
 
-  it("treats an absent unit as per participant — every pre-D-357 row", () => {
+  it("treats an absent unit as per participant — every pre-D-372 row", () => {
     expect(priceLabel(50_000, null, money)).toBe("₹500 per participant");
     expect(priceLabel(50_000, undefined, money)).toBe("₹500 per participant");
   });

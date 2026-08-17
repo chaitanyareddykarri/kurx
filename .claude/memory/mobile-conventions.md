@@ -216,7 +216,7 @@ phone-change screen meant texting the confirmation code to a stranger and moving
 number. For displaying a phone, the API already returns canonical E.164 — print it as-is; do not prepend a
 country code. Mixed identifier fields use `common/util/phone_utils.dart` `toE164Identifier`.
 
-## Capabilities are asked, never inferred from a name (D-357/D-366)
+## Capabilities are asked, never inferred from a name (D-372/D-366)
 
 Whether an event may have **teams** is the capability engine's answer — `GET /v1/archetypes/{slug}/capabilities`,
 via `archetypeSupportsTeamsProvider` — not a list of type names in the app. The matrix is data an admin

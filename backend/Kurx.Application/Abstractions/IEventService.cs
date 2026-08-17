@@ -84,7 +84,7 @@ public record EventScheduleView(DateTime? RegistrationOpensAt, DateTime? Registr
 public record EventLocationDetailView(string? Building, string? Floor, string? Room,
     string? GoogleMapsUrl, string? MeetingPlatform);
 
-/// <param name="MaxTeams">How many teams may enter — <b>derived, not the stored column</b> (D-360).
+/// <param name="MaxTeams">How many teams may enter — <b>derived, not the stored column</b> (D-375).
 ///
 /// <para><c>events.MaxTeams</c> is a D-265 eligibility field that was written, echoed here, and enforced by
 /// nothing: an organiser could type 50 while the ticket type sold 20 team slots, and both numbers were
@@ -161,7 +161,7 @@ public record EventSummary(Guid Id, Guid RepresentingOrgId, Guid? ParentEventId,
     // discovery let you narrow by a value it then refused to show you.
     string EventMode = "Offline", string? CategoryName = null,
     long? PriceFromPaise = null, string Currency = "INR", bool IsFeatured = false,
-    /// <summary>The unit <see cref="PriceFromPaise"/> is charged in — `PerTicket` or `PerGroup` (D-361).
+    /// <summary>The unit <see cref="PriceFromPaise"/> is charged in — `PerTicket` or `PerGroup` (D-376).
     ///
     /// <para>Without it a discovery card can only say "From ₹2,000", which on a team event reads as a
     /// per-person minimum when it is the price of the whole team. The card stays condensed by design; it

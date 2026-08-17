@@ -389,7 +389,7 @@ reviewer once passed through.
 can leak one. Filtering at each call site works until the next call site, which is the one that forgets.
 Apply the same shape to any field that is secret everywhere (D-266 §5).
 
-## A price without a unit is not a price (D-357)
+## A price without a unit is not a price (D-372)
 
 `TicketType.PricingUnit` — `PerTicket | PerGroup` — decides **both** what is charged and how many
 inventory units the registration takes. It is not a label:
@@ -408,22 +408,22 @@ rule exists to prevent, and `TeamPricingTests` fails if it returns.
 Two invariants worth knowing before touching this:
 
 - **`OrderItem.Qty` is the BILLABLE quantity**, so `Qty × UnitPricePaise == AmountPaise` always holds. The
-  team's *size* is `Order.GroupSize`. They were the same number before D-357, which is why `Qty` was
-  overloaded as the roster cap; `AddMemberToGroupAsync` still falls back to it for pre-D-357 rows.
+  team's *size* is `Order.GroupSize`. They were the same number before D-372, which is why `Qty` was
+  overloaded as the roster cap; `AddMemberToGroupAsync` still falls back to it for pre-D-372 rows.
 - **A paid group's `Group` row is created at CAPTURE, not at checkout.** A Pending team that could hand
   out its join code would let an unpaid buyer recruit into a registration that may never be paid for.
 
 Team size has one upstream owner: `TicketType.GroupMin/GroupMax`, the bound people are charged against.
 `TeamPolicy.MinSize/MaxSize` (Phase 10) governs formation and is seeded from it and may narrow within it,
-never exceed it (D-358).
+never exceed it (D-373).
 
 **How many teams may enter has one owner too, and it is the pool.** `EventEligibilityView.MaxTeams` is
 *derived* — the sum of `Quantity` across the event's `PerGroup` ticket types — falling back to the stored
-`events.MaxTeams` only when the event has no team ticket (D-360). Do not enforce the stored column against
+`events.MaxTeams` only when the event has no team ticket (D-375). Do not enforce the stored column against
 inventory: that is a second capacity authority competing with the pool, which §17.1 exists to prevent. And
 do not `SUM` in SQL here — it answers 0 over an empty set and inverts the fallback.
 
-**A competition group purchase materialises the authoritative `Team`** (D-359) via
+**A competition group purchase materialises the authoritative `Team`** (D-374) via
 `ITeamService.MaterialiseForGroupAsync`, in the same transaction as the `Group` it mirrors, filling the
 `Team.RegistrationId` hook Phase 10 reserved. It deliberately does not go through `CreateTeamAsync`, which
 enforces formation mode / per-person limits / a required name — rules a completed purchase has already

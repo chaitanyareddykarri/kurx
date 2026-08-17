@@ -13,7 +13,7 @@ import { awaitingReview, hostWorkspaceOpen, OPEN_HOST_STATES } from "@/lib/works
 
 describe("hostWorkspaceOpen", () => {
   it("opens from approval onward", () => {
-    // D-362 — `approved` is the FIRST state in this list, not an omission from it. Approval is what
+    // D-377 — `approved` is the FIRST state in this list, not an omission from it. Approval is what
     // opens the workspace; the header above already named getting this wrong as a real failure
     // ("too strict tells them to wait for an approval that already happened") and the set then did
     // exactly that, drawing "Opens after approval" on an approved event.
@@ -32,7 +32,7 @@ describe("hostWorkspaceOpen", () => {
 
   it("opening the workspace is not the same as being public", () => {
     // The two questions this pair of bugs confused. An approved event is one its host may WORK on and
-    // one the public cannot SEE; conflating them in either direction is D-362.
+    // one the public cannot SEE; conflating them in either direction is D-377.
     expect(hostWorkspaceOpen("approved")).toBe(true);
     expect(awaitingReview("approved")).toBe(false);
   });

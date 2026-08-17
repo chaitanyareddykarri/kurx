@@ -112,7 +112,7 @@ job on first contact with existing code.
 
 ### A team's price depends on its size (2026-08-16) - D-366
 
-**Implementation Summary.** D-357 settled what a team price MEANS — charged once for the whole team,
+**Implementation Summary.** D-372 settled what a team price MEANS — charged once for the whole team,
 one inventory slot, never multiplied by the roster. What it could not express is the shape organisers
 actually use: `2 → ₹250, 3 → ₹300, 4–5 → ₹400`. A `TicketType` carries one `PricePaise` for its whole
 `GroupMin..GroupMax` range, and a min/max range describes *eligibility* — overloading it to mean a price
@@ -200,7 +200,7 @@ under a guard that refuses to delete an event carrying a captured order.
 **Implementation Summary.** The organiser answered "is this event free or paid?" at the create-event
 gate, and then again at step 3 of the wizard the gate opens. D-343 needs the gate's answer — the
 product+pricing pair selects the verification tier the caller must clear before the form exists — and
-D-357 pinned the wizard step at index 2 to sit near that dependency. Neither noticed that a second
+D-372 pinned the wizard step at index 2 to sit near that dependency. Neither noticed that a second
 control does not merely repeat the question, it can **change the answer after the decision was made on
 it**: the gate refuses Paid unless the caller is `canHostPaid` **and** representing a verified
 organization, while the wizard's `canChoosePaid` checked only the first. A host the gate had refused
@@ -227,12 +227,12 @@ replaced by one asserting it is never asked again),
 touched — the 1897 backend suite result stands.
 
 
-### Event lifecycle — approval separated from publication, and deletion made non-destructive (2026-08-16) - D-362, D-363, D-364
+### Event lifecycle — approval separated from publication, and deletion made non-destructive (2026-08-16) - D-377, D-363, D-364
 
 **Implementation Summary.** Three defects on one axis: what an event's status *permits*, and what it
 *destroys*.
 
-*D-362* — the reviewer gate on `publish` sat inside `if (isPaid)`. That was wrong in both directions: a
+*D-377* — the reviewer gate on `publish` sat inside `if (isPaid)`. That was wrong in both directions: a
 **free** public event could be submitted for review and then published by its own creator, live and
 unapproved, out of the queue while a reviewer might be holding it (reproduced over HTTP:
 `submit_for_review` → 200, `publish` as creator → 200 `published`); and a **paid** event reached the same
@@ -354,7 +354,7 @@ than by 169 hand-written clauses.
 `Approved → schedule → open_registration`). `DELETE` of an event is now soft. Contract check: 0 errors,
 no drift.
 
-**Docs.** `docs/DECISIONS.md` (D-362, D-363, D-364); `docs/api/README.md`;
+**Docs.** `docs/DECISIONS.md` (D-377, D-363, D-364); `docs/api/README.md`;
 `docs/architecture/{REVIEW_LIFECYCLE,diagrams}.md`; `docs/PROJECT_HANDBOOK.md` (lifecycle diagram +
 rules); `.claude/memory/{database-conventions,testing-standards}.md`; `.claude/CLAUDE.md` §9 baseline;
 `.claude/FUTURE-IMPROVEMENTS.md` (two stale claims — web/admin now have suites; contract tests shipped).
@@ -381,12 +381,12 @@ transition table is the authority and refuses anything they get wrong with `inva
 `EmergencyUpdateAsync` (Super Admin, D-191) still bypasses both the edit lock and the reopen, which is
 what an emergency edit is for and is audited as one.
 
-### Documentation accuracy pass — the contract regenerated, and every count made re-derivable (2026-08-15) - D-361
+### Documentation accuracy pass — the contract regenerated, and every count made re-derivable (2026-08-15) - D-376
 
 **Implementation Summary.** A full read of `docs/` (53 files, 35.5k lines) against the running system.
 The findings clustered on one kind of claim: **rules and vocabulary had survived; counts had rotted**.
 Fifteen stale figures were corrected and each now carries the command that re-derives it or defers to
-the single live authority (D-361). One finding was CI-breaking: `docs/api/openapi.json` was missing
+the single live authority (D-376). One finding was CI-breaking: `docs/api/openapi.json` was missing
 `requires_representation` on `TrustCapabilities` (added by D-353), so the D-259 drift gate would have
 failed on `main`. Two findings were user-facing traps rather than cosmetics —
 `EXTERNAL_SERVICES_AND_PROVIDERS.md` documented `PUSH_PROVIDER=fcm`, a value that makes the API refuse
@@ -397,7 +397,7 @@ to boot (the switch takes `firebase`), and it plus `PRODUCTION_PROVIDERS_CHECKLI
 PLATFORM_FLOW_MAP}.md`; `docs/roadmap/README.md`; `docs/EXTERNAL_SERVICES_AND_PROVIDERS.md`;
 `docs/deployment/PRODUCTION_PROVIDERS_CHECKLIST.md`; `docs/PROJECT_HANDBOOK.md`;
 `docs/auth/AUTHENTICATION_TESTING.md`; `docs/ui-ux/{inventory-web,inventory-mobile,regression-criteria,
-HANDOFF,do-not-change}.md`; `docs/DECISIONS.md` (collision note + D-361); `mobile/README.md`;
+HANDOFF,do-not-change}.md`; `docs/DECISIONS.md` (collision note + D-376); `mobile/README.md`;
 `UI_REDESIGN_PROGRESS.{md,json}`; `CHANGELOG.md`. One code file, comment-only:
 `backend/Kurx.Infrastructure/DependencyInjection.cs` — a provider comment that read "only the dev
 implementations exist so far" sat directly above the `case "ses"` disproving it.
@@ -428,7 +428,7 @@ filesystem: web **93 = 93**, mobile **95 = 95**, admin **27 = 27**, zero missing
 Relative links resolve across all edited files, and every source path cited in the two rebuilt
 inventories exists. Suites were not re-run — no product code changed.
 
-**Remaining Work.** `D-350`–`D-360` are a concurrent workstream's (create-event wizard, team pricing)
+**Remaining Work.** `D-350`–`D-375` are a concurrent workstream's (create-event wizard, team pricing)
 and their CHANGELOG entries are owed by that session, not invented here. The three genuine `D-NNN`
 collisions are documented rather than renumbered — the log is append-only and 100+ citations point at
 them. `architecture/diagrams.md` was audited only for the lifecycle diagram and the ownership ER

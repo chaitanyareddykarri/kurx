@@ -56,7 +56,7 @@ function renderWizard(over: Record<string, unknown> = {}) {
       categories={CATEGORIES}
       subcategories={[]}
       presets={[]}
-      // D-357 — no archetype on offer permits teams by default, so the Registration step shows the
+      // D-372 — no archetype on offer permits teams by default, so the Registration step shows the
       // individual path. The team cases pass a capable archetype explicitly.
       teamCapableArchetypes={[]}
       {...over}
@@ -165,7 +165,7 @@ async function walkToDetails(typeName?: string) {
   // Type is required only when the category HAS types; the default fixture has none.
   if (typeName) await userEvent.click(screen.getByRole("radio", { name: typeName }));
   await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-  // D-357 — Registration sits between Type and Details. Its defaults (a named registration, 100
+  // D-372 — Registration sits between Type and Details. Its defaults (a named registration, 100
   // places, individual, free) are already valid, so this Continue passes straight through; the step's
   // own rules are asserted in its dedicated block below.
   await userEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -441,7 +441,7 @@ describe("Steps 7–11 gate their own fields too", () => {
   });
 });
 
-describe("Step 5 · Registration — the unit the price is charged in (D-357)", () => {
+describe("Step 5 · Registration — the unit the price is charged in (D-372)", () => {
   const cont = () => screen.getByRole("button", { name: "Continue" });
 
   /// A Type whose archetype the capability engine says supports teams, and one it says does not.

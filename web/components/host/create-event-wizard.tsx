@@ -136,7 +136,7 @@ export function CreateEventWizard({
   /// what the server will accept.
   requiresRepresentation: boolean;
   representativeRoles: string[];
-  /// D-357 — archetype slugs whose `teams` capability is not Unsupported, resolved server-side from the
+  /// D-372 — archetype slugs whose `teams` capability is not Unsupported, resolved server-side from the
   /// capability engine. Empty means no Type on offer permits team entry, which is the closed default.
   teamCapableArchetypes: string[];
 }) {
@@ -165,7 +165,7 @@ export function CreateEventWizard({
   const pricing = initialPricing;
   /// The one ticket created with the event. Without it the event is unbookable — see the Pricing step.
   /// Rupees on the way in, paise on the wire (D-004).
-  /// D-357 — `participation` is the registration UNIT, and it is what gives the price its meaning.
+  /// D-372 — `participation` is the registration UNIT, and it is what gives the price its meaning.
   /// It maps to `RegistrationMode` and `PricingUnit` together: team ⇒ Group + PerGroup (one charge and
   /// one inventory unit per team), individual ⇒ Individual + PerTicket. Defaults to individual, which is
   /// what every event created before this step existed already was.
@@ -183,7 +183,7 @@ export function CreateEventWizard({
    * Whether the chosen Type's archetype supports teams — the capability engine's answer, resolved on
    * the server and passed in.
    *
-   * `archetype_slug` is on the Type node (D-357 exposed it; the column was always there and D-266 M1
+   * `archetype_slug` is on the Type node (D-372 exposed it; the column was always there and D-266 M1
    * snapshots it onto the event). The page asks `GET /v1/archetypes/{slug}/capabilities` for each
    * archetype it offers and hands down the set that permits `teams`, so this component performs no
    * fetch, has no loading state, and — importantly — pulls in no server-only module.
@@ -587,7 +587,7 @@ export function CreateEventWizard({
           : 0,
         quantity: Number(ticket.quantity) || 100,
         /*
-         * D-357 — the unit, no longer a literal.
+         * D-372 — the unit, no longer a literal.
          *
          * These two lines read `pricingUnit: "PerTicket", registrationMode: "Individual"` and made a
          * capable API uni-modal: `TicketType` has carried both fields since D-020 and the wizard could
@@ -857,7 +857,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/*
-        Step 6 — Registration (D-357).
+        Step 6 — Registration (D-372).
 
         The step that gives the price a unit. It runs after Type because the Type derives the archetype
         and the archetype's `teams` capability is the only authority on whether team entry exists for
@@ -917,7 +917,7 @@ export function CreateEventWizard({
           {ticket.participation === "team" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {/* GroupMin/GroupMax — enforced at purchase as `invalid_group_size`, and the ceiling any
-                  later TeamPolicy may narrow within but never exceed (D-358). */}
+                  later TeamPolicy may narrow within but never exceed (D-373). */}
               <Field label="Smallest team" required error={ticketErrors.teamMin}>
                 <Input id="teamMin" type="number" min={1} step={1} value={ticket.teamMin}
                   onChange={(e) => setTicket({ ...ticket, teamMin: e.target.value })} />
@@ -934,7 +934,7 @@ export function CreateEventWizard({
 
             Offered only for a PAID TEAM ticket, because that is the only shape where the question has
             an answer: an individual price already scales with the roster, and a free event has no
-            prices to band. Empty means one price for every size, which is D-357 unchanged and stays the
+            prices to band. Empty means one price for every size, which is D-372 unchanged and stays the
             default — an organiser who does not need bands never sees a table.
           */}
           {pricing === "paid" && ticket.participation === "team" ? (

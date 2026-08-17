@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurx.Tests;
 
-/// <summary>D-357 — a price has a unit, and the unit decides both the charge and the seat count.
+/// <summary>D-372 — a price has a unit, and the unit decides both the charge and the seat count.
 ///
 /// <para><b>What this suite is for.</b> <c>TicketType.PricingUnit</c> has existed since D-020 and was read
 /// by nothing in the money path, while <c>CreateOrderAsync</c> refused every paid group with
@@ -205,7 +205,7 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
                 (await member.PostAsJsonAsync("/v1/groups/join", new { joinCode })).StatusCode);
         }
 
-        // The whole point of D-357: 50 team slots stays 50 team slots as rosters fill.
+        // The whole point of D-372: 50 team slots stays 50 team slots as rosters fill.
         Assert.Equal(1, (await PoolAsync(ttId)).Consumed);
     }
 
@@ -379,7 +379,7 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
         Assert.Equal(1, (await PoolAsync(ttId)).Consumed);
     }
 
-    // ── D-359: the authoritative Team, not only its legacy mirror ────────────────────────────────
+    // ── D-374: the authoritative Team, not only its legacy mirror ────────────────────────────────
 
     /// <summary>A competition team purchase materialises the Phase-10 <c>Team</c>, linked to the registration
     /// the money path produced — the <c>Team.RegistrationId</c> hook §6.5 reserved and left null.</summary>
@@ -408,7 +408,7 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
     }
 
     /// <summary>Teams exist only where competition does (V3 §6): a plain group purchase still produces a
-    /// Group and no Team, so D-359 adds nothing to events that never had teams.</summary>
+    /// Group and no Team, so D-374 adds nothing to events that never had teams.</summary>
     [Fact]
     public async Task A_plain_group_purchase_creates_no_team()
     {
@@ -461,7 +461,7 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
         Assert.Equal(TeamRole.Member, joined.Role);
     }
 
-    // ── D-360: one team-capacity number, and it is the pool's ────────────────────────────────────
+    // ── D-375: one team-capacity number, and it is the pool's ────────────────────────────────────
 
     /// <summary><c>Event.MaxTeams</c> was stored, echoed and enforced by nothing, so it could contradict the
     /// team slots actually on sale. The eligibility view now projects the authoritative inventory.</summary>
@@ -497,7 +497,7 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
         Assert.Equal(12, detail.GetProperty("eligibility").GetProperty("max_teams").GetInt32());
     }
 
-    // ── D-359: a refusal that names itself ───────────────────────────────────────────────────────
+    // ── D-374: a refusal that names itself ───────────────────────────────────────────────────────
 
     /// <summary>A paid event's final publish belongs to a reviewer (D-047) — but the refusal said only
     /// "forbidden", on a path where every sibling names itself, so a correct rule read as a defect.</summary>

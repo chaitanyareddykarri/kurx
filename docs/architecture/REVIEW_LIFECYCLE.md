@@ -12,7 +12,7 @@
 | `PendingReview` | Submitted, waiting for a reviewer to claim it. **Edit-locked.** |
 | `UnderReview` | A reviewer has claimed it — and `review_claimed_by` says which one. **Edit-locked.** |
 | `ChangesRequested` | Returned with notes. **Editable — that is the point of the state.** |
-| `Approved` | Review passed. Publication is now the **creator's** call, not the reviewer's (D-362) — the event is permitted to go live and is not yet public. |
+| `Approved` | Review passed. Publication is now the **creator's** call, not the reviewer's (D-377) — the event is permitted to go live and is not yet public. |
 | `Rejected` | Refused with a reason code. Resubmittable. |
 
 `InReview` was retired in Stage 4. It conflated *waiting for a reviewer* with *a reviewer has it*, which is
@@ -71,7 +71,7 @@ finished with it, taking it back is the organiser's call again.
 **A Public product cannot self-publish** — `publish_approved` is reachable only from `Approved`. Private
 products are never reviewed, so `publish` direct from `Draft` remains for them.
 
-### Who presses publish (D-362)
+### Who presses publish (D-377)
 
 **Approval grants permission to publish. It does not publish.** The two acts belong to two different
 people, and the transition table alone does not say which:

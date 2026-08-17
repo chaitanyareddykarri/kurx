@@ -126,7 +126,7 @@ public class SeriesService(KurxDbContext db, IEventAuthority authority) : ISerie
         var canManage = await CanManageAsync(viewerUserId ?? Guid.Empty, series.OrgId, isAdmin, ct);
         var q = db.Events.AsNoTracking().Where(e => e.SeriesId == seriesId && e.DeletedAt == null);
         // Composed, not restated: this was a hand-written copy of `EventExposure.PubliclyVisible`, which is
-        // the drift that class exists to stop. D-362 added the status axis to the canonical rule; a copy is
+        // the drift that class exists to stop. D-377 added the status axis to the canonical rule; a copy is
         // a place the next axis does not reach.
         if (!canManage) q = q.Where(EventExposure.PubliclyVisible);
         return await q.OrderBy(e => e.EditionOrdinal).ThenBy(e => e.StartsAt)

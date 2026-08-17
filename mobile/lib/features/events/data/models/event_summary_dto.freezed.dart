@@ -41,7 +41,7 @@ mixin _$EventSummaryDto {
   @JsonKey(name: 'category_name')
   String? get categoryName => throw _privateConstructorUsedError;
   @JsonKey(name: 'price_from_paise')
-  int? get priceFromPaise => throw _privateConstructorUsedError; // D-361 — the unit the "From" price is charged in.
+  int? get priceFromPaise => throw _privateConstructorUsedError; // D-376 — the unit the "From" price is charged in.
   @JsonKey(name: 'price_from_unit')
   String? get priceFromUnit => throw _privateConstructorUsedError;
   String? get currency => throw _privateConstructorUsedError;
@@ -380,7 +380,7 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
   @override
   @JsonKey(name: 'price_from_paise')
   final int? priceFromPaise;
-  // D-361 — the unit the "From" price is charged in.
+  // D-376 — the unit the "From" price is charged in.
   @override
   @JsonKey(name: 'price_from_unit')
   final String? priceFromUnit;
@@ -523,7 +523,7 @@ abstract class _EventSummaryDto extends EventSummaryDto {
   String? get categoryName;
   @override
   @JsonKey(name: 'price_from_paise')
-  int? get priceFromPaise; // D-361 — the unit the "From" price is charged in.
+  int? get priceFromPaise; // D-376 — the unit the "From" price is charged in.
   @override
   @JsonKey(name: 'price_from_unit')
   String? get priceFromUnit;

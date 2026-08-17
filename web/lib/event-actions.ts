@@ -131,7 +131,7 @@ export type CreateEventValues = {
 export async function createEventWizardAction(
   representingOrgId: string | null,
   values: CreateEventValues,
-  /// D-357 — the registration option created with the event, and the UNIT its price is charged in.
+  /// D-372 — the registration option created with the event, and the UNIT its price is charged in.
   /// `pricingUnit`/`registrationMode`/`groupMin`/`groupMax` were hardcoded here; they are the wizard's
   /// answer now, and `TicketType` has carried all four since D-020.
   ticket: {
@@ -179,7 +179,7 @@ export async function createEventWizardAction(
       await createTicketType(session.accessToken, event.representing_org_id, event.id, {
         name: ticket.name.trim() || "General Admission",
         pricePaise: ticket.pricePaise,
-        // D-357 — from the Registration step, not a literal. `PerGroup` is what tells the money path to
+        // D-372 — from the Registration step, not a literal. `PerGroup` is what tells the money path to
         // charge once per team and take one inventory unit for it.
         pricingUnit: ticket.pricingUnit,
         registrationMode: ticket.registrationMode,

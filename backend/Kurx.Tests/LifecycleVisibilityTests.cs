@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurx.Tests;
 
-/// <summary>D-362 — an event becomes public when it is PUBLISHED, and by no other route.
+/// <summary>D-377 — an event becomes public when it is PUBLISHED, and by no other route.
 ///
 /// <para><b>Why this file exists.</b> `EventExposureTests` pins the exposure predicate as a pure unit, and
 /// `EventTests` checks one draft-by-slug case. Neither walked the review lifecycle over HTTP, and the gap

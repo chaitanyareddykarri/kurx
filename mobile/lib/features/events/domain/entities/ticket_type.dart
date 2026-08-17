@@ -26,12 +26,12 @@ class TicketType {
   final bool isAllAccess;
 
   /*
-   * D-357 — what the price is charged FOR.
+   * D-372 — what the price is charged FOR.
    *
    * `pricing_unit` and `registration_mode` have been on this public endpoint since D-020 and this model
    * mapped neither, so the app rendered a bare "₹2,000" that a registrant could not interpret: an entry
    * fee for a whole team, or one member's share of it. Absent reads as PerTicket/Individual, which is
-   * what every pre-D-357 ticket type is.
+   * what every pre-D-372 ticket type is.
    */
   final String? pricingUnit;
   final String? registrationMode;

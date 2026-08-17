@@ -124,7 +124,7 @@ export function ReviewDossier({ event: e, tickets = [] }: { event: ReviewEvent; 
       ]} />
 
       {/*
-        D-357 — pricing WITH its unit. "Price: ₹2,000 · Quantity: 50" is what a reviewer used to get, and
+        D-372 — pricing WITH its unit. "Price: ₹2,000 · Quantity: 50" is what a reviewer used to get, and
         it cannot distinguish an entry fee for a whole team from one member's share, nor 50 teams from
         50 people. Each row states the unit, the team bounds and what the quantity counts.
       */}

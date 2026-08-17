@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kurx_mobile/features/organizer/presentation/pages/event_status_page.dart';
 import 'package:kurx_mobile/features/workspace/presentation/pages/workspace_hub_page.dart';
 
-/// D-362 — approval grants permission to publish; it never publishes.
+/// D-377 — approval grants permission to publish; it never publishes.
 ///
 /// The backend defect (a free event publishable straight out of the review queue) is covered by
 /// `LifecycleVisibilityTests` over HTTP. This covers the half that lived in the client: both apps

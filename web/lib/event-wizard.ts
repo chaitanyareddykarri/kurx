@@ -329,10 +329,10 @@ export type TierValues = { minSize: string; maxSize: string; priceRupees: string
 
 export type TicketValues = {
   name: string; priceRupees: string; quantity: string;
-  /// D-357 — how people enter, which is what gives the price its unit.
+  /// D-372 — how people enter, which is what gives the price its unit.
   participation: "individual" | "team";
   teamMin: string; teamMax: string;
-  /// D-366 — empty means the team pays one price whatever its size, which is the D-357 behaviour and
+  /// D-366 — empty means the team pays one price whatever its size, which is the D-372 behaviour and
   /// stays the default. A non-empty set must cover teamMin..teamMax exactly once.
   tiers: TierValues[];
 };
@@ -340,7 +340,7 @@ export const TICKET_FIELD_ORDER = [
   "name", "participation", "priceRupees", "quantity", "teamMin", "teamMax", "tiers"
 ] as const;
 
-/// The registration option created with the event, and the unit its price is charged in (D-357).
+/// The registration option created with the event, and the unit its price is charged in (D-372).
 ///
 /// Without one the event is unbookable, so these are genuinely required even though `TicketType` is a
 /// separate resource — this step is what creates it. The domain already carries every concept here:
@@ -348,7 +348,7 @@ export const TICKET_FIELD_ORDER = [
 /// one slot per team), `individual` ⇒ `PerTicket`. Nothing new is invented client-side.
 ///
 /// `teamMin`/`teamMax` become `GroupMin`/`GroupMax`, which `CreateOrderAsync` enforces as
-/// `invalid_group_size` and which D-358 makes the upper bound on any later `TeamPolicy`.
+/// `invalid_group_size` and which D-373 makes the upper bound on any later `TeamPolicy`.
 export function validateTicket(
   v: TicketValues, pricing: "free" | "paid"
 ): Partial<Record<(typeof TICKET_FIELD_ORDER)[number], string>> {
@@ -458,7 +458,7 @@ export function tiersToPayload(tiers: TierValues[]): { minSize: number; maxSize:
 /// A missing archetype — an unclassified Type — leaves the row absent, which is also "no teams", because
 /// the engine cannot say otherwise and the wizard must not guess.
 ///
-/// Hardcoding "hackathon | competition | tournament" here is exactly what D-357 forbids: the matrix is
+/// Hardcoding "hackathon | competition | tournament" here is exactly what D-372 forbids: the matrix is
 /// data, an admin can change it, and a second copy in the client would silently disagree.
 export function archetypeSupportsTeams(
   capabilities: { slug: string; state: string }[] | null | undefined

@@ -173,7 +173,7 @@ export default async function EventPage({ params }: Props) {
                       return (
                         <li key={t.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border p-3">
                           <span className="text-label text-text">{t.name}</span>
-                          {/* D-357 — the unit, always. "₹2,000" alone cannot tell a registrant whether
+                          {/* D-372 — the unit, always. "₹2,000" alone cannot tell a registrant whether
                               they are buying a team entry or one seat of four. */}
                           <span className="text-label text-text">
                             {priceLabel(t.price_paise, t.pricing_unit,

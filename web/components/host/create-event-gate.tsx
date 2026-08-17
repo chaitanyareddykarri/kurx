@@ -74,7 +74,7 @@ export function CreateEventGate({
   /// dev bypass; the gate then stops demanding one, matching what the server will actually accept.
   requiresRepresentation: boolean;
   representativeRoles: string[];
-  /// D-357 — passed straight through to the wizard's Registration step.
+  /// D-372 — passed straight through to the wizard's Registration step.
   teamCapableArchetypes: string[];
 }) {
   const [stage, setStage] = useState<"product" | "pricing" | "form">("product");

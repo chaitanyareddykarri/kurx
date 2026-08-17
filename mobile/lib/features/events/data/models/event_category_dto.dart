@@ -19,9 +19,9 @@ class EventCategoryDto with _$EventCategoryDto {
     /// D-305 — "Public"/"Private" on a Type node, used by the Create-Event gate to offer only the
     /// Types the chosen product class permits. Null = Public, matching the server's own fallback.
     @JsonKey(name: 'product_class') String? productClass,
-    /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+    /// D-372/D-366 — the archetype behind a Type node, which is what the capability engine is asked
     /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
-    /// step would have to guess from the type's name — exactly what D-357 forbids.
+    /// step would have to guess from the type's name — exactly what D-372 forbids.
     @JsonKey(name: 'archetype_slug') String? archetypeSlug,
   }) = _EventCategoryDto;
 

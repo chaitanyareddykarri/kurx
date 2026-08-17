@@ -22,14 +22,14 @@ public class Order
     /// create returns the original order instead of consuming inventory twice. Null = no key supplied.</summary>
     public string? IdempotencyKey { get; set; }
 
-    // ── D-357: a group order that has to survive create → capture ────────────────────────────────
-    /// <summary>How many people this registration is for. Null on every pre-D-357 row and on every
+    // ── D-372: a group order that has to survive create → capture ────────────────────────────────
+    /// <summary>How many people this registration is for. Null on every pre-D-372 row and on every
     /// individual order.
     ///
     /// <para><b>Why this is not <c>OrderItem.Qty</c>.</b> `Qty` is the BILLABLE quantity — the thing that
     /// must satisfy <c>Qty × UnitPricePaise == AmountPaise</c>. For a `PerGroup` ticket the billable
     /// quantity is 1 (one team), while the team still has 4 members, so the two numbers stop being the
-    /// same value the moment a price has a unit. Before D-357 they could not diverge, which is why `Qty`
+    /// same value the moment a price has a unit. Before D-372 they could not diverge, which is why `Qty`
     /// was overloaded to mean team size; `AddMemberToGroupAsync` still falls back to it for rows written
     /// then.</para></summary>
     public int? GroupSize { get; set; }

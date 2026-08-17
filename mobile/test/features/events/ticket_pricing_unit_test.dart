@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kurx_mobile/features/events/data/models/event_summary_dto.dart';
 import 'package:kurx_mobile/features/events/data/models/ticket_type_dto.dart';
 
-/// D-357 — a price with no unit is ambiguous, and the app rendered exactly that.
+/// D-372 — a price with no unit is ambiguous, and the app rendered exactly that.
 ///
 /// `pricing_unit` / `registration_mode` / `group_min` / `group_max` have been on the public
 /// `GET /v1/events/{id}/ticket-types` response since D-020; `TicketTypeDto` parsed them and
@@ -71,7 +71,7 @@ void main() {
   });
 
   /*
-   * D-361 — the discovery CARD.
+   * D-376 — the discovery CARD.
    *
    * The card is deliberately condensed, but "From ₹2,000" on a team event reads as a per-person
    * minimum when it is the whole team's entry fee. `EventSummary` carried no unit at all, so a card
@@ -85,12 +85,12 @@ void main() {
         };
     expect(EventSummaryDto.fromJson(summary('PerGroup')).toEntity().isPricedPerTeam, isTrue);
     expect(EventSummaryDto.fromJson(summary('PerTicket')).toEntity().isPricedPerTeam, isFalse);
-    // Absent = every pre-D-357 event. Must not become "team" by accident.
+    // Absent = every pre-D-372 event. Must not become "team" by accident.
     expect(EventSummaryDto.fromJson(summary(null)).toEntity().isPricedPerTeam, isFalse);
   });
 
   test('a response with none of the fields reads as an individual ticket', () {
-    // Every pre-D-357 row. Absent must not become "team" by accident.
+    // Every pre-D-372 row. Absent must not become "team" by accident.
     final t = TicketTypeDto.fromJson({
       'id': 't2', 'name': 'General', 'price_paise': 50000, 'quantity': 10, 'sold': 0, 'available': 10,
     }).toEntity();

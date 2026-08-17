@@ -6,7 +6,7 @@ namespace Kurx.Application.Abstractions;
 /// split + <c>TeamPolicy</c>. Organiser actions reuse the Phase-6 <c>event:manage</c> permission union — no
 /// parallel authorization.
 ///
-/// <para><b>§6.5 team-slot purchase landed in D-359.</b> A competition group registration now materialises the
+/// <para><b>§6.5 team-slot purchase landed in D-374.</b> A competition group registration now materialises the
 /// Team alongside the legacy purchase <c>Group</c> — see <see cref="MaterialiseForGroupAsync"/> — so buying a team
 /// entry produces the authoritative Team rather than only its mirror. The Phase-9 money path is still
 /// untouched: the Team is a projection of a completed registration, never a second inventory or payment
@@ -21,7 +21,7 @@ public interface ITeamService
     Task<ServiceResult<TeamPolicyView>> SetPolicyAsync(Guid actorId, Guid eventId, Guid ticketTypeId, bool isAdmin, TeamPolicyInput input, CancellationToken ct = default);
 
     // ── Formation (users + captains) ──────────────────────────────────────────────────────────────────────────
-    /// <summary>D-359 — materialise the authoritative <c>Team</c> for a purchase <c>Group</c>, and keep its roster
+    /// <summary>D-374 — materialise the authoritative <c>Team</c> for a purchase <c>Group</c>, and keep its roster
     /// in step as members join.
     ///
     /// <para><b>Why not <see cref="CreateTeamAsync"/>.</b> That is the user-facing formation entry point and

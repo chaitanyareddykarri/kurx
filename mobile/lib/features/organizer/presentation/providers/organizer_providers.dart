@@ -83,11 +83,11 @@ final assignmentsProvider =
             ref.watch(eventManageSourceProvider).assignments(p.orgId, p.eventId));
 
 /*
- * D-357/D-366 — does this archetype permit TEAM entry?
+ * D-372/D-366 — does this archetype permit TEAM entry?
  *
  * Asked of the capability engine (`GET /v1/archetypes/{slug}/capabilities`), never inferred from a
  * type's name. The matrix is data an admin can change, so a second copy of it in this app would
- * silently disagree with the server the day someone edits it — which is precisely what D-357 forbids.
+ * silently disagree with the server the day someone edits it — which is precisely what D-372 forbids.
  *
  * Fails CLOSED: an unreadable capability set, or a Type with no archetype at all, yields false, so the
  * Registration step offers individual entry only rather than a team option the server may refuse.

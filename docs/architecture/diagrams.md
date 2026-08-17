@@ -443,7 +443,7 @@ never returns to `Published`.
 **This is a map of which transitions exist, not of who may take them or when.** Three guards sit on top
 of it and are not drawable as edges:
 
-- **`→ Published` is gated by status *and* actor** (D-362). From `PendingReview`/`UnderReview` only a
+- **`→ Published` is gated by status *and* actor** (D-377). From `PendingReview`/`UnderReview` only a
   reviewer or admin may take it — a creator is refused `reviewer_required`. From `Approved` the creator
   takes it themselves, paid or free. The gate keys on the *target* state, so both `publish` and
   `publish_approved` pass through it. A paid event is refused `paid_event_requires_review` from `Draft`

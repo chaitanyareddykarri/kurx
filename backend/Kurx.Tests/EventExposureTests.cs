@@ -12,7 +12,7 @@ namespace Kurx.Tests;
 /// are what make reintroducing it a build failure rather than a silent regression.</para></summary>
 public class EventExposureTests
 {
-    /// <summary>D-362 — <c>Status</c> is now part of the rule, so the fixture states it. It defaults to
+    /// <summary>D-377 — <c>Status</c> is now part of the rule, so the fixture states it. It defaults to
     /// <c>Published</c> because these cases are about the OTHER two axes; the lifecycle axis has its own
     /// block below.</summary>
     private static Event Ev(EventProduct product, EventVisibility visibility, bool deleted = false,
@@ -27,7 +27,7 @@ public class EventExposureTests
     // ── The rule itself: Published AND Product == Public AND Visibility == Listed. Nothing else. ──
 
     /*
-     * D-362 — the lifecycle axis, which this predicate did not carry.
+     * D-377 — the lifecycle axis, which this predicate did not carry.
      *
      * It answered Product + Visibility + not-deleted and said nothing about STATUS, so a PendingReview
      * event was "publicly visible" by the one rule the class docs call "the one rule for public

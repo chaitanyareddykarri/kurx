@@ -64,7 +64,7 @@ public class TeamService(KurxDbContext db, IEventPermissionService permissions) 
         if (min < 1 || max < min) return ServiceResult<TeamPolicyView>.Fail("invalid_size");
 
         /*
-         * D-357 — the ticket type owns team size, because that is the bound people were CHARGED against.
+         * D-372 — the ticket type owns team size, because that is the bound people were CHARGED against.
          *
          * `SyncPolicyAsync` already seeds this policy from `TicketType.GroupMin/GroupMax` and re-syncs it
          * whenever they change, so the two start and stay in step — but nothing stopped this method from
@@ -104,7 +104,7 @@ public class TeamService(KurxDbContext db, IEventPermissionService permissions) 
 
     // ── Formation ────────────────────────────────────────────────────────────
     /*
-     * D-359 — the §6.5 hook Phase 10 left open.
+     * D-374 — the §6.5 hook Phase 10 left open.
      *
      * `Team.RegistrationId` was added with the note "Null this phase — the team-slot purchase flow is
      * deferred; the field exists so the later competitive-purchase phase can link without a migration."

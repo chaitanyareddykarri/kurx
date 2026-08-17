@@ -40,8 +40,8 @@ class EventSummary {
   final String currency;
 
   /// Null price means no ticket type exists yet — NOT free. Callers must distinguish the two.
-  /// D-361 — what the "From" price buys. Absent reads as per-participant, which is every
-  /// pre-D-357 ticket type.
+  /// D-376 — what the "From" price buys. Absent reads as per-participant, which is every
+  /// pre-D-372 ticket type.
   final String? priceFromUnit;
 
   bool get isFree => priceFromPaise != null && priceFromPaise! <= 0;

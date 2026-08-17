@@ -16,7 +16,7 @@ class TicketTypeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.kurx;
-    // D-357 — the price WITH its unit. "₹2,000" alone cannot tell a registrant whether they are
+    // D-372 — the price WITH its unit. "₹2,000" alone cannot tell a registrant whether they are
     // buying a team entry or one seat of four.
     final priceLabel = ticket.priceLabel(Money.fromMinor);
     final tappable = onBook != null && !ticket.soldOut;
@@ -48,7 +48,7 @@ class TicketTypeTile extends StatelessWidget {
                       Text(ticket.name, style: TextStyle(color: c.text, fontSize: 15, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
                       Text(
-                        // D-357 — what `available` counts. Under PerGroup a team takes one unit, so
+                        // D-372 — what `available` counts. Under PerGroup a team takes one unit, so
                         // "12 left" means twelve TEAMS and has to say so.
                         ticket.soldOut
                             ? 'Sold out'

@@ -274,7 +274,7 @@ void main() {
     });
   });
 
-  /// D-357 — the registration UNIT, and D-366 — a price that depends on team size.
+  /// D-372 — the registration UNIT, and D-366 — a price that depends on team size.
   ///
   /// Mirrors `web/test/event-wizard.test.ts` case for case. This app could not create a team
   /// registration at all before now: it sent `PerTicket`/`Individual` as literals, so an organiser on a

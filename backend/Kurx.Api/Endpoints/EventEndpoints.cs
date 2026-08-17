@@ -498,7 +498,7 @@ public static class EventEndpoints
         e.PriceFromPaise,
         e.Currency,
         e.IsFeatured,
-        // D-361 — emitted with its original capitalisation ("PerGroup"), like every other enum-ish
+        // D-376 — emitted with its original capitalisation ("PerGroup"), like every other enum-ish
         // string on the wire: SnakeCaseResponseConverter renames keys, never values.
         e.PriceFromUnit);
 

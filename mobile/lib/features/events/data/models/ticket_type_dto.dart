@@ -51,7 +51,7 @@ class TicketTypeDto with _$TicketTypeDto {
         quantity: quantity,
         saleEnds: saleEnds,
         isAllAccess: isAllAccess,
-        // D-357 — the DTO carried these four all along and the entity dropped them, so the app could
+        // D-372 — the DTO carried these four all along and the entity dropped them, so the app could
         // only ever show an amount with no unit.
         pricingUnit: pricingUnit,
         registrationMode: registrationMode,

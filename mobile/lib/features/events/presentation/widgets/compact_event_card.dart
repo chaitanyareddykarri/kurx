@@ -109,7 +109,7 @@ class CompactEventCard extends StatelessWidget {
 
 String _priceLabel(EventSummary e) {
   if (e.priceFromPaise == null) return 'View details';
-  // D-361 — see event_card.dart.
+  // D-376 — see event_card.dart.
   if (e.isFree) return e.isPricedPerTeam ? 'Free / team' : 'Free';
   final unit = e.isPricedPerTeam ? ' / team' : '';
   return 'From ${Money.fromMinor(e.priceFromPaise!)}$unit';

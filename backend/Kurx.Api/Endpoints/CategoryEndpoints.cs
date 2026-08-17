@@ -195,7 +195,7 @@ public static class CategoryEndpoints
         c.Sort,
         c.IsVisible,
         c.ProductClass,
-        // D-357 — the archetype the Type derives, so a client can ask the capability engine whether this
+        // D-372 — the archetype the Type derives, so a client can ask the capability engine whether this
         // event can have teams instead of re-deriving the mapping.
         c.ArchetypeSlug);
 

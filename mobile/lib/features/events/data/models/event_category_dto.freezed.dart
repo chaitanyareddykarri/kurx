@@ -34,9 +34,9 @@ mixin _$EventCategoryDto {
   @JsonKey(name: 'product_class')
   String? get productClass => throw _privateConstructorUsedError;
 
-  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// D-372/D-366 — the archetype behind a Type node, which is what the capability engine is asked
   /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
-  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  /// step would have to guess from the type's name — exactly what D-372 forbids.
   @JsonKey(name: 'archetype_slug')
   String? get archetypeSlug => throw _privateConstructorUsedError;
 
@@ -240,9 +240,9 @@ class _$EventCategoryDtoImpl extends _EventCategoryDto {
   @JsonKey(name: 'product_class')
   final String? productClass;
 
-  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// D-372/D-366 — the archetype behind a Type node, which is what the capability engine is asked
   /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
-  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  /// step would have to guess from the type's name — exactly what D-372 forbids.
   @override
   @JsonKey(name: 'archetype_slug')
   final String? archetypeSlug;
@@ -334,9 +334,9 @@ abstract class _EventCategoryDto extends EventCategoryDto {
   @JsonKey(name: 'product_class')
   String? get productClass;
 
-  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// D-372/D-366 — the archetype behind a Type node, which is what the capability engine is asked
   /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
-  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  /// step would have to guess from the type's name — exactly what D-372 forbids.
   @override
   @JsonKey(name: 'archetype_slug')
   String? get archetypeSlug;

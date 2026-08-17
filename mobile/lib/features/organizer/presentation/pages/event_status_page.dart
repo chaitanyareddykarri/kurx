@@ -25,7 +25,7 @@ class EventStatusPage extends ConsumerWidget {
         value: ref.watch(eventManageDetailProvider(param)),
         onRetry: () => ref.invalidate(eventManageDetailProvider(param)),
         data: (event) {
-          // D-362 — Approved is a step of its own. The rail went Review → Published, so approval had
+          // D-377 — Approved is a step of its own. The rail went Review → Published, so approval had
           // nowhere to land and an approved event was drawn as still "Submitted for review". Approval is
           // not publication: it hands the event back, and the organiser decides when it goes live.
           final steps = [
@@ -167,7 +167,7 @@ class EventStatusPage extends ConsumerWidget {
         // D-266 M4 states, serialized as the lowercased enum name — no underscore. `under_review`
         // never matched anything the API returns and silently fell through to the Draft step.
         'pendingreview' || 'underreview' || 'changesrequested' => 1,
-        // D-362 — `approved` sat here too, so an organiser holding an approved event was shown "in
+        // D-377 — `approved` sat here too, so an organiser holding an approved event was shown "in
         // review" and no reason to act. Approval ENDS review; the event is theirs to publish, and the
         // rail has to say the ball has come back. Still short of `published`: approval is permission.
         'approved' => 2,
@@ -377,7 +377,7 @@ class EventStatusPage extends ConsumerWidget {
         // Saying so points at the action that works instead of reporting a dead end.
         'paid_event_requires_review' =>
           'Paid events are reviewed before they go live. Submit it for review instead of publishing.',
-        // D-362 — reachable from this screen only in the window where the event is already in the queue
+        // D-377 — reachable from this screen only in the window where the event is already in the queue
         // and the organiser taps a stale Publish. Mirrors packages/ui PROBLEM_COPY word for word.
         'reviewer_required' =>
           "A reviewer has to approve this — you can't approve your own submission.",

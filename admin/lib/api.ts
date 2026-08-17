@@ -616,7 +616,7 @@ export async function getEventForReview(accessToken: string, eventId: string) {
 }
 
 /*
- * The event's registration options, as a reviewer must read them (D-357).
+ * The event's registration options, as a reviewer must read them (D-372).
  *
  * "Price ₹2,000, Quantity 50" is ambiguous: ₹2,000 for a team or for one of its members, and 50 teams
  * or 50 people. `pricing_unit`, `registration_mode` and the group bounds are what disambiguate it, and

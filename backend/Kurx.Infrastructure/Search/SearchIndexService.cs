@@ -26,7 +26,7 @@ public class SearchIndexService(KurxDbContext db) : ISearchIndexService
         // Canonical exposure rule (D-266 M3): anything not publicly visible is de-indexed. Using the shared
         // predicate rather than an inline comparison is what stops this drifting from the query-side guards
         // — the drift the Step 4 audit found, where an event was hidden from search and shown on profiles.
-        // D-362 — the status check moved INTO `IsPubliclyVisible`, where every caller inherits it.
+        // D-377 — the status check moved INTO `IsPubliclyVisible`, where every caller inherits it.
         if (ev is null || !EventExposure.IsPubliclyVisible(ev)
             || ev.IsSuspended || ev.IsHidden)
         {

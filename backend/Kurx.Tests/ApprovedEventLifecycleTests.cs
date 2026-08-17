@@ -11,7 +11,7 @@ namespace Kurx.Tests;
 
 /// <summary>D-363 §1/§2/§4 — leaving `Approved`, and what approval actually binds to.
 ///
-/// <para>D-362 made `Approved` a state an event genuinely SITS in rather than passes through, which
+/// <para>D-377 made `Approved` a state an event genuinely SITS in rather than passes through, which
 /// exposed three gaps at once. It was forward-only: no withdrawal, no cancellation, so an organiser who
 /// changed their mind was stuck holding it and a reviewer who approved in error could not take it back.
 /// And `IsEditLocked` covered the review states only, so an approved event was **fully editable with no

@@ -1243,7 +1243,7 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
             if (readinessError is not null) return ServiceResult<EventDetail>.Fail(readinessError);
 
             /*
-             * D-362 — approval and publication are two acts, by two different people.
+             * D-377 — approval and publication are two acts, by two different people.
              *
              *   PendingReview / UnderReview → the decision is the REVIEWER's. The creator may not publish.
              *   Approved                    → the decision is the CREATOR's. Approval already granted the
@@ -1994,7 +1994,7 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
     }
 
     /*
-     * D-360 — how many teams may enter, answered by the thing that actually decides.
+     * D-375 — how many teams may enter, answered by the thing that actually decides.
      *
      * `events.MaxTeams` (D-265) was stored, echoed on the eligibility view, and enforced NOWHERE: an
      * organiser could type 50 while their team ticket sold 20 slots, and both numbers were presented as

@@ -210,7 +210,7 @@ class TeamPriceBand {
 ///
 /// Mirrors web's `validateTicket` — same rules, same order, so an organiser is blocked for the same
 /// reasons on both surfaces and the server is refused by neither. `participation` maps to
-/// `RegistrationMode` and `PricingUnit` together (D-357): team ⇒ Group + PerGroup (one charge and one
+/// `RegistrationMode` and `PricingUnit` together (D-372): team ⇒ Group + PerGroup (one charge and one
 /// inventory unit per team), individual ⇒ Individual + PerTicket.
 Map<String, String> validateEventTicket({
   required String name,

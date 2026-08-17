@@ -397,7 +397,7 @@ describe("validateLegal", () => {
 });
 
 describe("validateTicket", () => {
-  /// D-357 — the registration option and the UNIT its price is charged in.
+  /// D-372 — the registration option and the UNIT its price is charged in.
   const SOLO = {
     name: "General", priceRupees: "", quantity: "10",
     participation: "individual" as const, teamMin: "2", teamMax: "4",
@@ -522,7 +522,7 @@ describe("validateTicket", () => {
 
 describe("archetypeSupportsTeams", () => {
   /// Read from the capability engine's own answer — a hardcoded list of "team-ish" type names is the
-  /// duplication D-357 exists to prevent, and would disagree the first time an admin edited the matrix.
+  /// duplication D-372 exists to prevent, and would disagree the first time an admin edited the matrix.
   it("is false when the engine says the capability is unsupported", () => {
     expect(archetypeSupportsTeams([{ slug: "teams", state: "unsupported" }])).toBe(false);
     expect(archetypeSupportsTeams([{ slug: "teams", state: "locked" }])).toBe(false);

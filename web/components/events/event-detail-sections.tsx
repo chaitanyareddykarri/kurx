@@ -24,7 +24,7 @@ import type { EventDetail } from "@/lib/api";
  */
 
 /**
- * A price and what it buys (D-357).
+ * A price and what it buys (D-372).
  *
  * `₹2,000` alone is the ambiguity this exists to remove: a registrant cannot tell an entry fee for a
  * whole team from one person's share of it. `pricing_unit` has been on the public

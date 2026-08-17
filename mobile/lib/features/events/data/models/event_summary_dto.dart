@@ -25,7 +25,7 @@ class EventSummaryDto with _$EventSummaryDto {
     @JsonKey(name: 'event_mode') String? eventMode,
     @JsonKey(name: 'category_name') String? categoryName,
     @JsonKey(name: 'price_from_paise') int? priceFromPaise,
-    // D-361 — the unit the "From" price is charged in.
+    // D-376 — the unit the "From" price is charged in.
     @JsonKey(name: 'price_from_unit') String? priceFromUnit,
     String? currency,
     @JsonKey(name: 'is_featured') bool? isFeatured,

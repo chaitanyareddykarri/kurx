@@ -79,7 +79,7 @@ public class AdminEventManagementTests : IClassFixture<KurxApiFactory>
         _factory.SeedApprovedEventAuthorization(eventId);   // D-266 M5 — fixture needs a published event
 
         /*
-         * D-362 — this helper used to submit for review and then publish as the OWNER, which worked only
+         * D-377 — this helper used to submit for review and then publish as the OWNER, which worked only
          * because the reviewer gate was misplaced. A fixture named `PublishedEventAsync` was quietly
          * exercising the bypass, and the one test in this class that needs the event to actually be past
          * review (`Content_edit_requires_a_real_org_role_not_the_admin_claim`, which the edit lock 409s in

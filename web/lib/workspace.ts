@@ -12,7 +12,7 @@
 /// state instead of being presented as a working workspace (product flow: "Admin Review → Approved →
 /// Host Workspace Opens").
 ///
-/// D-362 — `approved` belongs here, and its absence contradicted the sentence directly above. Approval
+/// D-377 — `approved` belongs here, and its absence contradicted the sentence directly above. Approval
 /// is the moment the workspace opens: the event is reviewed, permitted, and waiting on its host to
 /// publish it. Without it the row drew an hourglass reading "Opens after approval" on an event that WAS
 /// approved, and the one action the host now had — Publish — sat behind a link the page would not offer.

@@ -117,14 +117,14 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   final _ticketPrice = TextEditingController();
   final _ticketQuantity = TextEditingController(text: '100');
 
-  /// D-357 — how people take part, which is what gives the price its unit. `team` maps to
+  /// D-372 — how people take part, which is what gives the price its unit. `team` maps to
   /// `RegistrationMode.Group` + `PricingUnit.PerGroup` together: one charge and one inventory unit for
   /// the whole team. Defaults to individual, which is what every event this wizard made before now was.
   String _participation = 'individual';
   final _teamMin = TextEditingController(text: '2');
   final _teamMax = TextEditingController(text: '4');
 
-  /// D-366 — team-size price bands. Empty means one price for every size, which is D-357 unchanged and
+  /// D-366 — team-size price bands. Empty means one price for every size, which is D-372 unchanged and
   /// stays the default: an organiser who does not need bands never sees the table.
   final List<TeamPriceBand> _bands = [];
 
@@ -270,7 +270,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             ? const {}
             : const {'representingOrgId': 'Choose the organization you are hosting this event on behalf of'},
         _Step.visibility: const {},
-        // D-357 — the registration UNIT, asked after Type because the archetype decides whether team
+        // D-372 — the registration UNIT, asked after Type because the archetype decides whether team
         // entry exists at all. The paid-event eligibility check rides here too (D-365): it used to sit
         // on the deleted Pricing step, and this is the first step where money is actually typed.
         _Step.registration: {
@@ -448,7 +448,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           // case (D-366).
           'pricePaise': _bands.isEmpty ? _ticketPricePaise : 0,
           /*
-           * D-357 — the unit, no longer a literal.
+           * D-372 — the unit, no longer a literal.
            *
            * These two read `'PerTicket'` and `'Individual'` and made a capable API uni-modal: this app
            * could not create a team registration in any form, so an organiser on a phone could only
@@ -906,7 +906,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
         ],
       );
 
-  /// D-357/D-366 — the registration option: what people book, HOW they take part, what that costs in
+  /// D-372/D-366 — the registration option: what people book, HOW they take part, what that costs in
   /// the unit it is charged in, and how many of that unit exist.
   ///
   /// Placed after Type because the Type carries the archetype, and the archetype's `teams` capability

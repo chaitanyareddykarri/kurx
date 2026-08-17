@@ -175,7 +175,7 @@ CI (`.github/workflows/ci.yml`) remains the final authority.
 
 When a guard is added and an unrelated test starts failing, suspect the fixture before the guard.
 
-D-362 closed a hole that let a creator publish straight out of the review queue. One test then failed —
+D-377 closed a hole that let a creator publish straight out of the review queue. One test then failed —
 `AdminEventManagementTests.Content_edit_requires_a_real_org_role_not_the_admin_claim` — because its
 helper, named `PublishedEventAsync`, reached `Published` by *using* that hole: `submit_review` then
 `publish` as the owner. A fixture with "Published" in its name had been quietly exercising the bypass,

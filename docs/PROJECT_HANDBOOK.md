@@ -15,7 +15,7 @@ If something here conflicts with `docs/DECISIONS.md`, the decision log wins; fil
 > | Fact | Measured 2026-08-15 | What this file used to say |
 > |---|---|---|
 > | Test suite | **Do not quote a figure here.** The measured baseline lives in `.claude/CLAUDE.md` §9 and `.claude/memory/testing-standards.md`, which are updated per run — it moved from 1825 to 1831 while this table was being corrected. Green is the standard; only a **full-suite** run is evidence. | "1825 total" (hours old); "1743 total / 5 failed" (2026-08-12) |
-> | Decisions in `DECISIONS.md` | **300 entries / 282 distinct numbers**, highest D-355 (2026-08-15, 18:0x) — and it moved twice *during* this measurement pass, so **derive it, never quote it**: `grep -cE '^## D-[0-9]+' docs/DECISIONS.md` and `grep -oE '^## D-[0-9]+' docs/DECISIONS.md \| tail -1`. Entries exceed distinct numbers because D-266 carries 11 milestone headings and three numbers genuinely collide (D-105, D-114, D-299 each name two unrelated decisions). | "294 / 276, highest D-345" (measured hours earlier the same day); "277" (2026-08-12) |
+> | Decisions in `DECISIONS.md` | **300 entries / 282 distinct numbers**, highest D-371 (2026-08-15, 18:0x) — and it moved twice *during* this measurement pass, so **derive it, never quote it**: `grep -cE '^## D-[0-9]+' docs/DECISIONS.md` and `grep -oE '^## D-[0-9]+' docs/DECISIONS.md \| tail -1`. Entries exceed distinct numbers because D-266 carries 11 milestone headings and three numbers genuinely collide (D-105, D-114, D-299 each name two unrelated decisions). | "294 / 276, highest D-345" (measured hours earlier the same day); "277" (2026-08-12) |
 > | Database tables | **162** | "158" (2026-08-12) |
 > | Admin console modules | **20 of 20 live, none disabled**; 24 console pages, 27 total | "12 live modules" (§8/§9/§10) |
 > | API surface | **441 paths / 535 operations**, 496 with declared responses | "427 paths / 518 operations" |
@@ -169,7 +169,7 @@ Draft --submit_for_review--> PendingReview --claim_review--> UnderReview --appro
   unpublish: refused once anyone has registered (`event_has_history`) — cancel or close instead
 ```
 
-**Approval grants permission to publish; it does not publish** ([D-362](DECISIONS.md)). `Approved` is a
+**Approval grants permission to publish; it does not publish** ([D-377](DECISIONS.md)). `Approved` is a
 real state an event sits in: reviewed, permitted, and **not public**. From `PendingReview`/`UnderReview`
 the creator is refused with `reviewer_required` — the decision is the reviewer's. From `Approved` the
 decision is the **creator's**, paid or free, and it is also where the Event Host Workspace opens. Only

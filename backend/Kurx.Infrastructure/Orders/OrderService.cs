@@ -37,7 +37,7 @@ public class OrderService(
     ITrustService trust,
     IRealtimeBroadcaster realtime,
     IProfileVisibilityResolver visibility,
-    // D-359 — a competition group registration materialises the authoritative Team beside the legacy
+    // D-374 — a competition group registration materialises the authoritative Team beside the legacy
     // purchase Group. Team formation itself stays entirely in the Phase-10 subsystem.
     ITeamService teams,
     ILogger<OrderService> log) : IOrderService
@@ -73,7 +73,7 @@ public class OrderService(
     }
 
     /*
-     * D-357 — the pricing unit decides what is charged, and it is the ONLY thing that does.
+     * D-372 — the pricing unit decides what is charged, and it is the ONLY thing that does.
      *
      * `PricePaise` is an amount without a unit until this is applied. The three live combinations:
      *
@@ -135,7 +135,7 @@ public class OrderService(
     ///
     /// <para><b>`PerGroup` is the whole point:</b> the team slot was bought as one unit, so its members
     /// cost no further inventory and <c>Quantity</c> finally means "number of teams". Under `PerTicket`
-    /// each person is a separately-priced seat and still consumes one, which is what every pre-D-357 row
+    /// each person is a separately-priced seat and still consumes one, which is what every pre-D-372 row
     /// does — so nothing existing changes.</para></summary>
     private static bool JoinConsumesInventory(TicketType tt) => tt.PricingUnit != PricingUnit.PerGroup;
 
@@ -227,7 +227,7 @@ public class OrderService(
                 return ServiceResult<OrderView>.Fail("payments_not_enabled");
 
             /*
-             * D-357 — `paid_group_not_supported_yet` stood here and refused every non-Individual mode.
+             * D-372 — `paid_group_not_supported_yet` stood here and refused every non-Individual mode.
              * It is gone because the path below now exists, not because the guard was inconvenient: the
              * amount is unit-derived, the group is materialised at capture, and joining it consumes no
              * further inventory under PerGroup. Removing it without those three would have shipped a
@@ -298,7 +298,7 @@ public class OrderService(
             GuestEmail = guestEmail,
             GuestAccessToken = userId is null ? GenerateGuestAccessToken() : null,
             IdempotencyKey = input.IdempotencyKey,
-            // D-357 — recorded explicitly rather than inferred from `Qty`, which is now the billable
+            // D-372 — recorded explicitly rather than inferred from `Qty`, which is now the billable
             // quantity. Free events are always billable-1, so the two agree here; a paid team is where
             // they diverge, and the roster cap must read the same field on both paths.
             GroupSize = tt.RegistrationMode == RegistrationMode.Group ? input.GroupSize : null,
@@ -365,7 +365,7 @@ public class OrderService(
             await db.SaveChangesAsync(ct);
             await registration.ProjectOrderInTransactionAsync(order.Id, ct);   // reg + admission + credential + VAR, authoritative
             EnqueueChatJoin(eventId, userId);                                  // §17.1 side effect via outbox, never inline
-            // D-359 — AFTER the projection: the Team links to the Registration the money path just made,
+            // D-374 — AFTER the projection: the Team links to the Registration the money path just made,
             // which is what `Team.RegistrationId` was reserved for. A no-op unless the ticket type is a
             // competition, so a plain group purchase is unchanged.
             if (groupIdForTeam is { } freeGroupId) await teams.MaterialiseForGroupAsync(freeGroupId, ct);
@@ -444,7 +444,7 @@ public class OrderService(
         if (tt.RegistrationMode == RegistrationMode.Group && order.UserId is { } paidLeaderId)
         {
             /*
-             * D-357 — a PAID group materialises its Group here, at capture, and not at checkout.
+             * D-372 — a PAID group materialises its Group here, at capture, and not at checkout.
              *
              * The free path creates the Group immediately because there is nothing to wait for. A paid
              * order is Pending until the gateway confirms, and a Pending team that could already hand out
@@ -480,7 +480,7 @@ public class OrderService(
             db.Tickets.Add(leaderTicket);
             leaderMember.TicketId = leaderTicket.Id;
 
-            // D-359 — the authoritative Team for a competition entry, made in the same transaction as the
+            // D-374 — the authoritative Team for a competition entry, made in the same transaction as the
             // Group it mirrors. Saved first so the roster read inside sees the captain's GroupMember row.
             await db.SaveChangesAsync(ct);
             await teams.MaterialiseForGroupAsync(group.Id, ct);
@@ -866,11 +866,11 @@ public class OrderService(
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({g1}, {g2})", ct);
 
         /*
-         * D-357 — the team's size, which is no longer always `OrderItem.Qty`.
+         * D-372 — the team's size, which is no longer always `OrderItem.Qty`.
          *
          * `Qty` is now the BILLABLE quantity (1 for a PerGroup team), so reading it as the roster cap
          * would limit every paid team to one member. `Order.GroupSize` carries the real size; the
-         * fallback to `Qty` is what keeps every pre-D-357 free-group order — where the two were the same
+         * fallback to `Qty` is what keeps every pre-D-372 free-group order — where the two were the same
          * number — behaving exactly as before.
          */
         var orderRow = await db.Orders.AsNoTracking()
@@ -890,7 +890,7 @@ public class OrderService(
          * Under `PerGroup` the whole team was bought and reserved as ONE unit, so a joining member takes
          * nothing further and `Quantity` finally means "number of teams": 50 teams stays 50 teams rather
          * than draining to 10 as rosters fill. Under `PerTicket` each person is a separately-priced seat
-         * and still consumes one — which is every pre-D-357 row, so nothing existing moves.
+         * and still consumes one — which is every pre-D-372 row, so nothing existing moves.
          */
         if (JoinConsumesInventory(tt) && !await inventory.TryConsumeManyAsync([new PoolDraw(poolId, 1)], ct))
             return ServiceResult<GroupMemberView>.Fail("sold_out");
@@ -901,7 +901,7 @@ public class OrderService(
         await db.SaveChangesAsync(ct);
         await registration.ProjectOrderInTransactionAsync(group.OrderId, ct);   // member admission + credential, authoritative
         EnqueueChatJoin(group.EventId, userId);                                 // §17.1 side effect via outbox, never inline
-        // D-359 — the Team roster follows the Group roster. Idempotent, so a member already on the team
+        // D-374 — the Team roster follows the Group roster. Idempotent, so a member already on the team
         // (or a non-competition ticket type, which has no team at all) is a no-op.
         await teams.MaterialiseForGroupAsync(group.Id, ct);
         await db.SaveChangesAsync(ct);

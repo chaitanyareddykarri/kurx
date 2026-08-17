@@ -46,7 +46,7 @@ export default async function CreateEventPage() {
   const representationsFailed = representations.state !== "ok";
 
   /*
-   * D-357 — which of the archetypes on offer permit team entry.
+   * D-372 — which of the archetypes on offer permit team entry.
    *
    * Asked of the capability engine, once per DISTINCT archetype among the Types this caller could
    * choose, and resolved here rather than in the wizard: the wizard is a client component, and a

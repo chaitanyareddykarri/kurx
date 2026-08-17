@@ -104,7 +104,7 @@ public sealed record CategoryResponse(
     int Sort,
     bool IsVisible,
     string? ProductClass = null,
-    /// <summary>D-357 — the behaviour archetype this Type derives. See <see cref="CategoryView"/>.</summary>
+    /// <summary>D-372 — the behaviour archetype this Type derives. See <see cref="CategoryView"/>.</summary>
     string? ArchetypeSlug = null);
 
 /// <summary>Wire shape of <see cref="AdminCategoryView"/>. Same D-326 correction as
@@ -541,7 +541,7 @@ public sealed record EventSummaryResponse(
     long? PriceFromPaise,
     string Currency,
     bool IsFeatured,
-    /// <summary>D-361 — the unit the "From" price is charged in. See <see cref="EventSummary.PriceFromUnit"/>.</summary>
+    /// <summary>D-376 — the unit the "From" price is charged in. See <see cref="EventSummary.PriceFromUnit"/>.</summary>
     string? PriceFromUnit = null);
 
 /// <summary><c>GET /v1/events</c> — the paged discovery feed.</summary>

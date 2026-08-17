@@ -406,7 +406,7 @@ export const categorySchema = z.object({
   /// The Create-Event gate filters Types by this; it never overrides the derivation (D-266 M1 / D-305).
   /// Optional so a response from a backend predating it still parses (the D-292 lesson).
   product_class: z.string().nullable().optional(),
-  /// The behaviour archetype a Type derives (D-357). `Event.ArchetypeSlug` is snapshotted from it at
+  /// The behaviour archetype a Type derives (D-372). `Event.ArchetypeSlug` is snapshotted from it at
   /// create (D-266 M1), and it is the key to `GET /v1/archetypes/{slug}/capabilities` — which is how the
   /// Registration step learns whether this event may have teams, instead of hardcoding type names.
   archetype_slug: z.string().nullable().optional()
@@ -571,10 +571,10 @@ export const publicTicketTypeSchema = z.object({
   quantity: z.number().nullable().optional(),
   sold: z.number().nullable().optional(),
   per_user_limit: z.number().nullable().optional(),
-  /// D-357 — what `price_paise` is charged FOR: `PerTicket` (per participant) or `PerGroup` (per team).
+  /// D-372 — what `price_paise` is charged FOR: `PerTicket` (per participant) or `PerGroup` (per team).
   /// `TicketTypeView` has returned it on this public route all along and this schema dropped it, so
   /// every surface rendered a bare "₹2,000" that a registrant could not interpret. Absent reads as
-  /// `PerTicket`, which is what every pre-D-357 row is.
+  /// `PerTicket`, which is what every pre-D-372 row is.
   pricing_unit: z.string().nullable().optional(),
   registration_mode: z.string().nullable().optional(),
   group_min: z.number().nullable().optional(),
@@ -656,7 +656,7 @@ export const eventSummarySchema = z.object({
   category_name: z.string().nullable().optional(),
   // null means no ticket type exists yet — render "Registration not open", never "Free".
   price_from_paise: z.number().nullable().optional(),
-  /// D-361 — the unit the "From" price is charged in. Without it a card can only say "From ₹2,000",
+  /// D-376 — the unit the "From" price is charged in. Without it a card can only say "From ₹2,000",
   /// which on a team event reads as a per-person minimum when it is the whole team's entry fee.
   price_from_unit: z.string().nullable().optional(),
   currency: z.string().nullable().optional(),

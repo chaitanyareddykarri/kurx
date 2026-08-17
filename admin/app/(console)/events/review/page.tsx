@@ -85,7 +85,7 @@ export default async function EventReviewConsolePage({
     const dossiers = await Promise.all(
       list.items.map((e) => getEventForReview(session.accessToken, e.event_id).catch(() => null)),
     );
-    // D-357 — the registration options and the UNIT their prices are charged in, so "₹2,000" is never
+    // D-372 — the registration options and the UNIT their prices are charged in, so "₹2,000" is never
     // shown to a reviewer without saying whether it buys a team or a seat.
     const ticketSets = await Promise.all(
       list.items.map((e) => getEventTicketTypesForReview(session.accessToken, e.event_id).catch(() => [])),

@@ -117,7 +117,7 @@ four-input step is what makes a disabled button useless. Where the server alread
 where one client already has it (Flutter's `_basicsValid` carried the date ordering before web did),
 copy that rule rather than writing a third.
 
-**One per-step validation table, never a per-step boolean clause (D-354).** D-327 fixed the *symptom* —
+**One per-step validation table, never a per-step boolean clause (D-370).** D-327 fixed the *symptom* —
 `step >= 4` — by writing a clause per step, and the shape it left behind reproduced the bug three more
 times: Content, Location and Eligibility ended up as a bare `step === 6 || step === 7 || step === 9`
 (an unconditional pass), Details checked 3 of the 9 fields it renders, and Windows checked only pair
@@ -132,7 +132,7 @@ before advancing. The rules themselves live in `web/lib/event-wizard.ts` and
 `mobile/.../domain/event_wizard_payload.dart` — pure, DOM-free, and tested there; the component only
 renders them. Web and Flutter carry the same messages verbatim so the two clients cannot drift.
 
-**A step may be stricter than the API; it must never be looser (D-354).** The Details step requires all
+**A step may be stricter than the API; it must never be looser (D-370).** The Details step requires all
 nine fields it asks for while `CreateEventBodyValidator` takes six as optional — deliberate, because a
 step that asks for a field and then waves it through is asking for nothing. Every *other* rule in the
 wizard mirrors an existing server refusal (`online_url_required`, `invalid_age_range`,

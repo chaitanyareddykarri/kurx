@@ -35,7 +35,7 @@ class WorkspaceHubPage extends ConsumerWidget {
   /// Statuses where the host workspace is genuinely open. Everything else is pre-approval and gets
   /// a state chip instead of a working link (flow: "Admin Review → Approved → Host Workspace Opens").
   ///
-  /// D-362 — `approved` belongs here and its absence contradicted that flow: approval is exactly when
+  /// D-377 — `approved` belongs here and its absence contradicted that flow: approval is exactly when
   /// the workspace opens, and the host's next action (publish) lives inside it. Kept identical to web's
   /// `OPEN_HOST_STATES`; the two disagreeing is one defect written twice — and public, so a test can
   /// pin that claim rather than leave it as a comment.

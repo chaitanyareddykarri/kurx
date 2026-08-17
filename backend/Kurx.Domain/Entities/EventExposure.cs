@@ -24,7 +24,7 @@ namespace Kurx.Domain.Entities;
 public static class EventExposure
 {
     /*
-     * D-362 — the lifecycle half of the rule, which this file did not carry.
+     * D-377 — the lifecycle half of the rule, which this file did not carry.
      *
      * `PubliclyVisible` answered Product + Visibility + not-deleted and said nothing about STATUS, so by
      * this predicate a PendingReview event was "publicly visible". Nothing leaked, because the one

@@ -410,7 +410,7 @@ public class TicketPriceTier
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TicketTypeId { get; set; }
     /// <summary>Inclusive, both ends. A team whose size falls inside pays <see cref="PricePaise"/> in
-    /// total — never multiplied by the roster, which is the D-357 rule this must not reintroduce.</summary>
+    /// total — never multiplied by the roster, which is the D-372 rule this must not reintroduce.</summary>
     public int MinSize { get; set; }
     public int MaxSize { get; set; }
     public long PricePaise { get; set; }

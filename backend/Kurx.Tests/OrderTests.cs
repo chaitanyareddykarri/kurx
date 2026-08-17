@@ -254,7 +254,7 @@ public class OrderTests : IClassFixture<KurxApiFactory>
         Assert.Equal(2, group.GetProperty("members").EnumerateArray().Count());
 
         /*
-         * D-357 — ONE, not two. The roster has two people and the ticket type is `PerGroup`, so the
+         * D-372 — ONE, not two. The roster has two people and the ticket type is `PerGroup`, so the
          * registration unit is the TEAM: it took one inventory unit when the leader registered and the
          * joiner took none, because that member was already inside the slot the team holds.
          *
@@ -453,7 +453,7 @@ public class OrderTests : IClassFixture<KurxApiFactory>
 
         var group = await Json(await _a1.GetAsync($"/v1/groups/{groupId}"));
         Assert.Equal(2, group.GetProperty("members").EnumerateArray().Count());
-        // D-357 — one TEAM slot for a two-person team on a `PerGroup` ticket. See the note above.
+        // D-372 — one TEAM slot for a two-person team on a `PerGroup` ticket. See the note above.
         Assert.Equal(1, SoldFor(ttId));
 
         // Re-accepting the same token fails — already accepted.

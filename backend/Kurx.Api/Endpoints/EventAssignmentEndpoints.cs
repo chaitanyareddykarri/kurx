@@ -76,7 +76,8 @@ public static class EventAssignmentEndpoints
         a.EventTitle,
         a.EventSlug,
         a.EventStartsAt,
-        a.RepresentingOrgName);
+        a.RepresentingOrgName,
+        a.AssigneeAvatarUrl);
 
     private static Guid UserId(ClaimsPrincipal principal)
         => Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id)

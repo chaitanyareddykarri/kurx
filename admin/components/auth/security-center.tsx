@@ -210,7 +210,7 @@ export function StaffSecurityCenter({
           <List>
             {activity.map((item, index) => (
               <li key={`${item.type}-${item.created_at}-${index}`} className="flex items-center gap-3 p-3">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${item.severity === "critical" ? "bg-danger" : item.severity === "warning" ? "bg-amber-500" : "bg-accent"}`} aria-hidden />
+                <span className={`h-2 w-2 shrink-0 rounded-full ${item.severity === "critical" ? "bg-danger" : item.severity === "warning" ? "bg-warning" : "bg-accent"}`} aria-hidden />
                 <span className="flex-1 truncate text-sm text-text">{securityActivityLabel(item.type)}</span>
                 <span className="shrink-0 text-xs text-muted">{relativeTime(item.created_at)}</span>
               </li>

@@ -14,7 +14,7 @@ export function PostsHome({
   trending,
   query
 }: {
-  author: { name: string; avatarKey?: string | null };
+  author: { name: string; avatarUrl?: string | null };
   initial: PostPage;
   trending: TrendingHashtag[];
   /// Present when the page was opened as a search (`/posts?q=…`). The results replace the feed rather

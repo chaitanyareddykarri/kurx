@@ -1,9 +1,9 @@
 import {
+  Award,
   Bookmark,
   ClipboardCheck,
   Handshake,
   Home,
-  IdCard,
   LayoutDashboard,
   MailOpen,
   MessagesSquare,
@@ -48,11 +48,7 @@ export const secondaryNav: NavItem[] = [
   // into it would undo that.
   { href: "/assignments", label: "Assignments", icon: ClipboardCheck },
   { href: "/tickets", label: "My Tickets", icon: Ticket },
-  // D-331's cards had no way in: `/id-cards` was reachable only from its own detail page's back-link,
-  // so the feature existed and could not be found. Placed after My Tickets because both answer "what am
-  // I holding" — but a ticket admits you to one event and a card asserts who you are, so they stay
-  // separate entries rather than one combined "wallet".
-  { href: "/id-cards", label: "ID Cards", icon: IdCard },
+  { href: "/my-certificates", label: "My Certificates", icon: Award },
   { href: "/saved", label: "Saved", icon: Bookmark },
   { href: "/groups", label: "Groups", icon: Users },
   // "Create event" was here until D-305. Creation is entered from **Profile**, and a primary-nav entry

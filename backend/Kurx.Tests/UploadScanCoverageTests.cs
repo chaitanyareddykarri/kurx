@@ -178,14 +178,48 @@ public class UploadScanCoverageTests : IClassFixture<UnreachableScannerFactory>
         client.DefaultRequestHeaders.Authorization = new("Bearer",
             tokens.GetProperty("access_token").GetString());
 
+        // The caller's OWN prefix (D-354). It used to be `users/x/avatar/a`, which since D-354 is
+        // refused as `invalid_storage_key` before the scanner is ever consulted — so the assertion below
+        // would have passed for the wrong reason and stopped covering the scan gate at all. The
+        // cross-user case has its own test, immediately after this one.
+        var userId = (await (await client.GetAsync("/v1/me")).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("id").GetGuid();
+
         // camelCase IN, snake_case OUT — the convention that has bitten more than one client. Sending
         // `avatar_key` here binds nothing, the gate sees a null key, and the request succeeds.
         var res = await client.PatchAsJsonAsync("/v1/me/profile",
-            new { avatarKey = "users/x/avatar/a" });
+            new { avatarKey = $"users/{userId}/avatar/a" });
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
         var problem = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("scan_unavailable", problem.GetProperty("error").GetString());
+    }
+
+    /// <summary>D-354 — a key under ANOTHER user's prefix is refused outright, before the scanner.
+    ///
+    /// <para>The hole this closes: nothing checked the prefix, so any account could PATCH another user's
+    /// avatar key onto its own profile. Every projection then presigned that key and served a private
+    /// upload under the wrong person's name — and it would have read as a caching bug, not a breach.</para></summary>
+    [Fact]
+    public async Task A_profile_image_key_belonging_to_another_user_is_refused()
+    {
+        var client = _factory.CreateClient();
+        const string phone = "9931000009";
+        await client.PostAsJsonAsync("/v1/auth/otp/request", new { phone });
+        var code = _factory.WhatsApp.LastOtpFor(phone);
+        var tokens = await (await client.PostAsJsonAsync("/v1/auth/otp/verify", new { phone, code }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        client.DefaultRequestHeaders.Authorization = new("Bearer",
+            tokens.GetProperty("access_token").GetString());
+
+        var res = await client.PatchAsJsonAsync("/v1/me/profile",
+            new { avatarKey = $"users/{Guid.NewGuid()}/avatar/a" });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
+        var problem = await res.Content.ReadFromJsonAsync<JsonElement>();
+        // Not `scan_unavailable`: the refusal is authorization, and it must not depend on a scanner
+        // being reachable.
+        Assert.Equal("invalid_storage_key", problem.GetProperty("error").GetString());
     }
 
     /// <summary>The gate must not fire on a request that claims no key — otherwise every profile edit
@@ -315,6 +349,13 @@ public class FileScannerProductionGuardTests
             ["JWT_SECRET"] = "a-unique-test-secret-that-is-definitely-long-enough-0123456789",
             ["TICKET_HMAC_SECRET"] = "a-unique-test-ticket-hmac-secret-0123456789-abcdef",
             ["OTP_PEPPER"] = "a-unique-test-otp-pepper-0123456789-abcdefghijklmnop",
+            // D-355: STORAGE_PROVIDER=localdisk is refused under Production, and that guard runs BEFORE
+            // this one — so without a durable provider configured here these tests would assert the
+            // storage refusal instead of the scanner refusal they exist for. Not a weakening: it is the
+            // rest of a valid Production configuration, so the only thing left under test is the scanner.
+            ["STORAGE_PROVIDER"] = "s3",
+            ["S3_BUCKET"] = "kurx-scanner-cfg-test",
+            ["S3_REGION"] = "ap-south-1",
         };
         if (scanner is not null) values["FILE_SCANNER"] = scanner;
         return new ConfigurationBuilder().AddInMemoryCollection(values).Build();

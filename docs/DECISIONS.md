@@ -13719,6 +13719,515 @@ twice — but it is ~140 non-test call sites plus a migration, and belongs in it
 
 ---
 
+## D-354 · The certificate & ID-card design studio is removed; the storage-key fix stays (2026-08-15)
+
+**D-340, D-341 and D-342 are retired and their numbers are not reused.** They described a
+"Certificates & ID Cards" design studio — an image-first template editor, OCR text detection over an
+uploaded certificate, and bulk generation from a CSV participant list — built across two sessions and
+removed at the owner's request before any of it was committed. The numbers are left as a gap on purpose:
+they were cited in code and in an archive that still exists, and a reused number would make two different
+decisions indistinguishable in a `git log` search.
+
+### What was removed
+The whole feature and its entry point: the `Certificates & ID Cards` item on the event dashboard, the
+editor, the upload and detection paths, the CSV batch runner, and the four EF migrations behind them
+(`AddDesignStudioFields`, `AddIdCardBadgeRender`, `AddDesignCertificateType`, `AddCertificateBatches`).
+None had been applied to any database, so there is no schema to roll back and the migration chain simply
+ends where it did before, at `AddIdCardMealDisplay`.
+
+The dashboard's **Certificates** item — issuance: generate, roster, revoke — is untouched, as are
+`CertificateService`, the D-331/D-335 ID cards, the admin console's certificates module, the mobile
+certificate screens and the public verification pages. Removing the designer removed a way to *author*
+what a document looks like, not the platform's ability to issue one.
+
+`DesignTemplate` and `TemplateKind.IdCard` remain: the table predates the studio, `CertificateService`
+and `DesignTemplateSeeder` read it, and the enum member is persisted by integer value so deleting it
+would reinterpret stored rows.
+
+**None of this was in git.** The studio was never committed — not even the parts that predated the
+sessions that extended it — so deletion left no history to restore from. The archive is
+`~/kurx/.design-studio-backup-2026-08-15/`, outside the repository, with a README describing how to
+restore it. Recording its location here is the point of this paragraph: an archive nobody can find is the
+same as no archive.
+
+### What was kept, and why it is not part of that feature
+
+`PATCH /v1/me/profile` accepted `AvatarKey` and `CoverKey` as arbitrary strings. Two checks now guard it,
+in this order, and they stay:
+
+1. **Prefix ownership**, before the malware gate and costing no IO: the key must sit under
+   `users/{callerId}/{slot}/`, exactly what `MediaService.PresignProfileImageAsync` mints. Without it any
+   account could PATCH another user's avatar key onto its own profile, and every surface that renders an
+   avatar would presign and serve that private upload under the wrong name — a cross-user exposure that
+   would have read as a caching bug.
+2. **Existence**, after the gate, because a real scanner already covers it (`ClamAvFileScanner` reads the
+   bytes through `IStorage`, so an absent key returns `ScanFailed`). This closes the case the scanner
+   cannot: with `FILE_SCANNER=none`, `NoOpFileScanner` reports a key Clean *without reading it*.
+
+Both refuse with the same `invalid_storage_key`. Distinguishing "not yours" from "does not exist" would
+turn the endpoint into an oracle for which storage keys are real (D-018).
+
+This was found while building the studio and has nothing to do with it — the hole is in the profile
+endpoint and predates the feature by months. Reverting it alongside the studio would have traded a
+removed convenience for a reintroduced vulnerability.
+
+### Certificates and ID cards are withdrawn too
+
+Removing the designer left the features it authored for, so both follow it. **Certificates**: the
+endpoints, service and tests; the web, admin-console and mobile surfaces; the four dangling nav links.
+**ID cards** (D-331/D-335): the endpoints, service, renderer and tests; the `/id-cards` pages, editor and
+nav entry. The public `/verify/{code}` page goes with them — it resolved a certificate, and the endpoint
+behind it no longer exists.
+
+`GET /v1/tickets/{code}/qr.png` moved to `TicketQrEndpoints`. It had been living in
+`CertificateEndpoints` because both needed `IQrCodeGenerator` — an accident of history, not a grouping —
+so removing that file silently took the ticket QR with it and broke the gate flow. `TicketTransferTests`
+caught it, which is the argument for the repo's insistence that only a full-suite run is evidence.
+
+**No schema change, deliberately and consistently.** The `certificates`, `id_cards` and `design_templates`
+tables stay, as do `Event.CertificatesEnabled`, `User.ShowCertificates` and the certificate and card
+enums. Nothing is dropped and no destructive migration is written, so the decision is reversible by
+restoring code alone. The profile, achievement, resume and metrics engines still read whatever rows
+exist; with nothing issuing new ones they go quiet by themselves. `IdCard.VerifyCode` survives as the
+shape `EntitlementService` documents its own QR against.
+
+A profile still shows a "Certificate" badge for someone historically issued one — that remains a true
+fact about them — but it is no longer a link, because the page it pointed at is gone.
+
+### Consequences
+- No schema change, no migration, no data touched.
+- Backend suite loses the studio's, certificates' and ID cards' own tests; the avatar-key tests in
+  `UploadScanCoverageTests` and `ProfileWriteSurfaceTests` remain and now cite this entry.
+- `EventAuthorizationTests` drops two surface assertions it can no longer make, and `NotificationCertTests`
+  loses its roster test while keeping its notification coverage. Neither was weakened to pass.
+- `web/lib/api.ts` keeps its exported `authHeaders` — the sibling chat, posts and account API modules use
+  it; only the comment naming the studio was corrected.
+
+## D-355 · The certificate platform: what it guarantees, and what it refuses to claim (2026-08-15)
+
+Built as a modular certificate module inside Kurx — creation, generation, distribution and verification —
+over the thirteen phases recorded in `docs/certificates/IMPLEMENTATION_PROGRESS.md`. Extractable later:
+nothing in it is coupled to ticketing.
+
+**Numbering note.** This work was developed as "D-344" across two sessions while a concurrent session
+independently issued D-343 and D-344 on `main`. Both of those keep their meanings; the certificate work
+moved to D-355 and the earlier design-studio removal to D-354 at merge time, and every reference in code
+and docs was rewritten. Nothing is reused, and nothing points at the wrong decision.
+
+**Verification is online only.** No PAdES, no offline proof. A revoked certificate reports revoked with
+its stated reason; a superseded one names its replacement so the holder is never left with "not current"
+and nowhere to go. Infrastructure failure reports *unavailable* and never *invalid* — a storage timeout
+must not tell someone their credential is fake. That is the load-bearing catch in the verifier.
+
+**Certificate signing keys are separate from JWT keys.** The two have opposite lifetimes: a token key can
+retire once no live token bears it, while a certificate has to verify in ten years. A compromised key
+still verifies, with a clear warning — a certificate signed before the compromise really was issued by
+this platform, and reporting it as fake would be the wrong lie.
+
+**Nothing is edited in place.** A correction is a *new* certificate with its own id and signature; the
+original keeps its bytes and only its status moves. Editing values would break a signature made over them,
+which is precisely the change the signature exists to detect, and would leave the copy in someone's inbox
+disagreeing with the platform.
+
+**The batch approval gate is deliberate.** Everything before it is cheap and reversible; after it,
+hundreds of signed PDFs exist and some may already be sent. Idempotency is enforced by a unique index on
+(batch, recipient), not by the loop being careful — a skip-list read at the top of a loop stops being true
+the moment two workers pick up the same job.
+
+**Participant data is never reinterpreted.** No coercion, no locale handling, no formula evaluation:
+`007` stays `007` and a date stays the date the sheet displays. The CSV export escapes formula-leading
+characters for the same reason in the other direction — neither half of the module lets an uploaded string
+become executable.
+
+**Telemetry counts events, not people.** A verification row carries a certificate, a type, a time and a
+request correlation id. Storing who checked would turn an organiser's dashboard into a record of where the
+holder has been applying for jobs. Only what the platform can honestly observe is recorded: downloads go
+browser-to-storage and are never seen, so no download counter is offered.
+
+**Capability links are the credential** for participants with no account, and only a SHA-256 hash is
+stored — the platform cannot reproduce a link once minted. A revoked link and one that never existed give
+the identical answer, so guessing is not confirmed. Account linking is by *verified* email only.
+
+**OCR is a boundary and an honest stub.** No engine is integrated; two tests fail if one is quietly added.
+The editor places every field by hand and is complete without it.
+
+**A placeholder printed into uploaded artwork cannot be edited.** It is raster. Where a design carries
+`[Recipient's Full Name]` in its own pixels, a field can cover the region with a colour sampled from the
+artwork and draw the value on top — replacement in the only sense available. The editor warns before the
+overlap is created, which is the only place the problem can actually be prevented.
+
+
+## D-356 · Detected text is a handle, not a copy: unchanged words are left untouched (2026-08-16)
+
+**Context.** D-355 made an uploaded certificate editable by detecting its printed text and turning every
+line into an element that covers what it sits on. Covering is unavoidable where text is *replaced*: the
+placeholder is pixels, so the only way to change `[Recipient's Full Name]` into a name is to paint over it
+and draw on top.
+
+But detection turns *every* line into such an element — typically fifteen on a real design, of which two
+are ever changed. The other thirteen covered the artwork in order to redraw it identically. Each flat fill
+erased the design's watermark and texture inside its box, leaving a smooth rectangle with hard edges. The
+result was a certificate that announced itself as edited across its whole face, and the reported symptom
+was exactly that: "it looks edited, I want it to look real."
+
+**Decision.** A detected text element starts as a **handle**: `mirrors_artwork = true`. While true it
+draws nothing and fills nothing — the artwork already shows these words. It is still a complete element:
+clickable on the canvas, listed in the panel, selectable, movable. It simply leaves no mark.
+
+The moment the creator actually changes the words, it stops mirroring and becomes an ordinary
+covering element. The paper colour was sampled at detection time and carried on the element ever since,
+waiting for exactly this. Retyping the same words is not a change and leaves it mirroring, so clicking
+into text and clicking away never silently costs the design a patch.
+
+So a certificate is altered exactly where it was altered, and nowhere else.
+
+**Consequences.**
+
+- One additive column, `MirrorsArtwork` on `certificate_template_fields`, defaulting false — existing
+  templates keep their current behaviour exactly.
+- The renderer returns early on a mirroring element. It is the only place that can be authoritative,
+  since it is the only renderer.
+- The canvas draws nothing for one either, or the creator would see doubled text in the browser's font
+  over the artwork's own — a preview lying about a certificate it does not match. It carries a faint
+  dashed outline while the canvas is editable, because words with nothing drawn over them give no hint
+  that they can be reached.
+- Dynamic fields are never handles. They exist precisely to replace what is printed.
+
+**What this does not fix.** Where covering *is* required, a flat fill still cannot reproduce textured
+stock: the colour is sampled from the band outside the box, and a watermark inside it has no single
+colour. The patch is now confined to the boxes whose text actually changed — but on a heavily textured
+design it remains faintly visible there. Reconstructing texture is inpainting, and is not attempted.
+Sampling was improved as far as a flat fill allows: the returned colour is the average of the real
+near-paper pixels rather than a quantisation bucket's floor, which had been painting pure white as
+`#F8F8F8` — a grey band on every white certificate.
+
+
+## D-357 · Re-reading a design replaces the previous reading, everywhere it read (2026-08-16)
+
+**Context.** D-356 changed what detection *produces*. It changed nothing about templates already saved,
+which is correct — the column is additive and existing designs keep their behaviour. But the only way to
+get the new representation onto an existing design is to run Detect text again, and that path appended:
+a design already carrying sixteen detected blocks gained sixteen more, stacked on the same words, with the
+older covering elements still painting on top. The new reading was invisible underneath the old one, so
+every improvement to detection appeared to have done nothing at all.
+
+**Decision.** A fresh reading is folded in, not appended, and it supersedes anything sitting **anywhere
+the engine read** — not merely where it produced a block.
+
+The distinction is the whole decision. The two differ exactly where the new reading was too weak to act
+on, and that is the case that matters most: an element sitting there came from a reading we would now
+refuse to make. A stylised logo read as `© 'our` at 0.76 had been saved as a covering element; re-reading
+correctly declines that region, so nothing superseded it and a misreading survived its own replacement,
+still covering the logo. Declining a region means "leave the artwork alone here", and dropping what sits
+on it is how that actually happens.
+
+Overlap is the test rather than provenance. An element covering these exact words is describing this
+exact text, whoever placed it, and keeping both would show the words twice. Anything the engine did not
+read — a signature line, a hand-placed field, a QR — is untouched.
+
+**Also decided: a decorative word is not a data field.** `POINTS`, from a CPD seal reading "8 CPD /
+POINTS", was matching the canonical `score` synonyms — so the badge was covered in its own purple and a
+score printed into it. `points` is removed as a synonym. This follows the rule the vocabulary already
+states: missing a genuine "Points:" label costs one click in Add field, while a confident mistake costs
+every certificate in the run.
+
+**Consequences.**
+
+- Superseding threshold is 60% of the old element's area. Certificate lines sit close together, and a
+  shared edge is a neighbour, not a duplicate — a lower bar would silently delete the line above on every
+  rescan.
+- The confirmation names what happened ("…replacing N that covered the same words") rather than only what
+  was added, because silently removing elements is worse than adding them.
+- `startDrawing` moved out of the editor component into `certificate-editor.ts`. It decides whether a
+  design acquires a patch, which is too load-bearing to live only inside a JSX callback where it cannot
+  be tested.
+
+**Verified against the live deployment**, starting from the saved template that prompted this: 16 stale
+elements + 15 fresh blocks folded to 15 — 13 drawing and covering nothing, 2 covering because their text
+genuinely changed, and 0 stale survivors.
+
+
+## D-358 · An uploaded design is read on sight, not on request (2026-08-16)
+
+**Context.** D-355 through D-357 built a reader: detection, layout, canonical-field mapping, covering,
+folding, a confirmation banner and an Add button. All of it shipped and all of it worked. **None of it
+was ever called.** `analyse()` was defined and referenced from nowhere; the branch meant to expose it
+rendered a heading reading "Assisted" and no control. The confirmation banner was wired to state that
+nothing in the interface could set.
+
+So the editor a creator actually met was the pre-detection one: an empty panel and a menu of field names
+to place by hand. On a design already printing `OLIVER SMITH`, `Date of Issue: 13/05/2023` and
+`Certificate ID: 75633820a`, they were asked to retype and reposition each of those by hand — precisely
+the work the reader exists to remove. Reported as: "why do I need to Add Details manually when the
+template already has it".
+
+**Decision.** A design with artwork and nothing placed on it is read **automatically**, on open, and what
+is found is applied.
+
+Applied, not offered. Asking permission to fill an empty design is a dialog whose only possible answer is
+yes, and Undo is already there if it was not. Once anything *has* been placed there is something to lose,
+so a re-read is offered rather than performed — the earlier reasoning about not replacing somebody's
+layout still holds, but it only ever applied to layouts that exist.
+
+**Consequences.**
+
+- Keyed on the artwork URL, so replacing a design re-reads the new one and the old reading means nothing.
+- Silent on failure during the automatic pass. A deployment with no engine, or a design with no legible
+  text, must leave the editor exactly what it was rather than report an error about a feature nobody
+  invoked. An explicit re-read still answers.
+- "Read my design again" replaces the dead "Assisted" label, for re-reading after replacing artwork or
+  deleting blocks.
+- The empty state no longer presents hand-placement as the route in. It says the design is being read.
+
+**The general lesson, which is the reason this is a decision and not a bug note.** Every layer here was
+tested and every test passed, because each layer was correct in isolation. What no test covered was
+whether anything *invoked* the top of the chain. A feature that is unreachable is indistinguishable from
+a feature that is absent, and unit tests cannot tell the difference. `test/certificate-template-editor.test.tsx`
+now renders the real editor and asserts the reader runs — the first test in this module that could have
+caught it.
+
+
+## D-359 · The certificate editor is a guided tool, not a design editor (2026-08-16)
+
+**Context.** The editor had grown to answer a designer's questions — what objects exist, in what order,
+at what rotation, with what mask. The person who actually uses it runs an event, has had no training, and
+opens it once every few months to put names on certificates. They met a layer list, an "Advanced" panel, a
+zoom selector and a menu of field names, and had to infer the whole process from it.
+
+**Decision.** The screen answers four questions at all times: *what step am I on, what does this button do,
+where do I click, what happens next.* Anything that does not help answer one of them is gone.
+
+**Five steps, always visible.** Upload → Find text → Edit → Preview → Download. The current step is derived
+from the design itself, so a half-finished certificate opened a week later lands where it was left, with
+nobody having clicked anything.
+
+**Status never rests on colour.** A finished step carries a tick *and* the word Done; the current one a
+ring, a bold label, the word Now, and `aria-current`. In greyscale every state is still readable.
+
+**Icons always carry words.** If a user has to guess what an icon means it is not an icon, it is a puzzle.
+Every action pairs a familiar glyph with a short label, and nothing important is a bare icon.
+
+**What was removed:** zoom, rotation, z-order, duplicate, layer ordering, per-field alignment, the layer
+list and the Advanced panel. Text size, colour and bold stayed, because "make it bigger" is asked for by
+name and needs no explaining. Removing capability is the point: a tool that shows every option to someone
+who wants to fix a spelling has failed them.
+
+**Preview is the real render.** It asks the server for a sample from the same renderer that issues
+certificates, rather than showing the browser's approximation. Since the server renders what has been
+*saved*, an unsaved change is saved first rather than quietly left out of the picture. Download is the
+same render as a PDF — a real endpoint that already existed, not a mock.
+
+**Errors are what to do next.** Never `DetectionError: element_coordinates_invalid`; instead "We couldn't
+find the text — try uploading a clearer picture of your certificate", and a Try Again button.
+
+**Vocabulary.** Nothing user-facing says element, handle, renderer, mask, z-order or OCR. It says text,
+picture, *changes for each person*, *the same on every certificate*. A test asserts this against the
+rendered page rather than trusting review.
+
+### Found by testing it as a first-time user
+
+Four defects the redesign itself introduced or exposed, all fixed:
+
+1. **Two buttons named the same thing.** The step rail's "Find text" and the action "Find Text" were
+   indistinguishable, and the rail one only navigates — so clicking the wrong one appeared to do nothing.
+   Rail items are now labelled "Go to step 2: Find text (Now)", keeping the visible words inside the
+   accessible name (WCAG 2.5.3).
+2. **A control that flickered on load.** The Find text step offered its button, withdrew it when the
+   automatic pass began, then offered it again. Working out whether a design can be read now counts as
+   busy, so the button appears once and stays.
+3. **The automatic pass could wipe an explicit failure message.** A user clicking Find Text before the
+   silent pass had run got their answer erased by it a moment later, leaving a screen that looked like the
+   button did nothing. Any read now marks the design as read.
+4. **A lead-in phrase was being treated as the name.** `presented to`, `awarded to` and `this is to
+   certify that` were synonyms for the participant's name — so a design reading *Presented to / OLIVER
+   SMITH* had the words "Presented to" replaced by the recipient's name while "OLIVER SMITH" stayed
+   printed underneath as fixed text. Every certificate in the run would carry one person's name twice and
+   lose its own label. A lead-in now says where the name *is*: `namesAnnouncedByALeadIn` promotes the line
+   directly beneath it — strictly, requiring horizontal overlap, proximity, and that the line is not
+   already something else, because promoting the wrong one prints the recipient's name over the course
+   title.
+
+**Also:** `Button` gained an `xl` size rather than four call sites overriding height in `className`. An
+existing guard forbids that, correctly — the height floor belongs to the design system, not to whoever is
+in a hurry.
+
+
+## D-360 · A signed timestamp is normalised to the precision the database keeps (2026-08-16)
+
+**Context.** Certificates were reporting as `Tampered` in CI and only in CI — thirteen tests, all of them
+tests that verify a signature. The suite passed on every developer machine.
+
+`CertificateCanonicalPayload` includes the issue time as round-trip ISO-8601 with seven fractional digits.
+Signing happens over the `DateTime` still in memory; verification rebuilds the payload from the row that
+was written, and reads it back with `AsNoTracking()`, so it always sees the stored value. PostgreSQL
+`timestamptz` keeps **microseconds**; a .NET tick is **100 nanoseconds**. Anything finer is dropped on the
+way in, the two payloads differ by the digits that were dropped, and ES256 verification fails.
+
+It hid because the clock differs by platform. Measured: on macOS `DateTime.UtcNow` never produced a
+sub-microsecond tick across 1000 samples, so every value round-tripped exactly; on Linux 886 of 1000 did.
+CI is Linux — and so is every deployed container, which makes this a **production defect that only CI
+could see**. Roughly nine in ten certificates issued in production could never have verified, and the
+person holding a genuine document would have been told it was forged. That is the worst possible way for
+this system to be wrong, which is why the payload's own documentation already warned about determinism.
+
+**Decision.** `Build` normalises the timestamp to microsecond precision before formatting it.
+
+**Truncation, not rounding**, because that is what PostgreSQL does with the digits it cannot keep —
+verified empirically at +1, +4, +5, +6 and +9 ticks rather than assumed.
+
+**In `Build`, not at issuance.** Both halves then normalise identically no matter which caller assembled
+the payload, so a third issuance path cannot reintroduce the asymmetry. Issuance still records the full
+`DateTime.UtcNow` on the entity; what is *signed* is what can be *stored*.
+
+**The format string is untouched and `Version` stays `"1"`.** A value that was already whole microseconds
+serialises exactly as before, so every certificate issued before this fix continues to verify. Bumping the
+version, or widening the format, would have invalidated all of them.
+
+**What this cannot repair.** Certificates issued on Linux before this fix are signed over a timestamp that
+no longer exists in the row. No change here makes them verify; they would need re-issuing. Since the
+platform has not issued production certificates yet, the blast radius is CI only — but the same defect
+shipped would have been unrecoverable without re-issue.
+
+**Consequences.** The regression test asserts the property directly at several sub-microsecond offsets,
+rather than relying on the platform clock to produce a value that happens to expose it — on macOS no such
+value ever occurs, which is precisely how this survived a green suite. A companion test pins that a whole
+microsecond is still a distinguishable difference, so the normalisation cannot be widened into something a
+real re-issue could collide with.
+
+Audited for the same hazard elsewhere: no other signed or HMAC'd payload in the repository carries a
+`DateTime`. Presigned storage URLs use unix **seconds** and never round-trip through the database.
+
+## D-361 · A certificate's page is millimetres, not a name (2026-08-16)
+
+**Status: ACCEPTED.** Extends [D-359](#) rather than reopening it.
+
+**Context.** `CertificatePageSize` was an enum of two — `A4Landscape`, `A4Portrait` — and the physical size
+lived in two hardcoded lookup tables that had to agree: `CertificateDocumentRenderer.PageMillimetres`
+(slug → mm) and `PAGE_ASPECT` in `certificate-editor.ts` (slug → ratio). Adding A5, Letter, Legal, 8×10,
+11×14 and 12×16 in both orientations means fourteen names; adding *custom* means a size the enum cannot
+express at all. Fourteen more members and a third table is the wrong shape for the same reason the second
+table was.
+
+**Decision.** **Millimetres are the source of truth.** `CertificateTemplate` gains `PageWidthMm` and
+`PageHeightMm`; the renderer reads them and no longer maps a name to a size. The enum survives as a
+*label* — which preset the organiser picked, so the UI can say "A4 · Portrait" instead of "210 × 297" —
+and gains a `Custom` member for a page that has no name. A name is now a description of the size; the size
+is not derived from the name.
+
+**Why not keep the name authoritative and add fourteen members.** Every consumer would still need its own
+name→mm table, and `Custom` would have to carry its dimensions somewhere else anyway — so the model would
+be "mm, except when it isn't", which is the worst of both. One field is authoritative and the other is
+decoration, and it is worth being explicit about which.
+
+**Existing templates are untouched.** The migration backfills mm from the stored name (`A4Portrait` →
+210 × 297, everything else → 297 × 210), so every saved template and every certificate already issued
+renders byte-identically. Nothing re-renders on deploy. `PageSize` widens from 20 to 32 characters because
+the longest new name is 19 and a limit two characters from the longest value is a trap.
+
+**Bounds, and why they are not opinions.** Custom is clamped to 50–1000 mm per side. Below 50 the QR cannot
+carry a scannable verification code at any sensible DPI; above 1000 an A0-and-beyond page at 300dpi is a
+multi-hundred-megabyte raster, and the render endpoint is reachable by request. Both ends are refused with
+the measurement in the message, not "invalid input".
+
+**Where the control lives, given D-359.** D-359 removed zoom, rotation and z-order from this editor on the
+principle that showing every option to someone who wants to fix a spelling has failed them. Page size is
+kept because it is not a design preference: printing A5 artwork onto an A4 page produces a physically wrong
+certificate, and the person cannot discover that until it is printed. It is presented the way D-359 asks —
+one control, words with every option, dimensions shown on each so the choice needs no outside knowledge,
+and orientation as two labelled buttons rather than a concept to infer.
+
+**Consequences.**
+- `CertificatePageSize` gains twelve preset members and `Custom`, **appended** — the column stores the
+  member *name*, so reordering would silently reinterpret every stored row.
+- `PageMillimetres(string)` in the renderer is replaced by the template's own dimensions; the slug table
+  survives only as the migration's backfill and as a fallback for a row written before this change.
+- The client derives aspect from `page_width_mm / page_height_mm`. `PAGE_ASPECT` remains for the two
+  original slugs so an older cached payload still renders, and is no longer the path new code takes.
+
+## D-362 · Event badges are printed by the organizer, and staff carry a signed pass because they hold no ticket (2026-08-16)
+
+**Status: ACCEPTED. Rendering, authority and printing shipped. One deferred piece is named at the end.**
+Finishes the event-badge half of [D-331](#d-331), whose data model already anticipated it: *"Event badges
+reuse this row … issued against a ticket by the event's organizer."*
+
+### Organizer-only, end to end
+
+There is no holder-facing badge anywhere — no `/v1/me/badges`, no user-dashboard section, no mobile
+screen. Badges are pre-printed onto lanyards and handed out. This is a product decision and the code says
+so in three places (`IIdCardService`, `IdCardEndpoints`, `web/lib/badge-api.ts`), because the natural
+instinct on reading the feature is to add "let me see my own badge", and doing that would quietly turn a
+printing tool into a credential-distribution channel.
+
+Authority is **Manager**, not Staff, resolved live through `IEventAuthority` (D-015) — and 404 rather than
+403 for a caller with no standing (D-018). Staff can already read the attendee list; minting an entry
+credential for an arbitrary person is a different power from reading a name.
+
+### Staff have no ticket, which the brief did not anticipate
+
+An attendee badge carries the holder's existing `Ticket.Code`, exactly as `TicketQrEndpoints` encodes it,
+so a printed badge scans through `GateEntryService` **with no change to the gate** — proven by round-trip,
+not by inspection: `EventBadgeTests` takes the payload the badge would print and hands it to the real
+`IGateEntryService`, asserting it is admitted and that a second scan reports a duplicate. Asserting the
+payload merely *equals* the ticket code would have proved two strings match, not that the door opens.
+Staff hold no ticket —
+an `EventAssignment` is not a purchase — so there is nothing to look up, and a badge with no verifiable
+code is a laminated claim rather than a credential.
+
+**Chose:** a derived, signed staff pass. The QR carries `staff:{assignmentId}:{sig}` where
+`sig = HMAC(TICKET_HMAC_SECRET, "staff-pass|" + assignmentId)`.
+
+- **Prefixed, therefore domain-separated.** `SignTicketCode` HMACs the raw 16 bytes of a Guid. Signing an
+  assignment id the same way would mean one secret producing two signatures over the same input space, so
+  a staff pass and a ticket signature could stand in for one another. The two now sign disjoint byte
+  strings.
+- **Nothing is stored.** The signature is a pure function of the assignment id, recomputed at scan time.
+  No column, no migration, no rotation path, no cleanup — and revocation stays where it already is, on the
+  assignment's own `Status`.
+
+**Rejected:** storing `StaffPassCode`/`StaffPassSig` on `event_assignments`, mirroring `Ticket`. It buys
+nothing the derivation does not already give, and adds a column that can drift from the row it describes.
+
+### One renderer, not two
+
+`ICertificateDocumentRenderer` already takes a page in millimetres (D-361) and paints `text`, `image` and
+`qrcode` elements positioned as percentages. A badge is a small page with those elements on it, so
+`BadgeLayout` is a **layout, not an engine**: it returns a `CertificateDocument`. A second renderer would
+have meant a second font stack, a second QR path and a second set of rounding bugs producing the same
+output. The certificate-shaped type names are the cost, and they are cheaper than the duplication.
+
+Percentage geometry is what lets one layout land correctly on a 3.5×5.5in lanyard and an 85.6×54mm PVC
+card. The one thing that cannot survive the change is stacking, so CR80 — the only landscape size — gets
+its own arrangement rather than a squashed portrait one.
+
+### Size is the organizer's choice, not a constant
+
+Three presets (`lanyard` 88.9×139.7mm, `large` 101.6×152.4mm, `card` 85.6×54mm CR80), served from
+`/badges/sizes` rather than hardcoded per client so the console cannot drift from what the renderer
+supports. An unrecognised key is **refused, never defaulted**: defaulting would print a whole run at the
+wrong physical size, discovered only at the guillotine.
+
+### A combined sheet, not a file per person
+
+The workflow is "print the lanyards for Saturday" — one print job. Badges are rendered once at 300dpi and
+placed as rasters onto A4 with cut guides; the sheet and the single-badge download therefore cannot
+disagree about a font metric. A folder of two hundred PDFs is the same job with two hundred extra steps.
+
+### Deliberately not built
+
+**Staff scans are not yet recorded.** `gate_entries.TicketId` is non-nullable, and putting staff rows in
+it would corrupt attendee check-in counts, so staff scanning needs its own `staff_gate_entries` table.
+That migration was **not** generated: another session had an uncommitted migration and a modified
+`KurxDbContextModelSnapshot.cs` in the tree at the time, and generating against a half-finished snapshot
+would have baked their schema changes into this one and broken the chain for both. Minting and printing a
+staff pass works today; the gate accepting one is the remaining step.
+
+Until it lands, `A_staff_pass_cannot_be_scanned_as_a_ticket` pins the safe half of that gap: a staff
+payload does not parse as a bare Guid, so a scanner cannot mistake one for a ticket code and resolve it
+against some other event's ticket. When `staff_gate_entries` ships, that test is what an admission
+assertion replaces.
+
+---
+
 ## D-363 — Leaving `Approved`: withdrawal, cancellation, and what may change after approval
 
 **Status:** Accepted · **Date:** 2026-08-16 · **Implemented in full (§3 first, then §1/§2/§4)**

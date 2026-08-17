@@ -4,151 +4,184 @@ using Kurx.Application.Abstractions;
 
 namespace Kurx.Api.Endpoints;
 
-/// <summary>ID card issuance, holder editing, generation and public verification (D-331).
+/// <summary>
+/// Event badge printing, for the people who run the event (D-362).
 ///
-/// <para>Routes split on <b>who is asserting what</b>, not on convenience. Issuance and the roster hang
-/// off <c>/v1/orgs/{orgId}</c> because the organization is the authority the card leans on; the
-/// holder's own reads hang off <c>/v1/me</c>; verification is anonymous and is the only route here
-/// outside the authorization group.</para></summary>
+/// <para><b>There is deliberately no holder-facing route here.</b> No <c>/v1/me/badges</c>, no
+/// self-service download. Badges are pre-printed onto lanyards by the organizer and handed out; a holder
+/// never fetches their own. Adding a "my badge" route would be a product change, not a convenience — see
+/// <see cref="IIdCardService"/>.</para>
+///
+/// <para>Every route resolves Manager authority live through <c>IEventAuthority</c> (D-015) inside the
+/// service, and answers 404 rather than 403 to a caller with no standing on the event (D-018).</para>
+/// </summary>
 public static class IdCardEndpoints
 {
-    public record IssueBody(Guid UserId, string? StudentId, string? Department, string? Course,
-        string? Year, DateOnly? ValidFrom, DateOnly? ValidUntil, string? Template,
-        bool ShowMealInfo = false);
-    public record MealDisplayBody(bool Show);
-
-    public record HolderEditBody(string? Template, string? PhotoKey, string? SignatureKey,
-        string? LayoutJson, string? BloodGroup, string? Address,
-        string? EmergencyContactName, string? EmergencyContactPhone);
-
-    public record RevokeBody(string Reason);
-
     public static void MapIdCardEndpoints(this WebApplication app)
     {
-        // ── Public verification. Anonymous by design: a verifier holding the physical card has no
-        // account. Returns the narrow projection only (D-331) — never the student ID or contact data.
-        app.MapGet("/v1/id-cards/verify/{code}", async (
-            string code, IIdCardService svc, CancellationToken ct) =>
-        {
-            var r = await svc.VerifyAsync(code, ct);
-            return r.Ok ? Results.Ok(ToVerificationJson(r.Value!)) : Fail(r.Error);
-        }).WithTags("id-cards");
+        var g = app.MapGroup("/v1/events/{eventId:guid}/badges")
+            .WithTags("badges")
+            .RequireAuthorization();
 
-        // D-335 — event-scoped, not org-scoped. The event is what the card is proof of, and its
-        // creator/organizer is the issuing authority.
-        var evt = app.MapGroup("/v1/events/{eventId:guid}/id-cards").WithTags("id-cards").RequireAuthorization();
+        // The sizes the organizer may choose from. Served rather than hardcoded in each client so the web
+        // console and any later surface cannot drift from what the renderer actually supports.
+        //
+        // Authenticated only, with no per-event authority check — unlike every other route here. It reads
+        // nothing, returns a fixed list of paper sizes, and reveals nothing about the event whose path it
+        // sits under. It lives under that path so a client needs one base URL, not two.
+        g.MapGet("/sizes", () => Results.Ok(
+                BadgeSize.All.Select(s => new
+                {
+                    key = s.Key, label = s.Label,
+                    width_mm = s.WidthMm, height_mm = s.HeightMm, landscape = s.IsLandscape,
+                })))
+            .WithSummary("Badge sizes available for printing");
 
-        // Issue. The caller must control the event, be verified, not be the holder, and the holder must
-        // be a participant.
-        evt.MapPost("/", async (Guid eventId, IssueBody body, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        g.MapGet("/recipients", async (Guid eventId, ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
         {
-            var input = new IdCardIssueInput(body.UserId, body.StudentId, body.Department, body.Course,
-                body.Year, body.ValidFrom, body.ValidUntil, eventId, body.Template, body.ShowMealInfo);
-            var r = await svc.IssueAsync(UserId(p), eventId, input, IsAdmin(p), ct);
+            var r = await svc.ListRecipientsAsync(eventId, UserId(p), IsAdmin(p), ct);
+            return r.Ok
+                ? Results.Ok(r.Value!.Select(x => new
+                {
+                    user_id = x.UserId, name = x.Name,
+                    kind = x.Kind.ToString().ToLowerInvariant(),
+                    subtitle = x.Subtitle, access_level = x.AccessLevel,
+                    has_photo = !string.IsNullOrWhiteSpace(x.PhotoKey),
+                    // The QR payload itself is NOT returned. It is a credential: a marshal's console
+                    // listing everyone's scannable code would hand out working badges as JSON.
+                    //
+                    // The issued card IS returned — its number and verify code are printed on the badge's
+                    // face, so they are not secrets, and the console needs them to show what exists.
+                    card = x.Card is null ? null : new
+                    {
+                        id = x.Card.Id, card_number = x.Card.CardNumber, verify_code = x.Card.VerifyCode,
+                        status = x.Card.Status.ToLowerInvariant(), is_revoked = x.Card.IsRevoked,
+                        generated_at = x.Card.GeneratedAt,
+                    },
+                }))
+                : Fail(r.Error);
+        }).WithSummary("Everyone at this event who can be given a badge");
+
+        // ── The card design (D-362 editor) ──────────────────────────────────────────────────────
+        //
+        // One design per event, stored on DesignTemplate with Kind = IdCard. GET answers the shipped
+        // default when nothing has been saved, so the editor always opens on a working card.
+
+        g.MapGet("/template", async (Guid eventId, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.GetAsync(eventId, UserId(p), IsAdmin(p), ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IdCardView>();
+        }).WithSummary("This event's ID card design");
 
-        // The event's card roster, for its organizer.
-        evt.MapGet("/", async (Guid eventId, string? status, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        g.MapPut("/template", async (
+            Guid eventId, IdCardTemplateSpec body, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
         {
-            var r = await svc.ListForEventAsync(UserId(p), eventId, status, IsAdmin(p), ct);
+            var r = await svc.SaveAsync(eventId, UserId(p), IsAdmin(p), body, ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IReadOnlyList<IdCardView>>();
+        }).WithSummary("Save this event's ID card design");
 
-        var cards = app.MapGroup("/v1/id-cards").WithTags("id-cards").RequireAuthorization();
-
-        cards.MapGet("/{cardId:guid}", async (Guid cardId, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        // Renders the spec in the request body, NOT the saved one — the editor previews unsaved edits,
+        // and through the same renderer that prints, so preview and output cannot drift.
+        g.MapPost("/template/preview", async (
+            Guid eventId, TemplatePreviewBody body, ClaimsPrincipal p, IIdCardTemplateService svc,
+            CancellationToken ct) =>
         {
-            var r = await svc.GetAsync(UserId(p), cardId, IsAdmin(p), ct);
+            var kind = string.Equals(body.Kind, "staff", StringComparison.OrdinalIgnoreCase)
+                ? BadgeKind.Staff : BadgeKind.Attendee;
+            var r = await svc.PreviewAsync(eventId, UserId(p), IsAdmin(p), body.Spec, kind, ct);
+            return r.Ok ? Results.File(r.Value!, "image/png") : Fail(r.Error);
+        })
+            .WithSummary("Render a sample card from an unsaved design")
+            .Produces(StatusCodes.Status200OK, typeof(byte[]), "image/png");
+
+        g.MapPost("/template/asset/presign", async (
+            Guid eventId, AssetPresignBody body, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
+        {
+            var r = await svc.PresignAssetAsync(eventId, UserId(p), IsAdmin(p), body.ContentType, body.Purpose, ct);
             return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IdCardView>();
+        }).WithSummary("Presigned upload for the card's artwork or logo");
 
-        // Holder-scoped edit. The body cannot carry an asserted identifier, so this route physically
-        // cannot change a student ID however it is called.
-        cards.MapPatch("/{cardId:guid}", async (Guid cardId, HolderEditBody body, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        g.MapGet("/template/asset-url", async (
+            Guid eventId, string key, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
         {
-            var input = new IdCardHolderInput(body.Template, body.PhotoKey, body.SignatureKey,
-                body.LayoutJson, body.BloodGroup, body.Address,
-                body.EmergencyContactName, body.EmergencyContactPhone);
-            var r = await svc.UpdateHolderFieldsAsync(UserId(p), cardId, input, ct);
-            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IdCardView>();
+            var r = await svc.AssetUrlAsync(eventId, UserId(p), IsAdmin(p), key, ct);
+            return r.Ok ? Results.Ok(new { url = r.Value }) : Fail(r.Error);
+        }).WithSummary("Readable URL for an uploaded card asset, for the editor canvas");
 
-        // Generate / regenerate. Same route for both: regenerating is generating again, and modelling
-        // it as a separate verb would let the two drift.
-        cards.MapPost("/{cardId:guid}/generate", async (Guid cardId, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        g.MapPost("/generate", async (
+            Guid eventId, BadgeSheetBody body, ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
         {
-            var r = await svc.GenerateAsync(UserId(p), cardId, IsAdmin(p), ct);
-            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IdCardView>();
+            var r = await svc.GenerateAsync(
+                eventId, UserId(p), IsAdmin(p),
+                new BadgeIssueRequest(body.SizeKey, ParseKinds(body.Kinds), body.UserIds), ct);
 
-        // D-334 §8. Issuer-side, like revoke and unlike the holder's PATCH: what the card asserts is the
-        // issuer's claim. Does not reprint — regenerate for that, which re-reads the quantities.
-        cards.MapPost("/{cardId:guid}/meal-display", async (Guid cardId, MealDisplayBody body,
-            ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
-        {
-            var r = await svc.SetMealDisplayAsync(UserId(p), cardId, body.Show, IsAdmin(p), ct);
-            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).Produces<IdCardView>();
+            return r.Ok
+                ? Results.Ok(new { issued = r.Value!.Issued, regenerated = r.Value.Regenerated })
+                : Fail(r.Error);
+        })
+            .WithSummary("Issue ID cards: create the id_cards rows, render and store their artefacts");
 
-        cards.MapPost("/{cardId:guid}/revoke", async (Guid cardId, RevokeBody body, ClaimsPrincipal p,
-            IIdCardService svc, CancellationToken ct) =>
+        g.MapPost("/sheet", async (
+            Guid eventId, BadgeSheetBody body, ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
         {
-            var r = await svc.RevokeAsync(UserId(p), cardId, body.Reason, IsAdmin(p), ct);
-            return r.Ok ? Results.Ok(OperationAck.Success) : Fail(r.Error);
-        }).Produces<OperationAck>();
+            var kinds = ParseKinds(body.Kinds);
+            var r = await svc.RenderSheetAsync(
+                eventId, UserId(p), IsAdmin(p), new BadgeSheetRequest(body.SizeKey, kinds, body.UserIds), ct);
 
-        app.MapGet("/v1/me/id-cards", async (ClaimsPrincipal p, IIdCardService svc, CancellationToken ct) =>
+            return r.Ok
+                ? Results.File(r.Value!, "application/pdf", $"badges-{eventId}.pdf")
+                : Fail(r.Error);
+        })
+            .WithSummary("Print-ready sheet of badges, laid out N-up on A4 with cut guides")
+            .Produces(StatusCodes.Status200OK, typeof(byte[]), "application/pdf");
+
+        g.MapGet("/{recipientUserId:guid}.pdf", async (
+            Guid eventId, Guid recipientUserId, string? size, ClaimsPrincipal p, IIdCardService svc,
+            CancellationToken ct) =>
         {
-            var r = await svc.ListForUserAsync(UserId(p), ct);
-            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
-        }).WithTags("id-cards").RequireAuthorization().Produces<IReadOnlyList<IdCardView>>();
+            var r = await svc.RenderOneAsync(
+                eventId, UserId(p), IsAdmin(p), recipientUserId, size ?? BadgeSize.Lanyard.Key, ct);
+
+            return r.Ok
+                ? Results.File(r.Value!, "application/pdf", $"badge-{recipientUserId}.pdf")
+                : Fail(r.Error);
+        })
+            .WithSummary("One badge, print-ready")
+            .Produces(StatusCodes.Status200OK, typeof(byte[]), "application/pdf");
     }
 
+    /// <param name="Kinds">`attendee`, `staff`, or both. Absent means both.</param>
+    /// <param name="UserIds">Absent or empty prints everyone matching <paramref name="Kinds"/>.</param>
+    public record BadgeSheetBody(string SizeKey, string[]? Kinds, Guid[]? UserIds);
 
-    /// <summary>The anonymous projection for ANONYMOUS verification. Written out by hand rather than
-    /// derived from <see cref="IdCardView"/> with fields removed — the whole point is that widening the
-    /// authenticated view must not widen this one (D-331).
-    ///
-    /// <para>This is the one id-card route with no <c>.Produces&lt;T&gt;()</c>: it renames
-    /// <c>OrgName</c> to <c>organization</c>, so declaring <see cref="IdCardVerification"/> here would
-    /// publish a schema the wire contradicts. Giving it an honest schema means either renaming that key
-    /// — a public contract change — or adding a dedicated DTO, and neither is a cleanup decision.</para></summary>
-    private static object ToVerificationJson(IdCardVerification v) => new
+    /// <param name="Kind">`attendee` or `staff` — which sample card to draw. They differ: only a staff
+    /// card carries an access band, so previewing one tells you nothing about the other.</param>
+    public record TemplatePreviewBody(IdCardTemplateSpec Spec, string? Kind);
+
+    /// <param name="Purpose">`background` or `logo` (default).</param>
+    public record AssetPresignBody(string ContentType, string? Purpose);
+
+    private static IReadOnlyList<BadgeKind> ParseKinds(string[]? kinds)
     {
-        verify_code = v.VerifyCode,
-        holder_name = v.HolderName,
-        organization = v.OrgName,
-        status = v.Status,
-        valid_from = v.ValidFrom,
-        valid_until = v.ValidUntil,
-        is_revoked = v.IsRevoked,
-        issued_at = v.IssuedAt,
-    };
+        if (kinds is null || kinds.Length == 0) return [BadgeKind.Attendee, BadgeKind.Staff];
+        return kinds
+            .Select(k => Enum.TryParse<BadgeKind>(k, ignoreCase: true, out var parsed) ? parsed : (BadgeKind?)null)
+            .Where(k => k is not null)
+            .Select(k => k!.Value)
+            .Distinct()
+            .ToList();
+    }
 
     private static Guid UserId(ClaimsPrincipal principal)
-        => Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
-            ? id
+        => Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id
             : throw new ApiException(StatusCodes.Status401Unauthorized, "invalid_token");
 
     private static bool IsAdmin(ClaimsPrincipal principal) => principal.HasClaim("kurx_admin", "true");
 
     private static IResult Fail(string? error) => error switch
     {
-        // A card the caller may not see is absent, not refused (D-018) — the service already collapses
-        // that case to not_found, and this keeps the mapping honest for the rest.
+        "forbidden" => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
-        // D-335 issuance refusals. All 403: the request is well-formed and the caller is authenticated;
-        // what is missing is authority, verification, or the holder's standing in the event.
-        "forbidden" or "not_event_organizer" or "issuer_not_verified"
-            or "cannot_issue_to_self" or "holder_not_a_participant" or "invalid_storage_key"
-            => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
-        "not_an_event_card" or "card_revoked" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
-        _ => ProblemResults.Problem(error ?? "bad_request", StatusCodes.Status400BadRequest),
+        _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

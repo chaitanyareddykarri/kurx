@@ -78,7 +78,7 @@ export function AlliesManager({
           <div className="grid gap-3 sm:grid-cols-2">
             {incoming.map((c) => (
               <UserCard
-                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_key}
+                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_url}
                 href={c.other_username ? `/u/${c.other_username}` : undefined}
                 action={
                   <div className="flex gap-2">
@@ -100,7 +100,7 @@ export function AlliesManager({
           <div className="grid gap-3 sm:grid-cols-2">
             {outgoing.map((c) => (
               <UserCard
-                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_key}
+                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_url}
                 href={c.other_username ? `/u/${c.other_username}` : undefined}
                 action={
                   <Button aria-label={`Cancel the request to ${c.other_name}`} variant="secondary" disabled={pending} onClick={() => cancelOutgoing(c)}>
@@ -121,7 +121,7 @@ export function AlliesManager({
           <div className="grid gap-3 sm:grid-cols-2">
             {mine.map((c) => (
               <UserCard
-                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_key}
+                key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_url}
                 href={c.other_username ? `/u/${c.other_username}` : undefined}
                 subtitle={c.first_shared_event_title ? `Met at ${c.first_shared_event_title}` : undefined}
                 action={

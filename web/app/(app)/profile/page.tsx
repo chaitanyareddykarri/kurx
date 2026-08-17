@@ -34,7 +34,6 @@ const ACTIVITY: Tile[] = [
   { href: "/participations", label: "My participations", icon: Mic, hint: "Speaking, judging, mentoring, volunteering" },
   { href: "/invitations", label: "Invitations", icon: MailOpen },
   { href: "/waitlist", label: "My waitlist", icon: Hourglass },
-  { href: "/certificates", label: "Certificates", icon: Award },
   { href: "/saved", label: "Saved events", icon: Bookmark }
 ];
 
@@ -90,12 +89,11 @@ export default async function ProfileHubPage() {
       <Card>
         <div className="flex items-center gap-4">
           {/*
-            Initials only, deliberately. `me.avatar_key` is a STORAGE KEY, not a URL — nothing in the
-            backend presigns an avatar, so passing it here would render a broken image and add a ninth
-            call site to a bug that belongs to the Profile & Professional Identity workstream. The
-            Avatar component's initials fallback is correct until that lands.
+            `avatar_url` is the presigned companion to `avatar_key` — the key alone is a STORAGE KEY and
+            resolves against this origin, which is what made every avatar fall back to initials. The
+            fallback still covers an account with no picture, because a null key yields a null URL.
           */}
-          <Avatar name={displayName} size={64} />
+          <Avatar name={displayName} src={me.avatar_url ?? undefined} size={64} />
           <div className="min-w-0">
             <h1 className="truncate text-h2 text-text">{displayName}</h1>
             {me.username ? (

@@ -23,7 +23,7 @@ import { completionPercent, completionSteps, type CompletionInput } from "@/comp
 export function ProfileHeader({
   username,
   name,
-  avatarKey,
+  avatarUrl,
   coverKey,
   derivedHeadline,
   headline,
@@ -40,7 +40,9 @@ export function ProfileHeader({
 }: {
   username: string;
   name: string;
-  avatarKey: string | null;
+  /** The PRESIGNED URL, not the storage key (D-302). Named for what it is: this prop was `avatarKey`
+   *  and was handed a key, which is unfetchable, so the header rendered initials for everyone. */
+  avatarUrl: string | null;
   coverKey: string | null;
   derivedHeadline: string | null;
   headline: string | null;
@@ -84,7 +86,7 @@ export function ProfileHeader({
         <div className="flex flex-wrap items-end justify-between gap-lg">
           {/* The ring is what separates the avatar from an arbitrary cover photo behind it. */}
           <div className="-mt-14 rounded-full ring-4 ring-surface sm:-mt-16">
-            <Avatar name={name} src={avatarKey ?? undefined} size={128} />
+            <Avatar name={name} src={avatarUrl ?? undefined} size={128} />
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-sm pt-md">

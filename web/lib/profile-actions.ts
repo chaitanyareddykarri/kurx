@@ -23,6 +23,28 @@ export async function presignProfileImageAction(
   }
 }
 
+/**
+ * Persist the caller's avatar on its own, for the Appearance card — which has no surrounding profile
+ * form to carry the key.
+ *
+ * Only `avatarKey` is sent. Every other field on `UpdateProfileBody` is nullable-means-unchanged, so
+ * omitting them is what leaves name, bio and links alone; sending the whole profile from a card that
+ * only edits a picture is how a half-populated card silently blanks a headline. An empty string is
+ * forwarded deliberately — that is the wire value that clears the picture.
+ */
+export async function saveAvatarAction(avatarKey: string) {
+  const session = await requireSession();
+  try {
+    await updateProfile(session.accessToken, { avatarKey });
+  } catch (err) {
+    return { ok: false as const, error: apiErrorMessage(err) };
+  }
+  revalidatePath("/settings");
+  revalidatePath("/profile");
+  if (session.me.username) revalidatePath(`/u/${session.me.username}`);
+  return { ok: true as const };
+}
+
 function field(formData: FormData, key: string): string {
   const v = formData.get(key);
   return typeof v === "string" ? v.trim() : "";
@@ -67,8 +89,12 @@ export async function updateProfileAction(_prev: unknown, formData: FormData) {
       interests,
       educationJson: education,
       linksJson: links,
-      avatarKey: field(formData, "avatarKey") || undefined,
-      coverKey: field(formData, "coverKey") || undefined
+      // Sent verbatim, empty string included. `PATCH /v1/me/profile` applies a key only when it is
+      // non-null (`if (body.AvatarKey is not null)`), so "" is how a picture is CLEARED and undefined
+      // is how it is left alone. Coalescing "" to undefined — which this did — made the Remove button
+      // a no-op: the key was dropped from the request and the old image stayed on the profile.
+      avatarKey: formData.has("avatarKey") ? field(formData, "avatarKey") : undefined,
+      coverKey: formData.has("coverKey") ? field(formData, "coverKey") : undefined
     });
   } catch (err) {
     return { error: apiErrorMessage(err) };

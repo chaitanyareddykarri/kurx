@@ -12,7 +12,9 @@ public record AssignmentView(Guid Id, Guid EventId, Guid OrgId, Guid UserId, str
     // RepresentingOrgName is null for a self-represented event, and deliberately so: D-268 says a
     // personally-hosted event carries NO organization identity, and the self-representation row is
     // named after the person. Emitting it here would surface that internal row on every invite.
-    string EventTitle, string? EventSlug, DateTime EventStartsAt, string? RepresentingOrgName);
+    string EventTitle, string? EventSlug, DateTime EventStartsAt, string? RepresentingOrgName,
+    /// <summary>Presigned companion to <c>AssigneeAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AssigneeAvatarUrl = null);
 
 /// <summary>Event staff assignments (D-064): Owner/Manager invite users to a role (Volunteer/Judge/… or
 /// Custom) at an event; the invitee accepts/declines; accepted assignments show on their public profile.

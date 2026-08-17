@@ -16,7 +16,7 @@ namespace Kurx.Infrastructure.Users;
 /// owns no tables of its own.</summary>
 public class PublicProfileService(
     KurxDbContext db, IProfileVisibilityResolver visibility,
-    IProfileFactSetLoader facts) : IPublicProfileService
+    IProfileFactSetLoader facts, IStorage storage) : IPublicProfileService
 {
     /// <summary>The Professional Journey (D-223). Since D-224 the engine is a pure function over the
     /// shared fact-set: this method loads the facts once and projects them, which is the pattern every
@@ -187,7 +187,12 @@ public class PublicProfileService(
             // Month precision, formatted invariantly so the key is the same string in every locale.
             // The column is UTC; a month boundary is not worth localising and doing so would make two
             // viewers disagree about what a profile says.
-            JoinedAt: user.CreatedAt.ToUniversalTime().ToString("yyyy-MM", CultureInfo.InvariantCulture)));
+            JoinedAt: user.CreatedAt.ToUniversalTime().ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            // D-302: the key names the object, the URL fetches it. Both go out — `_meta` keys provenance
+            // by `avatar_key`, so the keys stay — and a null key yields a null URL rather than a link to
+            // nothing, which is what keeps the initials fallback reachable.
+            AvatarUrl: await storage.PresignOrNullAsync(user.AvatarKey, ct),
+            CoverUrl: await storage.PresignOrNullAsync(user.CoverKey, ct)));
     }
 
     public async Task<IReadOnlyList<PublicUserSearchResult>> SearchUsersAsync(
@@ -219,7 +224,12 @@ public class PublicProfileService(
             .Select(u => new { u.Id, u.Name, u.Username, u.AvatarKey, u.Headline })
             .ToListAsync(ct);
 
-        return rows.Select(u => new PublicUserSearchResult(u.Id, u.Name, u.Username!, u.AvatarKey, u.Headline)).ToList();
+        // D-302: presigned after materialising — a people-search result with a bare key renders no face.
+        var results = new List<PublicUserSearchResult>(rows.Count);
+        foreach (var u in rows)
+            results.Add(new PublicUserSearchResult(u.Id, u.Name, u.Username!, u.AvatarKey, u.Headline,
+                await storage.PresignOrNullAsync(u.AvatarKey, ct)));
+        return results;
     }
 
     public async Task<ServiceResult<IReadOnlyList<PublicEventCard>>> GetEventsAsync(

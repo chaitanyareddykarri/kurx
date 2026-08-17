@@ -121,7 +121,7 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
             var match = published.FirstOrDefault(k => k.KeyId == kid);
             if (match is null) return [];    // unknown, retired or compromised kid => token rejected
 
-            // D-344: parse once per key, not once per request. This line used to call ECDsa.Create()
+            // D-355: parse once per key, not once per request. This line used to call ECDsa.Create()
             // inline and never dispose it — ECDsaSecurityKey does not take ownership — so every
             // authenticated request abandoned a native handle to the finalizer and re-ran the same
             // base64 decode and SPKI import. The lookup above stays the authority: a key that is no
@@ -285,6 +285,14 @@ builder.Services.AddRateLimiter(o =>
         return RateLimitPartitions.Window(ctx, key, postsPerMin, TimeSpan.FromMinutes(1));
     });
 
+    // Public certificate verification (D-355): per IP, because it is anonymous and certificate ids are
+    // sequential — enumerable by design, since the mitigation for a guessable id is a minimal public
+    // payload rather than secrecy. Generous enough that an organiser checking a stack of printed
+    // certificates by hand never trips it, low enough that scraping the id space is not practical.
+    var verifyPerMin = int.TryParse(builder.Configuration["RATE_LIMIT_VERIFY_PER_MIN"], out var vpm) ? vpm : 30;
+    o.AddPolicy("verify", ctx => RateLimitPartitions.Window(
+        ctx, $"verify:ip:{ctx.Connection.RemoteIpAddress}", verifyPerMin, TimeSpan.FromMinutes(1)));
+
     // Heavy endpoints (CSV import, bulk send, announcement fan-out): stricter concurrency cap.
     // Only 5 of these operations can run concurrently per user; excess requests are queued briefly.
     // Deliberately NOT distributed (D-255): this caps in-flight work on THIS instance, which is what
@@ -420,7 +428,7 @@ using (var scope = app.Services.CreateScope())
         throw;
     }
 
-    // D-344: one advisory lock around the whole seeding block, because every replica of a rolling deploy
+    // D-355: one advisory lock around the whole seeding block, because every replica of a rolling deploy
     // runs it at once. EF Core 9 takes its own lock for MigrateAsync above, but that lock ends with the
     // migration and the seeders are outside it. They are read-then-insert — KindRegistrySeeder SELECTs the
     // existing slugs, diffs the catalog, then inserts the difference — so two replicas booting together
@@ -589,14 +597,23 @@ app.MapMediaEndpoints();
 app.MapTemplateEndpoints();
 app.MapTicketTypeEndpoints();
 app.MapTicketTransferEndpoints();
+app.MapTicketQrEndpoints();
+app.MapCertificateTemplateEndpoints();
+app.MapCertificateVerificationEndpoints();
+app.MapSpreadsheetEndpoints();
+app.MapCertificateBatchEndpoints();
+app.MapCertificateDeliveryEndpoints();
+app.MapCertificateRevocationEndpoints();
+app.MapCertificateParticipantEndpoints();
+// D-362 — organizer-only event badge printing. No holder-facing route by design.
+app.MapIdCardEndpoints();
+app.MapCertificateAnalyticsEndpoints();
 app.MapGateEndpoints();
 app.MapPublicProfileEndpoints();
 app.MapAllyEndpoints();
 app.MapWebhookEndpoints();
 app.MapInvitationEndpoints();
 app.MapAnnouncementEndpoints();
-app.MapCertificateEndpoints();
-app.MapIdCardEndpoints();
 app.MapEntitlementEndpoints();
 app.MapChatEndpoints();
 app.MapPostEndpoints();
@@ -708,6 +725,13 @@ jobs.AddOrUpdate<AccountDeletionJob>(
     "account-deletion",
     job => job.RunAsync(CancellationToken.None),
     Cron.Daily());
+// Drains queued certificate emails (D-355, Phase 8). Minutely: the queue is written the moment an
+// organiser presses send, and a certificate arriving a minute later is fine — one arriving an hour later
+// looks broken.
+jobs.AddOrUpdate<CertificateDeliveryJob>(
+    "certificate-delivery",
+    job => job.RunAsync(CancellationToken.None),
+    Cron.Minutely());
 // V3 strangler-window convergence (D-250), formerly inline at boot. Hourly is the safety net; the
 // trigger below is what keeps deploy-time convergence — it ENQUEUES, so the host finishes starting
 // while a worker does the scan, and DisableConcurrentExecution keeps concurrent replicas off each

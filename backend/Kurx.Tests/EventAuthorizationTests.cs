@@ -24,7 +24,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
     private static readonly object ResetLock = new();
     private static bool _reset;
     private static Guid _categoryId;
-    private static Guid _privateTypeId;
+    private static Guid _typeId;
 
     public EventAuthorizationTests(KurxApiFactory factory)
     {
@@ -39,22 +39,19 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
             db.EventCategories.Add(cat);
             db.SaveChanges();
             _categoryId = cat.Id;
-            /*
-             * A PRIVATE type under it, for the one case that has to be self-represented.
-             *
-             * D-353 refuses a self-represented PUBLIC event at creation, and a null TypeId resolves to
-             * Public by the documented fallback — so the creator-owns-their-event case (D-268) could no
-             * longer create its subject at all. Private is the shape self-representation still has, and
-             * the authority rule under test is indifferent to the product.
-             */
-            var privateType = new EventCategory
+
+            // A PRIVATE type, deliberately. This class is about who may act on an event, and it creates
+            // self-represented ones — which D-353 confines to private products, since a public event must
+            // name a real institution. An untyped event resolves to Public, so leaving the type off would
+            // have every event here refused at creation for a reason that has nothing to do with authority.
+            var type = new EventCategory
             {
-                Level = CategoryLevel.Type, Name = "Auth Private Type", Slug = "auth-private-type",
+                Level = CategoryLevel.Type, Name = "Auth Type", Slug = "auth-type",
                 ParentId = cat.Id, ProductClass = EventProduct.Private,
             };
-            db.EventCategories.Add(privateType);
+            db.EventCategories.Add(type);
             db.SaveChanges();
-            _privateTypeId = privateType.Id;
+            _typeId = type.Id;
             _reset = true;
         }
     }
@@ -77,6 +74,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         title,
         description = "An event with plenty of detail for validation.",
         categoryId = _categoryId,
+        typeId = _typeId,
         venueName = "Main Hall",
         city = "Vizag",
         startsAt = DateTime.UtcNow.AddDays(20),
@@ -149,7 +147,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
             {
                 title = "Owned Outright",
                 description = "An event with plenty of detail for validation.",
-                categoryId = _categoryId, typeId = _privateTypeId,
+                categoryId = _categoryId, typeId = _typeId,
                 venueName = "Main Hall", city = "Vizag",
                 startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
             }));
@@ -164,7 +162,6 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/payment-readiness")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/workspace")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/events/{eventId}/announcements")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/v1/events/{eventId}/certificates")).StatusCode);
 
         // ...and writes, not just reads.
         var ticket = await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types",
@@ -195,7 +192,6 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.OK, ticket.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/v1/orgs/{orgId}/events/{eventId}/analytics")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await rep.GetAsync($"/v1/events/{eventId}/certificates")).StatusCode);
     }
 
     // ── Organization Manager (collaborator) ──────────────────────────────────────────────────────

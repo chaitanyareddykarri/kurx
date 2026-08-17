@@ -332,33 +332,6 @@ class EventContentRemoteDataSource {
         endpoint: 'DELETE /v1/orgs/{orgId}/events/{eventId}/media/{mediaId}',
       );
 
-  // ── Certificates (event-scoped roster; not org-scoped) ─────────────────────
-
-  Future<List<CertificateRosterDto>> certificateRoster(String eventId) => guard(
-        () async {
-          final res = await _dio.get('/v1/events/$eventId/certificates');
-          return _list(res.data, CertificateRosterDto.fromJson);
-        },
-        endpoint: 'GET /v1/events/{eventId}/certificates',
-      );
-
-  Future<int> generateCertificates(String eventId, {String? templateId}) => guard(
-        () async {
-          final res = await _dio.post(
-            '/v1/events/$eventId/certificates/generate',
-            data: {'templateId': ?templateId},
-          );
-          final body = _map(res.data);
-          return (body['generated'] as num?)?.toInt() ?? 0;
-        },
-        endpoint: 'POST /v1/events/{eventId}/certificates/generate',
-      );
-
-  Future<void> revokeCertificate(String certificateId, String reason) => guard(
-        () => _dio.post('/v1/certificates/$certificateId/revoke', data: {'reason': reason}),
-        endpoint: 'POST /v1/certificates/{id}/revoke',
-      );
-
   // ── Membership claims (the caller's own) ───────────────────────────────────
 
   Future<List<MembershipClaimDto>> myMembershipClaims() => guard(

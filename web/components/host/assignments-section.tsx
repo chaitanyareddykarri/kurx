@@ -41,7 +41,7 @@ export function AssignmentsSection({ orgId, eventId, assignments, myUserId, ally
               <UserCard
                 name={a.assignee_name}
                 username={a.assignee_username}
-                avatarSrc={a.assignee_avatar_key}
+                avatarSrc={a.assignee_avatar_url}
                 href={a.assignee_username ? `/u/${a.assignee_username}` : undefined}
                 subtitle={`${a.role}${a.custom_role ? ` (${a.custom_role})` : ""} · ${a.status}${a.notes ? ` · ${a.notes}` : ""}`}
                 action={

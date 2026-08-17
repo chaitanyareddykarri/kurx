@@ -19,7 +19,7 @@ public class AccountService(
     KurxDbContext db,
     IRegistrationService registration,
     INotificationService notifications,
-    IAuditWriter audit) : IAccountService
+    IAuditWriter audit, IStorage storage) : IAccountService
 {
     /// <summary>Grace window before an account is anonymised. 30 days is the span the deletion contract
     /// advertises to the user, so it lives here rather than in configuration where the two could drift.</summary>
@@ -143,7 +143,12 @@ public class AccountService(
             .OrderByDescending(x => x.CreatedAt)
             .ToListAsync(ct);
 
-        return rows.Select(r => new BlockedUserView(r.Id, r.Name, r.Username, r.AvatarKey, r.CreatedAt)).ToList();
+        // D-302: presign after materialising — this cannot run inside an EF projection.
+        var views = new List<BlockedUserView>(rows.Count);
+        foreach (var r in rows)
+            views.Add(new BlockedUserView(r.Id, r.Name, r.Username, r.AvatarKey, r.CreatedAt,
+                await storage.PresignOrNullAsync(r.AvatarKey, ct)));
+        return views;
     }
 
     // ── Username history ───────────────────────────────────────────────────────

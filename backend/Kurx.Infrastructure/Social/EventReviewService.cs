@@ -10,7 +10,7 @@ namespace Kurx.Infrastructure.Social;
 /// (Ticket.EventId + Ticket.UserId are denormalized, so it's a single AnyAsync). One review per
 /// (user, event), upserted so a re-post edits.</summary>
 public class EventReviewService(
-    KurxDbContext db, IProfileVisibilityResolver visibility) : IEventReviewService
+    KurxDbContext db, IProfileVisibilityResolver visibility, IStorage storage) : IEventReviewService
 {
     public async Task<ServiceResult<ReviewView>> UpsertAsync(Guid userId, Guid eventId, int rating, string? title,
         string? body, bool isAnonymous, CancellationToken ct = default)
@@ -45,9 +45,11 @@ public class EventReviewService(
         // byline in their own response that no other reader gets.
         var authorLinkable = await visibility.VisibleProfileIdsAsync([userId], null, ct);
         var showIdentity = !isAnonymous && authorLinkable.Contains(userId);
+        var authorAvatarKey = showIdentity ? author?.AvatarKey : null;
         return ServiceResult<ReviewView>.Success(new ReviewView(review.Id, eventId, rating, title, body,
             isAnonymous, true, isAnonymous ? null : author?.Name, review.CreatedAt,
-            showIdentity ? author?.Username : null, showIdentity ? author?.AvatarKey : null));
+            showIdentity ? author?.Username : null, authorAvatarKey,
+            await storage.PresignOrNullAsync(authorAvatarKey, ct)));
     }
 
     public async Task<(IReadOnlyList<ReviewView> Items, ReviewSummary Summary, int Total)> ListAsync(
@@ -89,6 +91,10 @@ public class EventReviewService(
             return new ReviewView(x.Id, x.EventId, x.Rating, x.Title, x.Body, x.IsAnonymous, x.IsVerified,
                 x.IsAnonymous ? null : x.AuthorName, x.CreatedAt, showIdentity ? x.Username : null, showIdentity ? x.AvatarKey : null);
         }).ToList();
+        // D-302, second pass: the projection above is a synchronous lambda. An anonymous review carries
+        // no key, so it gets no URL — the byline and the picture hide together, as they must.
+        for (var i = 0; i < items.Count; i++)
+            items[i] = items[i] with { AuthorAvatarUrl = await storage.PresignOrNullAsync(items[i].AuthorAvatarKey, ct) };
 
         return (items, new ReviewSummary(Math.Round(avg, 2), total), total);
     }

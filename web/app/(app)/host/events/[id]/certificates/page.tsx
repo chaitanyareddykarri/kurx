@@ -1,93 +1,79 @@
+import Link from "next/link";
 import { requireEventOrg } from "@/lib/event-org";
 import { can } from "@/lib/capabilities";
-import { listEventCertificates, section } from "@/lib/api";
-import { Button, Card, controlClass } from "@kurx/ui";
-import { formatDate } from "@/lib/formatters";
-import { GenerateCertificatesForm } from "@/components/host/generate-certificates-form";
-import { revokeCertificateAction } from "@/lib/certificate-actions";
-import { ConfirmSubmitButton } from "@/components/host/confirm-submit-button";
+import { section } from "@/lib/api";
+import {
+  getCertificateDashboard, listEventTemplates, listLibraryTemplates
+} from "@/lib/certificate-api";
+import { CertificateTemplateList } from "@/components/host/certificates/certificate-template-list";
+import { CertificateDashboardPanel } from "@/components/host/certificates/certificate-dashboard";
+import { Card } from "@kurx/ui";
 
+/**
+ * Event Dashboard → Certificates (D-355).
+ *
+ * `requireEventOrg` is the same gate every other host page uses; the server refuses independently, so
+ * this only decides what to render.
+ */
 export default async function EventCertificatesPage({ params }: { params: { id: string } }) {
-  const { session, orgId, caps } = await requireEventOrg(params.id);
-  // From the capability matrix, not `role` (D-289). Issuing and revoking certificates is an
-  // operational action on this event's attendees, which is exactly what `attendees.manage`
-  // gates; `role` is representation authority and is `null` for a personal event (D-268).
-  const canManage = can(caps, "attendees", "manage");
-  // An outage rendered the same empty roster as "no certificates issued", which on this screen would
-  // send a host off to re-issue certificates their attendees already hold (D-235).
-  const rosterResult = await section(listEventCertificates(session.accessToken, params.id));
-  const roster = rosterResult.state === "ok" ? rosterResult.data : [];
-  const rosterFailed = rosterResult.state !== "ok";
+  const { session, caps } = await requireEventOrg(params.id);
+  // The server gates on EventPermission.ManageContent, which resolves to Manager level. `events.update`
+  // is the same Manager-level gate the host nav already uses, so what reveals this page and what the
+  // page itself allows agree — anything revealed in the nav but refused on arrival reads as broken.
+  const canManage = can(caps, "events", "update");
+
+  // Through `section` so an API outage renders "couldn't load" rather than an empty list: an empty list
+  // is a specific, actionable claim ("you have no designs") and must not be what a failed request looks
+  // like (D-235).
+  const [templates, dashboard, library] = await Promise.all([
+    section(listEventTemplates(session.accessToken, params.id)),
+    section(getCertificateDashboard(session.accessToken, params.id)),
+    // The creator's own saved designs (D-355, Phase 13). Through `section` like the rest, so a failure to
+    // read the library degrades to "no reuse offered" rather than taking the page down.
+    section(listLibraryTemplates(session.accessToken)),
+  ]);
 
   return (
     <div className="space-y-6">
-      {rosterFailed ? (
-        <p role="status" className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
-          The issued-certificate roster couldn&apos;t be loaded. Generating is idempotent, so it is safe
-          to retry — but the list below is not a record of what has been issued.
-        </p>
-      ) : null}
-      <Card>
-        <h2 className="font-semibold text-text">Generate certificates</h2>
-        <p className="mt-2 text-sm text-muted">
-          Idempotent — each eligible ticket gets one certificate (checked-in attendees when certificates are
-          gated, otherwise all non-void tickets). Recipients with an email on file are emailed a copy; anyone can
-          verify at <code className="text-text">/verify/&#123;code&#125;</code>.
-        </p>
-        {canManage ? (
-          <div className="mt-4"><GenerateCertificatesForm eventId={params.id} /></div>
-        ) : (
-          <p className="mt-4 text-xs text-muted">Only Owners and Managers can generate certificates.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-h2 text-text">Certificates</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Upload the certificate you already designed. Kurx adds the participant and event details on top,
+            then issues a verifiable certificate to each recipient.
+          </p>
+        </div>
+        {canManage && (
+          <Link
+            href={`/host/events/${params.id}/certificates/generate`}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            Generate certificates
+          </Link>
         )}
-      </Card>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Issued certificates ({roster.length})</h2>
-        {roster.length === 0 ? (
-          <Card><p className="text-sm text-muted">No certificates issued yet.</p></Card>
-        ) : (
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted">
-                  <th scope="col" className="px-5 py-3 font-medium">Holder</th>
-                  <th scope="col" className="px-5 py-3 font-medium">Code</th>
-                  <th scope="col" className="px-5 py-3 font-medium">Issued</th>
-                  <th scope="col" className="px-5 py-3 font-medium">Status</th>
-                  {canManage ? <th scope="col" className="px-5 py-3" /> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {roster.map((c) => (
-                  <tr key={c.id} className="border-b border-border last:border-0">
-                    <td className="px-5 py-3 text-text">{c.holder_name || "—"}</td>
-                    <td className="px-5 py-3 font-mono text-xs text-muted">{c.verify_code}</td>
-                    <td className="whitespace-nowrap px-5 py-3 text-muted">{formatDate(c.issued_at, "en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
-                    <td className={`px-5 py-3 font-medium ${c.is_revoked ? "text-danger" : "text-success"}`}>{c.is_revoked ? "Revoked" : "Valid"}</td>
-                    {canManage ? (
-                      <td className="px-5 py-3 text-right">
-                        {c.is_revoked ? (
-                          <span className="text-xs text-muted">{c.revoked_reason || "revoked"}</span>
-                        ) : (
-                          <form action={revokeCertificateAction.bind(null, c.id, params.id)} className="flex items-center justify-end gap-1">
-                            <input name="reason" placeholder="Reason" aria-label="Reason for revoking" className={`${controlClass} w-40`} />
-                            <ConfirmSubmitButton
-                              label="Revoke"
-                              title="Revoke this certificate?"
-                              description="Anyone checking its verification link will be told it is no longer valid."
-                              confirmLabel="Revoke"
-                            />
-                          </form>
-                        )}
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
-      </section>
+      {/* Only once something has been issued — an empty dashboard of zeroes on a fresh event is noise
+          in front of the thing the organiser actually came to do. */}
+      {dashboard.state === "ok" && dashboard.data.live + dashboard.data.revoked > 0 && (
+        <CertificateDashboardPanel eventId={params.id} data={dashboard.data} />
+      )}
+
+      {templates.state !== "ok" ? (
+        <Card>
+          <p role="status" className="text-sm text-muted">
+            This event&apos;s certificate designs couldn&apos;t be loaded. That is a failure to read, not
+            an empty list — nothing has been deleted. Refresh to try again.
+          </p>
+        </Card>
+      ) : (
+        <CertificateTemplateList
+          eventId={params.id}
+          templates={templates.data}
+          canManage={canManage}
+          library={library.state === "ok" ? library.data : []}
+        />
+      )}
     </div>
   );
 }

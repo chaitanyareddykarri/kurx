@@ -91,6 +91,8 @@ export const blockedUserSchema = z.object({
   name: z.string(),
   username: z.string().nullable().optional(),
   avatar_key: z.string().nullable().optional(),
+  /// Presigned companion (D-302) — what renders; the key alone is not fetchable.
+  avatar_url: z.string().nullable().optional(),
   created_at: z.string()
 });
 export type BlockedUser = z.infer<typeof blockedUserSchema>;
@@ -175,6 +177,7 @@ export const dmRoomSchema = z.object({
   other_name: z.string(),
   other_username: z.string().nullable().optional(),
   other_avatar_key: z.string().nullable().optional(),
+  other_avatar_url: z.string().nullable().optional(),
   request_state: z.string(),
   is_request: z.boolean().default(false),
   archived: z.boolean().default(false),

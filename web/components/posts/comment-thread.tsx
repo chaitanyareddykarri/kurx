@@ -21,7 +21,7 @@ export function CommentThread({
 }: {
   postId: string;
   initial: PostCommentPage;
-  viewer: { name: string; avatarKey?: string | null };
+  viewer: { name: string; avatarUrl?: string | null };
   onCountChange?: (delta: number) => void;
 }) {
   const [items, setItems] = useState<PostComment[]>(initial.items);
@@ -83,7 +83,7 @@ export function CommentThread({
       <h2 className="text-sm font-semibold text-text">Comments</h2>
 
       <div className="mt-3 flex gap-2">
-        <Avatar name={viewer.name} src={viewer.avatarKey ?? undefined} size={32} />
+        <Avatar name={viewer.name} src={viewer.avatarUrl ?? undefined} size={32} />
         <div className="min-w-0 flex-1">
           {replyTo ? (
             <p className="mb-1 text-xs text-muted">
@@ -168,7 +168,7 @@ function Comment({
   const handle = comment.author.username;
   return (
     <div className="flex gap-2">
-      <Avatar name={comment.author.name} src={comment.author.avatar_key ?? undefined} size={32} />
+      <Avatar name={comment.author.name} src={comment.author.avatar_url ?? undefined} size={32} />
       <div className="min-w-0 flex-1">
         <div className="rounded-md bg-background px-3 py-2">
           <Link

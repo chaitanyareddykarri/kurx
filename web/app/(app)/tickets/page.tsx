@@ -25,7 +25,6 @@ export default async function TicketsPage() {
         <h1 className="text-3xl font-semibold text-text">My Tickets</h1>
         <div className="flex flex-wrap gap-2">
           <LinkButton href="/tickets/refunds" variant="secondary">Refunds</LinkButton>
-          <LinkButton href="/certificates" variant="secondary">My Certificates</LinkButton>
         </div>
       </div>
 

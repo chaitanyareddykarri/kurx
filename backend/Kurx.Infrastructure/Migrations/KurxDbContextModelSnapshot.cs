@@ -740,6 +740,553 @@ namespace Kurx.Infrastructure.Migrations
                     b.ToTable("certificates", (string)null);
                 });
 
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateAccessLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastAccessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("RecipientId");
+
+                    b.HasIndex("RevokedByUserId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("certificate_access_links", (string)null);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ColumnMappingJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("PreviewCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceFileName")
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("SourceFileStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TemplateVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("EventId", "Status");
+
+                    b.ToTable("certificate_batches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_batches_status", "\"Status\" IN ('Draft', 'Mapping', 'PreviewReady', 'Approved', 'Generating', 'Completed', 'Failed', 'Cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("CertificateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Destination")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("CertificateId", "Channel");
+
+                    b.ToTable("certificate_deliveries", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_deliveries_status", "\"Status\" IN ('Pending', 'Sent', 'Failed', 'Bounced')");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CertificateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CertificateId", "Type");
+
+                    b.ToTable("certificate_events", (string)null);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateIdRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("NextSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Padding")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.ToTable("certificate_id_rules", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_id_rules_sequence", "\"NextSequence\" >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("LinkedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<int?>("SourceRowNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("NormalizedEmail");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BatchId", "SourceRowNumber")
+                        .IsUnique()
+                        .HasFilter("\"BatchId\" IS NOT NULL AND \"SourceRowNumber\" IS NOT NULL");
+
+                    b.ToTable("certificate_recipients", (string)null);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateRevocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CertificateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ReplacementCertificateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RevokedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CertificateId");
+
+                    b.HasIndex("ReplacementCertificateId");
+
+                    b.HasIndex("RevokedByUserId");
+
+                    b.ToTable("certificate_revocations", (string)null);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateSigningKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("CompromisedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CompromisedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProtectedPrivateKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProtectionScheme")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PublicKeySpki")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyId")
+                        .IsUnique();
+
+                    b.HasIndex("State");
+
+                    b.ToTable("certificate_signing_keys", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_signing_keys_state", "\"State\" IN ('Active', 'Retired', 'Compromised')");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BackgroundContentType")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("BackgroundHeightPx")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BackgroundStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("BackgroundWidthPx")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("PageHeightMm")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("PageSize")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<double>("PageWidthMm")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerUserId", "EventId");
+
+                    b.ToTable("certificate_templates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_certificate_templates_status", "\"Status\" IN ('Draft', 'Ready', 'Archived')");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateTemplateField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BackgroundColor")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FieldKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FontFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<double?>("FontSizePt")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("FontStyle")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("FontWeight")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<double>("Height")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("HorizontalAlignment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("IsMasking")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<double?>("LetterSpacing")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LineHeight")
+                        .HasColumnType("double precision");
+
+                    b.Property<bool>("MirrorsArtwork")
+                        .HasColumnType("boolean");
+
+                    b.Property<double>("Rotation")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("StaticText")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Underline")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("VerticalAlignment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<double>("Width")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("X")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Y")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("ZOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "ZOrder");
+
+                    b.ToTable("certificate_template_fields", (string)null);
+                });
+
             modelBuilder.Entity("Kurx.Domain.Entities.ChatAttachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3847,6 +4394,92 @@ namespace Kurx.Infrastructure.Migrations
                     b.ToTable("inventory_pools", null, t =>
                         {
                             t.HasCheckConstraint("ck_inventory_pools_nonneg", "\"Held\" >= 0 AND \"Allocated\" >= 0 AND \"Consumed\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.IssuedCertificate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CertificateId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FieldValuesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PdfStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PngStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Signature")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SignatureKeyId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("SupersedesCertificateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TemplateVersion")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("CertificateId")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientId");
+
+                    b.HasIndex("SupersedesCertificateId");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("BatchId", "RecipientId")
+                        .IsUnique()
+                        .HasFilter("\"BatchId\" IS NOT NULL");
+
+                    b.HasIndex("EventId", "Status");
+
+                    b.ToTable("issued_certificates", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_issued_certificates_status", "\"Status\" IN ('Issued', 'Revoked', 'Superseded')");
                         });
                 });
 
@@ -8196,6 +8829,136 @@ namespace Kurx.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateAccessLink", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.CertificateRecipient", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateBatch", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.CertificateTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateDelivery", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.IssuedCertificate", null)
+                        .WithMany()
+                        .HasForeignKey("CertificateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateEvent", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.IssuedCertificate", null)
+                        .WithMany()
+                        .HasForeignKey("CertificateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateIdRule", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateRecipient", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.CertificateBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateRevocation", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.IssuedCertificate", null)
+                        .WithMany()
+                        .HasForeignKey("CertificateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.IssuedCertificate", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacementCertificateId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateTemplate", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.CertificateTemplateField", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.CertificateTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Kurx.Domain.Entities.ChatAttachment", b =>
                 {
                     b.HasOne("Kurx.Domain.Entities.ChatMessage", null)
@@ -8941,6 +9704,37 @@ namespace Kurx.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("TicketTypeId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.IssuedCertificate", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.CertificateBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.CertificateRecipient", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.IssuedCertificate", null)
+                        .WithMany()
+                        .HasForeignKey("SupersedesCertificateId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Kurx.Domain.Entities.CertificateTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Kurx.Domain.Entities.JudgeScore", b =>

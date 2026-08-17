@@ -22,7 +22,9 @@ public record DmRoomView(
     /// <summary>D-295 — pinned by this member; the list orders pinned conversations first.</summary>
     bool Pinned = false,
     /// <summary>D-295 — this member silenced their own notifications for this conversation.</summary>
-    bool NotificationsMuted = false);
+    bool NotificationsMuted = false,
+    /// <summary>Presigned companion to <c>OtherAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? OtherAvatarUrl = null);
 
 /// <summary>
 /// Direct messages (D-264). A DM is a <see cref="Kurx.Domain.Entities.ChatRoom"/> with no event, so

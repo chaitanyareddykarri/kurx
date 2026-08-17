@@ -17,7 +17,7 @@ export async function SuggestionsSection() {
             key={s.user_id}
             name={s.name}
             username={s.username}
-            avatarSrc={s.avatar_key}
+            avatarSrc={s.avatar_url}
             subtitle={s.reason}
             href={s.username ? `/u/${s.username}` : undefined}
             action={<AllyConnectButton targetUserId={s.user_id} initialRelation="none" initialConnectionId={null} />}

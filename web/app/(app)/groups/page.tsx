@@ -81,7 +81,7 @@ export default async function GroupsPage() {
                         <UserCard
                           name={m.name}
                           username={m.username}
-                          avatarSrc={m.avatar_key}
+                          avatarSrc={m.avatar_url}
                           href={m.username ? `/u/${m.username}` : undefined}
                           subtitle={m.ticket_id ? "Ticketed" : "Pending"}
                           action={

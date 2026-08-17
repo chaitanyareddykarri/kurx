@@ -26,7 +26,7 @@ export default async function PostsPage({
 
   return (
     <PostsHome
-      author={{ name: session.me.name, avatarKey: session.me.avatar_key }}
+      author={{ name: session.me.name, avatarUrl: session.me.avatar_url }}
       initial={page}
       trending={trending}
       query={query}

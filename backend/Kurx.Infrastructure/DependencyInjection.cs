@@ -76,6 +76,8 @@ public static class DependencyInjection
         services.AddScoped<ChatAttachmentCleanupJob>();
         services.AddScoped<PostMediaCleanupJob>();
         services.AddScoped<AccountDeletionJob>();
+        services.AddScoped<CertificateBatchJob>();
+        services.AddScoped<CertificateDeliveryJob>();
 
         // JwtOptions is registered by the host (Program.cs) so its production-strength
         // validation runs exactly once, using the host's IsProduction() check.
@@ -176,8 +178,31 @@ public static class DependencyInjection
         services.AddScoped<IWalkInService, Events.WalkInService>();                        // V3 §7.6 walk-in (Phase 13)
         services.AddScoped<ISeatBlockService, Events.SeatBlockService>();                  // V3 §7.5 delegated/SeatBlock (Phase 13)
         services.AddScoped<IApprovalService, Events.ApprovalService>();                    // V3 §14.3 approval chains (Phase 14)
-        services.AddScoped<ICertificateService, CertificateService>();
-        services.AddScoped<IIdCardService, Cards.IdCardService>();
+        // The certificate module (D-355). Scoped: it writes through the request's DbContext.
+        services.AddScoped<ICertificateIdAllocator, Certificates.CertificateIdAllocator>();
+        services.AddScoped<ICertificateTemplateService, Certificates.CertificateTemplateService>();
+        services.AddScoped<ICertificateIssuingService, Certificates.CertificateIssuingService>();
+        services.AddScoped<ICertificateBatchService, Certificates.CertificateBatchService>();
+        services.AddScoped<ICertificateDeliveryService, Certificates.CertificateDeliveryService>();
+        services.AddScoped<ICertificateRevocationService, Certificates.CertificateRevocationService>();
+        services.AddScoped<ICertificateParticipantService, Certificates.CertificateParticipantService>();
+        services.AddScoped<ICertificateAnalyticsService, Certificates.CertificateAnalyticsService>();
+        services.AddScoped<ICertificateSigner, Certificates.CertificateSigner>();
+        // Both readers registered; SpreadsheetService picks one by file extension. Adding a format
+        // later is a registration here rather than a change to any caller.
+        services.AddSingleton<ISpreadsheetReader, Certificates.CsvSpreadsheetReader>();
+        services.AddSingleton<ISpreadsheetReader, Certificates.XlsxSpreadsheetReader>();
+        services.AddSingleton<ISpreadsheetService, Certificates.SpreadsheetService>();
+        services.AddScoped<ICertificateVerificationService, Certificates.CertificateVerificationService>();
+        services.AddSingleton<ICertificateVerificationLinks, Certificates.CertificateVerificationLinks>();
+        // Singleton like the other renderers: QuestPDF layout is stateless and pays a one-time
+        // font-resolution cost on first use.
+        services.AddSingleton<ICertificateDocumentRenderer, Certificates.CertificateDocumentRenderer>();
+        // D-362 — event badges. Reuses the certificate document renderer above rather than shipping a
+        // second one; this service is the layout and the authority check, not an engine.
+        services.AddScoped<IIdCardService, IdCards.IdCardService>();
+        // The editable card design, stored on DesignTemplate with Kind = IdCard.
+        services.AddScoped<IIdCardTemplateService, IdCards.IdCardTemplateService>();
         services.AddScoped<IEntitlementService, Events.EntitlementService>();   // D-334
         services.AddScoped<Analytics.IAnalyticsFactSource, Analytics.LeafFactSource>();   // V3 §16 (Phase 17) internal fact source
         services.AddScoped<IAnalyticsService, Analytics.AnalyticsService>();
@@ -345,7 +370,62 @@ public static class DependencyInjection
         AddProvider<IPaymentGateway, MockPaymentGateway>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IRouteClient, MockRouteClient>(services, config, "PAYMENT_PROVIDER", "mock");
         AddProvider<IKycProvider, MockKycProvider>(services, config, "KYC_PROVIDER", "mock");
-        AddProvider<IStorage, LocalDiskStorage>(services, config, "STORAGE_PROVIDER", "localdisk");
+        // Certificate text detection (D-355). Two real choices now, so this is hand-registered rather than
+        // going through AddProvider — that helper exists to refuse everything but the development value.
+        //
+        // `tesseract` shells out to the binary installed in the runtime image. `none` keeps the honest
+        // stub, which reports unavailable and never fabricates a region. Anything else fails closed at
+        // boot: a misspelled value must not silently resolve to a detector that detects nothing, because
+        // the editor would then offer a feature that never returns a result.
+        switch ((config["TEXT_DETECTOR"] ?? "none").Trim().ToLowerInvariant())
+        {
+            case "none":
+                services.AddSingleton<ITextDetector, Certificates.UnavailableTextDetector>();
+                Resolved[nameof(ITextDetector)] = "none (UnavailableTextDetector — no detection)";
+                break;
+            case "tesseract":
+                services.AddSingleton<ITextDetector, Certificates.TesseractTextDetector>();
+                Resolved[nameof(ITextDetector)] = "tesseract (TesseractTextDetector)";
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"TEXT_DETECTOR={config["TEXT_DETECTOR"]} is not supported; use 'tesseract' or 'none'.");
+        }
+        // Object storage (D-355 Phase 2). Hand-registered rather than through AddProvider, which exists
+        // to REFUSE every value but the development one — there are now two real choices.
+        switch ((config["STORAGE_PROVIDER"] ?? "localdisk").Trim().ToLowerInvariant())
+        {
+            case "localdisk":
+                // Fails closed in Production, matching FILE_SCANNER=none (D-338). LocalDiskStorage writes
+                // into the container's filesystem, which a redeploy destroys — so a production deployment
+                // that simply forgot the variable would come up healthy, accept uploads, issue
+                // certificates, and lose every stored document on the next release. Postgres would keep
+                // the rows, which makes the loss look like corruption rather than a wipe: the certificate
+                // still resolves to a storage key that now 404s.
+                if (isProduction)
+                    throw new InvalidOperationException(
+                        "STORAGE_PROVIDER=localdisk is not permitted in Production. LocalDiskStorage is "
+                        + "ephemeral container storage: uploaded designs and issued certificates would be "
+                        + "destroyed by the next deploy while their database rows survived. Set "
+                        + "STORAGE_PROVIDER=s3 and configure S3_BUCKET, S3_REGION and (for a non-AWS "
+                        + "S3-compatible server) S3_ENDPOINT. See .env.example.");
+                services.AddSingleton<IStorage, LocalDiskStorage>();
+                Resolved[nameof(IStorage)] = "localdisk (LocalDiskStorage — not durable)";
+                break;
+            case "s3":
+                // Validated here, at startup, so a missing bucket or an unparseable endpoint stops the
+                // deploy rather than surfacing on the first upload.
+                var s3 = S3StorageOptions.FromConfiguration(config);
+                services.AddSingleton<IStorage, S3Storage>();
+                Resolved[nameof(IStorage)] = s3.PublicEndpoint is { Length: > 0 }
+                    ? $"s3 ({s3.Bucket} @ {s3.Endpoint}, browser URLs signed for {s3.PublicEndpoint})"
+                    : $"s3 ({s3.Bucket}{(s3.Endpoint is null ? "" : " @ " + s3.Endpoint)})";
+                break;
+            default:
+                throw new NotSupportedException(
+                    $"STORAGE_PROVIDER={config["STORAGE_PROVIDER"]} is not implemented. Valid values are "
+                    + "'localdisk' (development only — not durable) and 's3'. See .env.example.");
+        }
         // Malware scanning (D-110, real provider D-298). `none` stays the default so a dev machine
         // needs no clamd, and it provides NO protection; `clamav` is the production value. Registered
         // by hand rather than through AddProvider because this is the one boundary with a real
@@ -402,7 +482,6 @@ public static class DependencyInjection
         services.AddSingleton<IQrCodeGenerator, QrCodeGenerator>();
         AddProvider<IDocumentRasterizer, DocumentRasterizerStub>(services, config, "DOCUMENT_RASTERIZER", "stub");
         services.AddSingleton<ICertificateRenderer, CertificateRenderer>();
-        services.AddSingleton<IIdCardRenderer, Cards.IdCardRenderer>();
         // D-199: pays the renderer's one-time SkiaSharp/QuestPDF font-resolution cost (~26.7s, measured)
         // at startup instead of on a real user's first certificate request.
         services.AddHostedService<CertificateRendererWarmupService>();

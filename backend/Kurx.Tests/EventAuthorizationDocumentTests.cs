@@ -52,11 +52,18 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
     /// `representation_required`), and every type used here is Public, so passing null through would
     /// only ever produce a 409. The twelve call sites that pass null are about the authorization
     /// document, not about representation; they get a verified org so they test what they name.</param>
+    /// <param name="typeSlug">Defaults by representation, because D-353 ties the two together: a PUBLIC
+    /// event must name a real institution, so self-hosting is a Private-only affordance. A self-represented
+    /// event therefore has to be filed under a Private type, and asking for a public one would be refused
+    /// at creation before any of these tests reached what they are actually about.</param>
     /// <param name="selfRepresented">Opts out of that seeding, for the two cases that ARE about
     /// self-representation. Only legal with a Private type.</param>
-    private async Task<Guid> CreateEventAsync(HttpClient owner, Guid? orgId, string typeSlug = "hackathon",
+    private async Task<Guid> CreateEventAsync(HttpClient owner, Guid? orgId, string? typeSlug = null,
         bool selfRepresented = false)
     {
+        // Keyed on self-representation, not on a null orgId: a null orgId here means "seed one for me",
+        // so only the genuinely self-represented cases need the Private type D-353 confines them to.
+        typeSlug ??= selfRepresented ? "birthday-party" : "hackathon";
         var (catId, typeId) = await TaxonAsync(typeSlug);
         Guid? representing = selfRepresented
             ? null
@@ -149,13 +156,31 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
     }
 
     /// <summary>D12 §6's Representation column, the other half of M5. A Career Fair is an act of an
-    /// institution; one filed as self-represented is misfiled, and the archetype says so as data rather
-    /// than as a branch in code.</summary>
+    /// institution; one filed as self-represented is misfiled.
+    ///
+    /// <para>D-353 moved where that is caught. It used to be a publish-time blocker on an event that had
+    /// already been created; it is now refused at creation, because a public event must name a real
+    /// institution before any row is written. The blocker still exists as the twin that catches an event
+    /// which reached Draft before the rule, or whose representation was withdrawn afterwards — this
+    /// asserts the front-line refusal, which is the one an organiser actually meets.</para></summary>
     [Fact]
     public async Task An_archetype_that_requires_representation_refuses_a_self_represented_event()
     {
         var (owner, _) = await LoginAsync("9702000013");
+        // "Campus Recruitment" rather than "Career Fair": the latter exists under two audiences, so the
+        // seeder prefixes its slug and a bare "career-fair" resolves to nothing.
         var (catId, typeId) = await TaxonAsync("campus-recruitment");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            // Guard the premise: if the type stopped resolving to `recruitment`, or stopped being a public
+            // product, this test would pass for the wrong reason.
+            var node = await scope.ServiceProvider.GetRequiredService<KurxDbContext>().EventCategories
+                .AsNoTracking().Where(c => c.Id == typeId)
+                .Select(c => new { c.ArchetypeSlug, c.ProductClass }).FirstAsync();
+            Assert.Equal("recruitment", node.ArchetypeSlug);
+            Assert.Equal(EventProduct.Public, node.ProductClass);
+        }
 
         /*
          * D-353 moved this refusal from PUBLISH to CREATE, and widened it.
@@ -175,6 +200,7 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
             categoryId = catId, typeId, venueName = "Hall", city = "C",
             startsAt = DateTime.UtcNow.AddDays(30), endsAt = DateTime.UtcNow.AddDays(30).AddHours(3),
         });
+
 
         Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
         Assert.Equal("representation_required", (await Json(res)).GetProperty("error").GetString());

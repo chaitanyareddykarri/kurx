@@ -88,7 +88,8 @@ public static class AuthEndpoints
 
         app.MapGet("/v1/me", async (ClaimsPrincipal principal, KurxDbContext db,
             IIdentityVerificationService identitySvc, ITrustService trust, IPlatformRoleService roles,
-            IProfileVisibilityResolver visibility, IPasswordService passwords, CancellationToken ct) =>
+            IProfileVisibilityResolver visibility, IPasswordService passwords, IStorage storage,
+            CancellationToken ct) =>
         {
             var userId = ParseUserId(principal);
             var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct)
@@ -134,6 +135,10 @@ public static class AuthEndpoints
                 LinksJson: user.LinksJson,
                 AvatarKey: user.AvatarKey,
                 CoverKey: user.CoverKey,
+                // D-302 applied to the profile: the key identifies the object, the URL fetches it. Both
+                // go out, because the edit form round-trips the key while every renderer needs the URL.
+                AvatarUrl: await storage.PresignOrNullAsync(user.AvatarKey, ct),
+                CoverUrl: await storage.PresignOrNullAsync(user.CoverKey, ct),
                 Privacy: PrivacyView(user, sections),
                 DateOfBirth: user.DateOfBirth,
                 CreatedAt: user.CreatedAt,
@@ -171,11 +176,26 @@ public static class AuthEndpoints
         }).WithTags("me");
 
         app.MapPatch("/v1/me/profile", async (UpdateProfileBody body, ClaimsPrincipal principal, KurxDbContext db,
-            Kurx.Infrastructure.Providers.UploadScanGate scanGate, CancellationToken ct) =>
+            Kurx.Infrastructure.Providers.UploadScanGate scanGate, IStorage storage, CancellationToken ct) =>
         {
             var userId = ParseUserId(principal);
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
                 ?? throw new ApiException(StatusCodes.Status401Unauthorized, "invalid_token");
+
+            // D-354 — the key has to be one this caller was actually issued.
+            //
+            // It was persisted as an arbitrary string: nothing checked it began with this caller's own
+            // prefix, so anyone could PATCH `users/{someone-else}/avatar/{guid}` onto their own profile,
+            // and every surface that renders an avatar would presign and serve another user's private
+            // upload under their name. The prefix is exactly what
+            // `MediaService.PresignProfileImageAsync` mints (`users/{userId}/{slot}/{guid}`), which is
+            // what makes the presign the only way to obtain a usable key — the same pairing
+            // `DesignService.Validate` relies on for design assets.
+            //
+            // First, before the scan: it costs no IO, and a key belonging to someone else must be
+            // refused whether or not a scanner happens to be reachable.
+            if (!OwnsKey(body.AvatarKey, userId, "avatar")) return InvalidKey();
+            if (!OwnsKey(body.CoverKey, userId, "cover")) return InvalidKey();
 
             // D-338 — this is where a presigned avatar/cover key becomes real, so it is where the bytes are
             // scanned. Before any mutation below: a rejected image must not leave a half-applied profile
@@ -184,6 +204,17 @@ public static class AuthEndpoints
                 return ProblemResults.Problem(avatarScanError, StatusCodes.Status400BadRequest);
             if (await scanGate.RejectAsync(body.CoverKey, userId, "users", userId, ct) is { } coverScanError)
                 return ProblemResults.Problem(coverScanError, StatusCodes.Status400BadRequest);
+
+            // D-354 — and it has to point at something.
+            //
+            // Last, because a real scanner already covers this: `ClamAvFileScanner` reads the bytes
+            // through IStorage, so an absent key comes back ScanFailed and is refused above with the
+            // more specific `scan_unavailable`. This closes the case the scanner cannot — FILE_SCANNER=none,
+            // where NoOpFileScanner reports a key Clean WITHOUT READING IT. Without it a typo became a
+            // permanently broken image that clients cannot tell from "no picture", which is exactly the
+            // null-vs-broken distinction `StorageUrls.PresignOrNullAsync` exists to protect.
+            if (!await ExistsIfClaimedAsync(body.AvatarKey, storage, ct)) return InvalidKey();
+            if (!await ExistsIfClaimedAsync(body.CoverKey, storage, ct)) return InvalidKey();
 
             if (body.Username is not null)
             {
@@ -268,6 +299,10 @@ public static class AuthEndpoints
                 links_json = user.LinksJson,
                 avatar_key = user.AvatarKey,
                 cover_key = user.CoverKey,
+                // Same pair as GET /v1/me. The write response is what a client re-renders from after a
+                // save, so returning the key alone would blank the picture at the exact moment it worked.
+                avatar_url = await storage.PresignOrNullAsync(user.AvatarKey, ct),
+                cover_url = await storage.PresignOrNullAsync(user.CoverKey, ct),
                 username_changed_at = user.UsernameChangedAt,
             });
         }).RequireAuthorization().WithTags("me").WithValidation<UpdateProfileBody>();
@@ -352,6 +387,25 @@ public static class AuthEndpoints
         Sections: sections?.ToDictionary(
             kv => ProfileVisibilityResolver.SectionKey(kv.Key),
             kv => ProfileVisibilityResolver.TierKey(kv.Value)));
+
+    /// <summary>Whether a claimed profile-image key sits under this caller's own presign prefix (D-354).
+    ///
+    /// <para>A null or blank key is "leave it alone" / "remove it" and passes — the partial-update
+    /// convention every other field on this body follows.</para></summary>
+    private static bool OwnsKey(string? key, Guid userId, string slot) =>
+        string.IsNullOrWhiteSpace(key)
+        || key.Trim().StartsWith($"users/{userId}/{slot}/", StringComparison.Ordinal);
+
+    /// <summary>Whether a claimed key points at a stored object (D-354). Vacuously true when no key was
+    /// claimed, for the same partial-update reason as <see cref="OwnsKey"/>.</summary>
+    private static async Task<bool> ExistsIfClaimedAsync(string? key, IStorage storage, CancellationToken ct) =>
+        string.IsNullOrWhiteSpace(key) || await storage.ExistsAsync(key.Trim(), ct);
+
+    /// <summary>One code for both refusals. Telling "that key is not yours" apart from "that key does
+    /// not exist" would turn this endpoint into an oracle for which storage keys are real, which is the
+    /// enumeration leak D-018 closes everywhere else.</summary>
+    private static IResult InvalidKey() =>
+        ProblemResults.Problem("invalid_storage_key", StatusCodes.Status400BadRequest);
 
     private static Guid ParseUserId(ClaimsPrincipal principal)
         => Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id)

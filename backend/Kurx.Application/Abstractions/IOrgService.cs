@@ -44,7 +44,9 @@ public record AdminOrgView(
     string? PrimaryDomain, bool IsPersonal, int MemberCount, int EventCount, DateTime CreatedAt);
 
 public record OrgMember(Guid UserId, string Phone, string Name, string? Username, string Role, DateTime JoinedAt,
-    string? AvatarKey, bool IsVerified);
+    string? AvatarKey, bool IsVerified,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 public record KycRecordView(Guid Id, string Kind, string Status, string? PayloadJson, DateTime CreatedAt, DateTime? ReviewedAt);
 

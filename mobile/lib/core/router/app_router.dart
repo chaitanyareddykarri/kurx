@@ -20,8 +20,6 @@ import '../../features/settings/presentation/pages/notification_preferences_page
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/bookmarks/presentation/pages/saved_page.dart';
 import '../../features/calendar/presentation/pages/calendar_page.dart';
-import '../../features/certificates/presentation/pages/certificate_detail_page.dart';
-import '../../features/certificates/presentation/pages/my_certificates_page.dart';
 import '../../features/events/domain/entities/event_section.dart';
 import '../../features/events/presentation/pages/event_detail_page.dart';
 import '../../features/events/presentation/pages/event_search_page.dart';
@@ -76,7 +74,6 @@ import '../../features/organizer/presentation/pages/invitations_page.dart';
 import '../../features/organizer/presentation/pages/media_page.dart';
 import '../../features/organizer/presentation/pages/representing_page.dart';
 import '../../features/organizer/presentation/widgets/event_manage_scope.dart';
-import '../../features/organizer/presentation/pages/org_certificates_page.dart';
 import '../../features/organizer/presentation/pages/org_verification_page.dart';
 import '../../features/organizer/presentation/pages/org_wallet_page.dart';
 import '../../features/organizer/presentation/pages/payment_readiness_page.dart';
@@ -344,7 +341,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               final product = s.uri.queryParameters['product'];
               return product == 'Public' || product == 'Private' ? null : '/events/create';
             },
-            // `pricing` carries the gate's free/paid answer (D-343) — the pair that selected the
+            // `pricing` carries the gate's free/paid answer (D-354) — the pair that selected the
             // verification tier the caller just cleared. Unlike `product` it is not enforced in the
             // redirect: a missing value falls back to 'free', which is the closed position (the Paid
             // card in the form stays gated on canOrganizePaid regardless).
@@ -496,18 +493,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── Certificates ──────────────────────────────────────────────────────
-      GoRoute(
-        path: '/certificates',
-        pageBuilder: (_, s) => _fadePage(const MyCertificatesPage(), s),
-      ),
-      GoRoute(
-        path: '/certificates/:code',
-        pageBuilder: (_, s) => _fadePage(
-          CertificateDetailPage(code: s.pathParameters['code']!),
-          s,
-        ),
-      ),
 
       // ── Social ────────────────────────────────────────────────────────────
       // `/chats` and `/allies` are shell branches (Messages / Community tabs), not top-level
@@ -927,19 +912,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           EventManageScope(
             eventId: s.pathParameters['eventId']!,
             builder: (orgId) => CheckinScannerPage(
-              orgId: orgId,
-              eventId: s.pathParameters['eventId']!,
-            ),
-          ),
-          s,
-        ),
-      ),
-      GoRoute(
-        path: '/events/:eventId/manage/certificates',
-        pageBuilder: (_, s) => _fadePage(
-          EventManageScope(
-            eventId: s.pathParameters['eventId']!,
-            builder: (orgId) => OrgCertificatesPage(
               orgId: orgId,
               eventId: s.pathParameters['eventId']!,
             ),

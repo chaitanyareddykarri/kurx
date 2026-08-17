@@ -85,7 +85,6 @@ export const NAV: NavGroup[] = [
       // SuperAdmin, not Reviewer: the certificate endpoints bypass the org-role check on the
       // `kurx_admin` claim, and PlatformRoleClaimsTransformation grants that to SuperAdmin only.
       // A Reviewer would see the screen and get a 403 they cannot resolve.
-      { label: "Certificates", href: "/certificates", icon: Award, roles: ["SuperAdmin"], ready: true },
       // SuperAdmin for the same reason as Certificates: the competition gate is
       // IsOrganiserAsync = isAdmin || event:manage, and only SuperAdmin carries the kurx_admin claim.
       { label: "Competitions", href: "/competitions", icon: Trophy, roles: ["SuperAdmin"], ready: true },

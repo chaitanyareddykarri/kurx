@@ -361,7 +361,7 @@ function severityDot(severity: string): string {
     case "critical":
       return "bg-danger";
     case "warning":
-      return "bg-amber-500";
+      return "bg-warning";
     default:
       return "bg-accent";
   }

@@ -11,7 +11,7 @@ namespace Kurx.Infrastructure.Users;
 /// Decline/Revoke reactivates the same row instead of accumulating history.</summary>
 public class AllyService(
     KurxDbContext db, INotificationService notify, IProfileFactSetLoader facts,
-    IProfileVisibilityResolver visibility) : IAllyService
+    IProfileVisibilityResolver visibility, IStorage storage) : IAllyService
 {
     private const int MaxPendingOutgoing = 200;
 
@@ -293,7 +293,8 @@ public class AllyService(
             // grouped query means reworking UserEventIdsAsync's multi-source union; the page is capped
             // so the cost is bounded, and correctness is unaffected.
             var mutual = await MutualEventCountAsync(user.Id, otherId, ct);
-            cards.Add(new AllyProfileCard(otherId, other.Name, other.Username, other.AvatarKey, mutual));
+            cards.Add(new AllyProfileCard(otherId, other.Name, other.Username, other.AvatarKey, mutual,
+                await storage.PresignOrNullAsync(other.AvatarKey, ct)));
         }
         return ServiceResult<IReadOnlyList<AllyProfileCard>>.Success(cards);
     }
@@ -445,7 +446,7 @@ public class AllyService(
             .Select(u => new { u.Id, u.Name, u.Username, u.AvatarKey })
             .ToDictionaryAsync(u => u.Id, ct);
 
-        return ranked.Where(r => users.ContainsKey(r.Id)).Select(r =>
+        var suggestions = ranked.Where(r => users.ContainsKey(r.Id)).Select(r =>
         {
             var u = users[r.Id];
             var reason = r.EventCount > 0 && r.OrgCount > 0
@@ -456,6 +457,11 @@ public class AllyService(
             // Every survivor is public and unmoderated (filtered above), so the fields are unconditional.
             return new AllySuggestion(r.Id, u.Name, u.Username, u.AvatarKey, r.EventCount, r.OrgCount, reason);
         }).ToList();
+        // D-302, presigned in a second pass: the projection above is a synchronous lambda, and awaiting
+        // inside one is what would silently serialise the whole page onto the request thread.
+        for (var i = 0; i < suggestions.Count; i++)
+            suggestions[i] = suggestions[i] with { AvatarUrl = await storage.PresignOrNullAsync(suggestions[i].AvatarKey, ct) };
+        return suggestions;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

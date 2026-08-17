@@ -94,7 +94,7 @@ function Header({ post }: { post: Post | SharedPost }) {
    * `href="#"` — two focusable, link-announced controls per post that navigate nowhere, on the
    * most-rendered component in the product (the REG-004 pattern). They are plain content now.
    */
-  const avatar = <Avatar name={post.author.name} src={post.author.avatar_key ?? undefined} size={40} />;
+  const avatar = <Avatar name={post.author.name} src={post.author.avatar_url ?? undefined} size={40} />;
   return (
     <div className="flex items-start gap-3">
       {handle ? (

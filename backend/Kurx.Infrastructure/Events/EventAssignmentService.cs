@@ -10,7 +10,7 @@ namespace Kurx.Infrastructure.Events;
 /// <summary>Event assignments (D-064). Owner/Manager invite; the invited user accepts/declines their own.</summary>
 public class EventAssignmentService(
     KurxDbContext db, IEventAuthority authority, IChatService chat, IProfileVisibilityResolver visibility,
-    INotificationService notifications) : IEventAssignmentService
+    INotificationService notifications, IStorage storage) : IEventAssignmentService
 {
     private static readonly HashSet<string> ValidRoles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -71,7 +71,8 @@ public class EventAssignmentService(
             .ToListAsync(ct);
         var linkable = await LinkableAsync(rows.Select(x => x.u.Id).ToList(), ct);
         var events = await EventContextAsync(rows.Select(x => x.a.EventId).Distinct().ToList(), ct);
-        IReadOnlyList<AssignmentView> views = rows.Select(x => ToView(x.a, x.u, linkable, events)).ToList();
+        IReadOnlyList<AssignmentView> views =
+            await Task.WhenAll(rows.Select(x => ToViewAsync(x.a, x.u, linkable, events, ct)));
         return ServiceResult<IReadOnlyList<AssignmentView>>.Success(views);
     }
 
@@ -124,13 +125,13 @@ public class EventAssignmentService(
             .ToListAsync(ct);
         var linkable = await LinkableAsync(rows.Select(x => x.u.Id).ToList(), ct);
         var events = await EventContextAsync(rows.Select(x => x.a.EventId).Distinct().ToList(), ct);
-        return rows.Select(x => ToView(x.a, x.u, linkable, events)).ToList();
+        return await Task.WhenAll(rows.Select(x => ToViewAsync(x.a, x.u, linkable, events, ct)));
     }
 
     private async Task<AssignmentView> ToViewAsync(EventAssignment a, CancellationToken ct)
     {
         var u = await db.Users.AsNoTracking().FirstAsync(x => x.Id == a.UserId, ct);
-        return ToView(a, u, await LinkableAsync([a.UserId], ct), await EventContextAsync([a.EventId], ct));
+        return await ToViewAsync(a, u, await LinkableAsync([a.UserId], ct), await EventContextAsync([a.EventId], ct), ct);
     }
 
     /// <summary>Which of these assignees may be shown with a public identity (D-233). Batched — one
@@ -152,16 +153,20 @@ public class EventAssignmentService(
 
     private sealed record EventContext(string Title, string? Slug, DateTime StartsAt, string? OrgName);
 
-    private static AssignmentView ToView(EventAssignment a, User u, IReadOnlySet<Guid> linkable,
-        IReadOnlyDictionary<Guid, EventContext> events)
+    /// Async and instance-scoped since D-302 — the assignee's avatar key has to be presigned, and that
+    /// is not a synchronous operation.
+    private async Task<AssignmentView> ToViewAsync(EventAssignment a, User u, IReadOnlySet<Guid> linkable,
+        IReadOnlyDictionary<Guid, EventContext> events, CancellationToken ct)
     {
         var show = linkable.Contains(u.Id);
         // A deleted event can still be pointed at by an old assignment row; the invite stays listed
         // rather than vanishing, so the caller sees what they were invited to and can decline it.
         var ev = events.GetValueOrDefault(a.EventId);
+        var avatarKey = show ? u.AvatarKey : null;
         return new(a.Id, a.EventId, a.OrgId, a.UserId,
             a.Role, a.CustomRole, a.Status.ToString(), a.ShowOnProfile, a.Notes, a.CreatedAt,
-            u.Name, show ? u.Username : null, show ? u.AvatarKey : null,
-            ev?.Title ?? "(event unavailable)", ev?.Slug, ev?.StartsAt ?? default, ev?.OrgName);
+            u.Name, show ? u.Username : null, avatarKey,
+            ev?.Title ?? "(event unavailable)", ev?.Slug, ev?.StartsAt ?? default, ev?.OrgName,
+            await storage.PresignOrNullAsync(avatarKey, ct));
     }
 }

@@ -44,7 +44,7 @@ describe("route roles resolve from the navigation itself", () => {
 
   it("keeps a Support admin out of every SuperAdmin area", () => {
     const support: PlatformRole[] = ["Support"];
-    for (const route of ["/staff", "/certificates", "/competitions", "/broadcast", "/health"]) {
+    for (const route of ["/staff", "/competitions", "/broadcast", "/health"]) {
       expect(hasRole(support, requiredRolesFor(route))).toBe(false);
     }
   });

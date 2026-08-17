@@ -11,6 +11,7 @@
     <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.100.5" />
     <PackageReference Include="AWSSDK.SimpleEmailV2" Version="4.0.100.2" />
     <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.100.2" />
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="libphonenumber-csharp" Version="9.0.19" />
     <PackageReference Include="Docnet.Core" Version="2.6.0" />

@@ -60,7 +60,17 @@ public record MeResponse(
     MeIdentityView Identity,
     /// <summary>Derived capabilities (M7), read live. The same values gate the money path server-side,
     /// so a client must never re-derive them.</summary>
-    TrustCapabilities Trust);
+    TrustCapabilities Trust,
+    /// <summary>Presigned companions to <c>AvatarKey</c>/<c>CoverKey</c> — D-302's rule ("a storage key is
+    /// not a URL") applied to the profile, which that sweep fixed for events and missed here. A bare key
+    /// is not fetchable: a client rendering <c>avatar_key</c> as a src requests it against its OWN origin
+    /// and takes a 404, so every avatar everywhere fell back to initials and looked like a design choice
+    /// rather than a defect. The keys stay on the wire because the edit form round-trips them; these are
+    /// what a client renders. Null when the corresponding key is unset.
+    ///
+    /// Trailing and defaulted so every existing construction site binds unchanged.</summary>
+    string? AvatarUrl = null,
+    string? CoverUrl = null);
 
 /// <summary>Profile visibility as the caller sees it (D-219, four-tier in D-221). Shared by
 /// <c>GET /v1/me</c> and <c>PATCH /v1/me/privacy</c>, which returned the same anonymous shape from two

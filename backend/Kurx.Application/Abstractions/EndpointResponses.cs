@@ -174,7 +174,9 @@ public sealed record AssignmentResponse(
     string EventTitle,
     string? EventSlug,
     DateTime EventStartsAt,
-    string? RepresentingOrgName);
+    string? RepresentingOrgName,
+    /// <summary>Presigned companion to <c>AssigneeAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AssigneeAvatarUrl = null);
 
 /// <summary>Wire shape of <see cref="MembershipClaimView"/> as <c>ToJson</c> has always emitted it.</summary>
 public sealed record MembershipClaimResponse(
@@ -224,7 +226,9 @@ public sealed record OrgMemberResponse(
     string Role,
     DateTime JoinedAt,
     string? AvatarKey,
-    bool IsVerified);
+    bool IsVerified,
+    /// <summary>Presigned companion to <c>AvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AvatarUrl = null);
 
 /// <summary>Wire shape of <see cref="KycOutcome"/> as <c>ToKycJson</c> has always emitted it.</summary>
 public sealed record KycOutcomeResponse(

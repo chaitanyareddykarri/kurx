@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { AppearanceCard } from "@/components/profile/appearance-card";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { LogoutButton } from "@/components/settings/logout-button";
 import { PhoneChange } from "@/components/settings/phone-change";
@@ -74,13 +74,11 @@ export default async function AccountSettingsPage() {
       </Card>
 
       <Card>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="font-semibold">Theme</h2>
-            <p className="text-sm text-muted">Light or dark appearance.</p>
-          </div>
-          <ThemeToggle />
-        </div>
+        <AppearanceCard
+          initialAvatarKey={session.me.avatar_key ?? ""}
+          initialAvatarUrl={session.me.avatar_url ?? null}
+          name={session.me.name ?? session.me.username ?? "You"}
+        />
       </Card>
 
       <Card>

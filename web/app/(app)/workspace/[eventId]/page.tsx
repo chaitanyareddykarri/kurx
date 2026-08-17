@@ -26,7 +26,6 @@ export default async function ParticipantWorkspacePage({ params }: { params: { e
   const tiles = [
     { href: `/chats/${eventId}`, label: "Event chat", icon: MessagesSquare },
     { href: `/posts/event/${eventId}`, label: "Event posts", icon: Newspaper },
-    { href: "/certificates", label: "Certificates", icon: Award }
   ];
 
   return (

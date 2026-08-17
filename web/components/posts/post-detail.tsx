@@ -16,7 +16,7 @@ export function PostDetail({
 }: {
   post: Post;
   initialComments: PostCommentPage;
-  viewer: { name: string; avatarKey?: string | null };
+  viewer: { name: string; avatarUrl?: string | null };
 }) {
   const router = useRouter();
   const [post, setPost] = useState(initial);

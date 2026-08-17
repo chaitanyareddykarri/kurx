@@ -1,113 +1,124 @@
 namespace Kurx.Application.Abstractions;
 
-/// <summary>What the issuer asserts. Every field here is set by the organization, never by the holder
-/// (D-331) — this record exists partly to make that boundary visible in the type system rather than
-/// only in an authorization check.</summary>
-public record IdCardIssueInput(
-    Guid UserId,
-    string? StudentId,
-    string? Department,
-    string? Course,
-    string? Year,
-    DateOnly? ValidFrom,
-    DateOnly? ValidUntil,
-    /// <summary>D-335: required. The event is what the card is proof of, and its creator is the issuer.</summary>
-    Guid EventId,
-    string? Template,
-    /// <summary>D-334 §8. Ignored unless <see cref="EventId"/> is set — a college ID has no event meals.</summary>
-    bool ShowMealInfo = false);
-
-/// <summary>What the holder may change. Deliberately disjoint from <see cref="IdCardIssueInput"/>:
-/// nothing the issuer asserted appears here, so "the holder edited their own student ID" is not a bug
-/// that can be written. Blood group, address and emergency contact are optional health/third-party
-/// data and are never required to issue or generate a card.</summary>
-public record IdCardHolderInput(
-    string? Template,
-    string? PhotoKey,
-    string? SignatureKey,
-    string? LayoutJson,
-    string? BloodGroup,
-    string? Address,
-    string? EmergencyContactName,
-    string? EmergencyContactPhone);
-
-public record IdCardView(
-    Guid Id, Guid OrgId, string OrgName, Guid UserId, string HolderName,
-    string CardNumber, string VerifyCode, string Status, string Template,
-    string? StudentId, string? Department, string? Course, string? Year,
-    DateOnly? ValidFrom, DateOnly? ValidUntil,
-    string? PhotoUrl, string? PdfUrl, string? PngUrl,
-    DateTime? GeneratedAt, bool IsRevoked, string? RevokedReason, DateTime CreatedAt,
-    bool ShowMealInfo = false, string? MealLine = null);
-
-/// <summary>The public verification projection. Carries only what answers "is this card genuine and
-/// current" — no student ID, no department, no contact data (D-331). Kept as its own type so a future
-/// edit to <see cref="IdCardView"/> cannot widen the anonymous page by accident.</summary>
-public record IdCardVerification(
-    string VerifyCode, string HolderName, string OrgName, string Status,
-    DateOnly? ValidFrom, DateOnly? ValidUntil, bool IsRevoked, DateTime IssuedAt);
-
+/// <summary>
+/// Event badges — the organizer-facing half of D-331's ID card (D-362).
+///
+/// <para><b>Organizer-only by design.</b> There is no holder-facing operation on this interface and no
+/// route that serves a badge to the person it names. Badges are pre-printed onto lanyards by whoever runs
+/// the event; a holder never views or downloads their own. That is a product decision, not an omission —
+/// do not add a "my badge" path here without changing it deliberately.</para>
+/// </summary>
 public interface IIdCardService
 {
-    /// <summary>Issues a card for an event. The issuer is the event's creator/organizer and must be
-    /// verified; the holder must be a participant of that event and may not be the issuer (D-335).</summary>
-    Task<ServiceResult<IdCardView>> IssueAsync(Guid actorId, Guid eventId, IdCardIssueInput input, bool isAdmin, CancellationToken ct = default);
+    /// <summary>Everyone at an event who can be given a badge: ticket holders and accepted staff
+    /// assignments. What the organizer picks from before printing.</summary>
+    Task<ServiceResult<IReadOnlyList<BadgeRecipient>>> ListRecipientsAsync(
+        Guid eventId, Guid actorId, bool isAdmin, CancellationToken ct = default);
 
-    /// <summary>Holder-scoped presentation edit. Cannot reach any asserted identifier.</summary>
-    Task<ServiceResult<IdCardView>> UpdateHolderFieldsAsync(Guid actorId, Guid cardId, IdCardHolderInput input, CancellationToken ct = default);
+    /// <summary>Issues real ID cards: creates an <c>id_cards</c> row per recipient, allocates its card
+    /// number and verify code, renders the artefacts and stores them (D-362).
+    ///
+    /// <para><b>This is what makes a badge a record rather than a printout.</b> An issued card has an
+    /// identity that outlives the PDF — it can be looked up, revoked, reissued, and verified from the code
+    /// on its face. Rendering straight to a download, which is what this replaces, produced paper that the
+    /// platform had no knowledge of the moment it was saved.</para>
+    ///
+    /// <para><b>Idempotent per (event, holder).</b> Re-running regenerates the artefacts and keeps the
+    /// existing card number, so reprinting a damaged badge does not silently issue a second identity for
+    /// the same person. A genuine reissue — after a loss — is a separate act that takes a new number
+    /// (D-331), and is not this.</para></summary>
+    Task<ServiceResult<BadgeIssueReport>> GenerateAsync(
+        Guid eventId, Guid actorId, bool isAdmin, BadgeIssueRequest request, CancellationToken ct = default);
 
-    /// <summary>Renders and stores the PDF and PNG, stamping <c>GeneratedAt</c>. Idempotent in effect:
-    /// re-running replaces the artefacts and the timestamp, which is the "regenerate" capability.</summary>
-    Task<ServiceResult<IdCardView>> GenerateAsync(Guid actorId, Guid cardId, bool isAdmin, CancellationToken ct = default);
+    /// <summary>One badge, print-ready.</summary>
+    Task<ServiceResult<byte[]>> RenderOneAsync(
+        Guid eventId, Guid actorId, bool isAdmin, Guid recipientUserId, string sizeKey,
+        CancellationToken ct = default);
 
-    /// <summary>Turn the meal panel on or off (D-334 §8). Gated by <c>CanManageAsync</c> — verified
-    /// membership of the issuing org, which by D-331 includes the holder themselves. That is acceptable
-    /// only because the quantities are READ from grants rather than typed: the worst a holder can do is
-    /// print a true number. Changing the flag does not reprint; the card must be regenerated, which is
-    /// also when the quantities are re-read.</summary>
-    Task<ServiceResult<IdCardView>> SetMealDisplayAsync(Guid actorId, Guid cardId, bool show, bool isAdmin, CancellationToken ct = default);
-
-    Task<ServiceResult<IdCardView>> GetAsync(Guid actorId, Guid cardId, bool isAdmin, CancellationToken ct = default);
-    Task<ServiceResult<IReadOnlyList<IdCardView>>> ListForUserAsync(Guid userId, CancellationToken ct = default);
-    /// <summary>The roster for one event, for its organizer (D-335).</summary>
-    Task<ServiceResult<IReadOnlyList<IdCardView>>> ListForEventAsync(Guid actorId, Guid eventId, string? status, bool isAdmin, CancellationToken ct = default);
-    Task<ServiceResult<bool>> RevokeAsync(Guid actorId, Guid cardId, string reason, bool isAdmin, CancellationToken ct = default);
-
-    /// <summary>Anonymous lookup by printed code. A revoked card resolves (200) so the revocation can be
-    /// confirmed — contrast D-018's hide-to-404, per D-036.</summary>
-    Task<ServiceResult<IdCardVerification>> VerifyAsync(string verifyCode, CancellationToken ct = default);
+    /// <summary>Every selected badge on shared A4 pages with cut guides — the pre-print run.
+    ///
+    /// <para>A combined sheet rather than one file per person: the workflow this serves is "print the
+    /// lanyards for Saturday", which is one print job. A folder of two hundred PDFs is the same job with
+    /// two hundred extra steps.</para></summary>
+    Task<ServiceResult<byte[]>> RenderSheetAsync(
+        Guid eventId, Guid actorId, bool isAdmin, BadgeSheetRequest request, CancellationToken ct = default);
 }
 
-public record IdCardRenderRequest(
-    string TemplateKey,
-    string HolderName,
-    string OrgName,
-    string? StudentId,
-    string? Department,
-    string? Course,
-    string? Year,
-    string? BloodGroup,
-    string? Phone,
-    string? Email,
-    string? DateOfBirth,
-    string? Address,
-    string? EmergencyContact,
-    string ValidityLine,
-    /// <summary>Pre-formatted meal entitlement, e.g. "B1 · L1 · D1 · S2". Null when the card does not
-    /// show meals or the holder has none. Computed at generation from live grants, never stored.</summary>
-    string? MealLine,
+/// <summary>Which side of the event a badge is for. The two differ in what they assert and in what their
+/// QR encodes, not in how they are rendered (D-331).</summary>
+public enum BadgeKind { Attendee, Staff }
+
+/// <param name="SizeKey">The size the cards are rendered at. Stored artefacts are size-specific, so
+/// changing it and regenerating replaces them.</param>
+/// <param name="UserIds">Null or empty issues to everyone matching <paramref name="Kinds"/>.</param>
+public sealed record BadgeIssueRequest(
+    string SizeKey,
+    IReadOnlyList<BadgeKind> Kinds,
+    IReadOnlyList<Guid>? UserIds = null);
+
+/// <param name="Issued">Cards created for the first time.</param>
+/// <param name="Regenerated">Existing cards whose artefacts were re-rendered, keeping their number.</param>
+public sealed record BadgeIssueReport(int Issued, int Regenerated);
+
+/// <param name="Kind">Attendee or staff.</param>
+/// <param name="Subtitle">Ticket tier for an attendee, role for a staff member — the line under the name.</param>
+/// <param name="AccessLevel">Staff only. What the badge authorises on site.</param>
+/// <param name="PhotoKey">Storage key of the holder's avatar, or null. A badge without a photo is normal
+/// and prints a monogram rather than an empty frame.</param>
+/// <param name="QrPayload">Exactly what the badge's QR encodes. Resolved here, at the one place that knows
+/// which scheme applies to which kind, so no caller has to choose — see <see cref="BadgeKind"/>.</param>
+public sealed record BadgeRecipient(
+    Guid UserId,
+    string Name,
+    BadgeKind Kind,
+    string? Subtitle,
+    string? AccessLevel,
+    string? PhotoKey,
+    string QrPayload,
+    /// <summary>The issued card, when one exists. Null means this person has no <c>id_cards</c> row yet —
+    /// which is what the console shows as "not issued", and is a different state from "issued and
+    /// revoked".</summary>
+    IssuedCard? Card = null);
+
+/// <param name="CardNumber">The human-facing number printed on the card.</param>
+/// <param name="VerifyCode">The code its QR-adjacent lookup resolves. Ten characters, same shape as a
+/// certificate's, so one verification convention covers both (D-331).</param>
+public sealed record IssuedCard(
+    Guid Id,
     string CardNumber,
-    byte[]? PhotoBytes,
-    byte[]? LogoBytes,
-    byte[]? SignatureBytes,
-    byte[] QrPng);
+    string VerifyCode,
+    string Status,
+    bool IsRevoked,
+    DateTime? GeneratedAt);
 
-public record IdCardRenderResult(byte[] PdfBytes, byte[] PngBytes);
+/// <param name="SizeKey">One of <see cref="BadgeSize.All"/>. The organizer picks per print run — badge
+/// stock differs by event and by printer, so this is a choice rather than a constant.</param>
+/// <param name="UserIds">Null or empty prints everyone matching <paramref name="Kinds"/>.</param>
+public sealed record BadgeSheetRequest(
+    string SizeKey,
+    IReadOnlyList<BadgeKind> Kinds,
+    IReadOnlyList<Guid>? UserIds = null);
 
-public interface IIdCardRenderer
+/// <summary>A physical badge size in millimetres.
+///
+/// <para>Millimetres because that is what the renderer measures (D-361); the inch names are what badge
+/// stock is actually sold as, so both are carried and neither is derived at a call site.</para></summary>
+public sealed record BadgeSize(string Key, string Label, double WidthMm, double HeightMm)
 {
-    /// <summary>Renders an ID card to PDF (CR80, 85.6×54 mm) and PNG. Uses QuestPDF directly, so no
-    /// PDF→PNG rasterization step is involved — the stub rasterizer is only for uploaded-PDF templates
-    /// (D-035) and is not on this path.</summary>
-    Task<IdCardRenderResult> RenderAsync(IdCardRenderRequest request, CancellationToken ct = default);
+    /// <summary>Standard lanyard insert. The common case.</summary>
+    public static readonly BadgeSize Lanyard = new("lanyard", "Lanyard badge — 3.5 × 5.5 in", 88.9, 139.7);
+
+    /// <summary>Large badge on 4×6 photo stock. More room for a QR someone scans at arm's length.</summary>
+    public static readonly BadgeSize Large = new("large", "Large badge — 4 × 6 in", 101.6, 152.4);
+
+    /// <summary>CR80, the credit-card size a PVC card printer takes. Landscape, and much tighter.</summary>
+    public static readonly BadgeSize Card = new("card", "PVC card — CR80, 85.6 × 54 mm", 85.6, 54.0);
+
+    public static readonly IReadOnlyList<BadgeSize> All = [Lanyard, Large, Card];
+
+    public static BadgeSize? FromKey(string? key) =>
+        All.FirstOrDefault(s => string.Equals(s.Key, key?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>CR80 is wider than tall and cannot carry the stacked portrait layout legibly.</summary>
+    public bool IsLandscape => WidthMm > HeightMm;
 }

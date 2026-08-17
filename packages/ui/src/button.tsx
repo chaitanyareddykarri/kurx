@@ -29,7 +29,11 @@ const variants = {
 const sizes = {
   sm: "h-9 px-3 text-caption",
   md: "h-11 px-4 text-label",
-  lg: "h-12 px-5 text-body"
+  lg: "h-12 px-5 text-body",
+  // The one action a step is asking for. Guided flows have a single obvious next thing to do, and it has
+  // to read as such next to everything that is merely available — a size rather than a per-call-site
+  // className, because the height floor belongs to the design system and not to whoever is in a hurry.
+  xl: "h-14 px-7 text-body"
 } as const;
 
 const base =
@@ -105,7 +109,8 @@ export function LinkButton({
 const iconSizes = {
   sm: "h-8 w-8",
   md: "h-11 w-11",
-  lg: "h-12 w-12"
+  lg: "h-12 w-12",
+  xl: "h-14 w-14"
 } as const;
 
 type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> & {

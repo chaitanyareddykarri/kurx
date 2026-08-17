@@ -22,7 +22,7 @@ export default async function PostDetailPage({ params }: { params: { postId: str
     <PostDetail
       post={post}
       initialComments={comments}
-      viewer={{ name: session.me.name, avatarKey: session.me.avatar_key }}
+      viewer={{ name: session.me.name, avatarUrl: session.me.avatar_url }}
     />
   );
 }

@@ -2,7 +2,9 @@ namespace Kurx.Application.Abstractions;
 
 public record ReviewView(Guid Id, Guid EventId, int Rating, string? Title, string? Body,
     bool IsAnonymous, bool IsVerified, string? AuthorName, DateTime CreatedAt,
-    string? AuthorUsername = null, string? AuthorAvatarKey = null);
+    string? AuthorUsername = null, string? AuthorAvatarKey = null,
+    /// <summary>Presigned companion to <c>AuthorAvatarKey</c> (D-302). Null when there is no key.</summary>
+    string? AuthorAvatarUrl = null);
 
 public record ReviewSummary(double Average, int Count);
 

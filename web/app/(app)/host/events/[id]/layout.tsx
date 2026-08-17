@@ -50,9 +50,12 @@ export default async function EventWorkspaceLayout({
     ...(canEdit
       ? [
           { key: "checkin", label: "Check-in", href: `${base}/checkin` },
+          // D-362 — badge printing. Next to Check-in on purpose: a badge is what gets scanned there.
+          { key: "badges", label: "Badges", href: `${base}/badges` },
+          // D-355 — the certificate module. Issuance lives with the event it certifies.
+          { key: "certificates", label: "Certificates", href: `${base}/certificates` },
           { key: "announcements", label: "Announcements", href: `${base}/announcements` },
           { key: "invitations", label: "Invitations", href: `${base}/invitations` },
-          { key: "certificates", label: "Certificates", href: `${base}/certificates` },
           { key: "chat", label: "Chat", href: `${base}/chat` }
         ]
       : []),

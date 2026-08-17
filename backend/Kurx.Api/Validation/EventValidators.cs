@@ -12,6 +12,22 @@ public class CreateEventBodyValidator : AbstractValidator<CreateEventBody>
         RuleFor(x => x.Title).NotEmpty().Length(2, 200);
         RuleFor(x => x.CategoryId).NotEqual(Guid.Empty);
         RuleFor(x => x).Must(x => x.EndsAt > x.StartsAt).WithMessage("EndsAt must be after StartsAt.").WithName("EndsAt");
+        // A new event cannot start on a day that has already passed. Only `CreateEventBodyValidator`
+        // carries this: `UpdateEventBodyValidator` must not, or an organiser could never correct a typo
+        // on an event that has already run, and `EventService.CloneAsync` copies a finished event's
+        // dates by design.
+        //
+        // The floor is the start of the current UTC **day**, not `UtcNow`. Deliberately coarser than the
+        // wizard's own rule, which refuses earlier-today against the live clock:
+        //   · minute granularity here would false-refuse the honest case — a start typed at 16:35 and
+        //     submitted at 16:41, six wizard steps later, is not an attack and must not 400;
+        //   · day granularity still refuses every genuinely past date, which is what §6 asks for;
+        //   · a FUTURE instant can never fall below it, so this rule has no false refusals at all.
+        // UTC rather than the body's `Timezone`: the floor is only ever a day behind local midnight
+        // anywhere east of UTC, and resolving an arbitrary IANA id inside a validator would put a third
+        // clock into a flow that already reconciles two (D-289).
+        RuleFor(x => x.StartsAt).Must(s => s >= DateTime.UtcNow.Date)
+            .WithMessage("StartsAt cannot be in the past.");
         RuleFor(x => x.Visibility).Must(s => s is null || Enum.TryParse<Kurx.Domain.Enums.EventVisibility>(s, true, out _))
             .WithMessage("Visibility must be Public, Unlisted, or Private.");
         RuleFor(x => x.ContactEmail).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.ContactEmail));

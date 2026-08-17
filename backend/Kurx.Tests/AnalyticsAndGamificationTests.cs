@@ -288,6 +288,69 @@ public class AnalyticsAndGamificationTests : IClassFixture<KurxApiFactory>
         Assert.Equal("Referral Signup", pointsSummary.History[0].Source);
     }
 
+    /// <summary>D-368 — the public organization leaderboard ranks real organizations only.
+    ///
+    /// <para>It grouped published events by <c>RepresentingOrgId</c> with no scope filter, so a
+    /// self-representation row (D-268 persistence, named after the person who created the event) could be
+    /// published on <c>GET /v1/gamification/leaderboards/organizations</c> as though it were an
+    /// institution — and consume one of the 100 ranked slots doing it. The surface had no test at all,
+    /// which is how it survived D-353.</para></summary>
+    [Fact]
+    public async Task Org_leaderboard_ranks_real_organizations_and_never_self_representation_rows()
+    {
+        var userId = await CreateUserAsync();
+        var realOrgId = await CreateOrgAsync(userId);
+
+        Guid personalOrgId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            var personal = new Organization
+            {
+                Name = "D368 Self Row " + Guid.NewGuid().ToString("N")[..6],
+                Slug = "self-" + Guid.NewGuid().ToString("N")[..12],
+                IsPersonal = true,
+            };
+            personal.CanonicalOrgId = personal.Id;
+            db.Organizations.Add(personal);
+            await db.SaveChangesAsync();
+            personalOrgId = personal.Id;
+
+            // One published event each, so both would rank identically without the scope filter — the
+            // personal row is excluded because of what it IS, never because it scored lower.
+            var category = db.EventCategories.First();
+            foreach (var orgId in new[] { realOrgId, personalOrgId })
+                db.Events.Add(new Event
+                {
+                    RepresentingOrgId = orgId,
+                    Title = "D368 Leaderboard Event",
+                    Slug = "d368-lb-" + Guid.NewGuid().ToString("N")[..8],
+                    ShortCode = Guid.NewGuid().ToString("N")[..8],
+                    CategoryId = category.Id,
+                    Status = EventStatus.Published,
+                    CreatedBy = userId,
+                });
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var svc = scope.ServiceProvider.GetRequiredService<IGamificationService>();
+            await svc.RefreshLeaderboardsAsync();
+            var board = await svc.GetOrgLeaderboardAsync(100);
+
+            Assert.Contains(board, e => e.OrgId == realOrgId);
+            Assert.DoesNotContain(board, e => e.OrgId == personalOrgId);
+        }
+
+        // The row itself is untouched — this is a ranking rule, not a deletion.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            Assert.True(db.Organizations.Any(o => o.Id == personalOrgId && o.IsPersonal));
+        }
+    }
+
     private class MeNotificationFeed
     {
         public List<MeNotificationItem> items { get; set; } = new();

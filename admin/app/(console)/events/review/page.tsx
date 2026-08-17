@@ -4,12 +4,13 @@ import { requireStaffSession } from "@/lib/session";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   listAdminEvents, getReviewCounts, getReviewHistory, getReviewChecklist, getEventAuthorization,
-  apiErrorMessage, apiErrorStatus,
+  getEventForReview, getEventTicketTypesForReview, apiErrorMessage, apiErrorStatus,
 } from "@/lib/api";
 import { ReviewActions } from "@/components/admin/review-actions";
 import { ReviewChecklistPanel } from "@/components/admin/review-checklist";
 import { AuthorizationPanel } from "@/components/admin/authorization-panel";
 import { FinancialReviewPanel } from "@/components/admin/financial-review-panel";
+import { ReviewDossier } from "@/components/admin/review-dossier";
 
 // D-266 M4 — the review console. Queue counts come from the backend
 // (GET /v1/admin/events/review-counts); they are never derived here, so the tabs cannot disagree with the
@@ -68,6 +69,28 @@ export default async function EventReviewConsolePage({
       list.items.map((e) => getEventAuthorization(session.accessToken, e.event_id).catch(() => null)),
     );
 
+    /*
+     * The event itself — the thing being reviewed.
+     *
+     * `listAdminEvents` returns a 29-field LIST row with no description, no rules, no terms, no consent
+     * text, no eligibility and no registration windows. Every one of those is collected by the Create
+     * Event wizard and stored, and none of them reached a reviewer: the card carried three fields and
+     * deep-linked to the event workspace, whose Overview tab renders the same list row.
+     *
+     * `GET /v1/events/{id}` already returns all of it and `CanViewAsync` already admits both
+     * `kurx_admin` and `VerificationReviewer` to an event in any status (D-191) — so this is a missing
+     * mapping in the console, not a missing capability in the API. Same swallow-to-null as the panels
+     * above: a queue that renders without one dossier beats a 500 over the whole page.
+     */
+    const dossiers = await Promise.all(
+      list.items.map((e) => getEventForReview(session.accessToken, e.event_id).catch(() => null)),
+    );
+    // D-357 — the registration options and the UNIT their prices are charged in, so "₹2,000" is never
+    // shown to a reviewer without saying whether it buys a team or a seat.
+    const ticketSets = await Promise.all(
+      list.items.map((e) => getEventTicketTypesForReview(session.accessToken, e.event_id).catch(() => [])),
+    );
+
     return (
       <div className="space-y-6">
         <PageHeader
@@ -120,17 +143,28 @@ export default async function EventReviewConsolePage({
                       {e.org_name} · starts {new Date(e.starts_at).toLocaleDateString("en-IN")}
                     </p>
 
-                    {/* A reviewer must never be asked to approve an event they cannot inspect. The queue
-                        card carries three fields; everything a review is actually ABOUT — description,
-                        venue, schedule, ticket types, pricing, media, organizer — lives in the existing
-                        9-tab admin event workspace, so this deep-links there rather than duplicating it.
+                    {/* A reviewer must never be asked to approve an event they cannot inspect. This used
+                        to deep-link to the 9-tab event workspace INSTEAD of showing the event — but that
+                        workspace's Overview tab renders the same 29-field list row this card came from,
+                        so the description and every D-265 field group appeared on neither screen. The
+                        dossier below is that content; the link stays for the operational tabs
+                        (registrations, tickets, finance, moderation, media, timeline) it genuinely owns.
                         `tab=all` is deliberate: the workspace only opens an event present in the current
-                        tab's result set, and `all` is the one tab with no status filter, so it works for
-                        every review state. */}
+                        tab's result set, and `all` is the one tab with no status filter. */}
                     <a href={`/events?tab=all&event=${e.event_id}`}
                       className="mt-2 inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-xs font-semibold text-text hover:bg-elevated">
-                      <ExternalLink size={12} /> Open event
+                      <ExternalLink size={12} /> Registrations, finance & moderation
                     </a>
+
+                    {dossiers[i] ? (
+                      <ReviewDossier event={dossiers[i]!} tickets={ticketSets[i]} />
+                    ) : (
+                      // Named rather than blank: a reviewer must know they are looking at less than the
+                      // whole event, not silently approve on a card.
+                      <p className="mt-3 rounded-md border border-warning/40 bg-warning/5 p-2 text-xs text-warning">
+                        This event&apos;s details could not be loaded. Do not approve without opening it.
+                      </p>
+                    )}
 
                     {histories[i].length > 0 ? (
                       <details className="mt-2">

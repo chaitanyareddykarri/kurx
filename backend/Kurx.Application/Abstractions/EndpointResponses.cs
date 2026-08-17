@@ -103,7 +103,9 @@ public sealed record CategoryResponse(
     string Slug,
     int Sort,
     bool IsVisible,
-    string? ProductClass = null);
+    string? ProductClass = null,
+    /// <summary>D-357 — the behaviour archetype this Type derives. See <see cref="CategoryView"/>.</summary>
+    string? ArchetypeSlug = null);
 
 /// <summary>Wire shape of <see cref="AdminCategoryView"/>. Same D-326 correction as
 /// <see cref="CategoryResponse"/> — the admin twin dropped <c>ProductClass</c> for the same reason, so the
@@ -395,7 +397,9 @@ public sealed record EventDetailResponse(
     EventScheduleView? Schedule,
     EventLocationDetailView? LocationDetail,
     EventEligibilityView? Eligibility,
-    EventCommerceView? Commerce,
+    // The PUBLIC subset (D-356). This record serves anonymous callers, so the platform's own fee
+    // arrangement with the organiser cannot travel on it — the same rule that keeps MeetingPassword out.
+    PublicEventCommerceView? Commerce,
     EventRepresentationView? Representing,
     string? BannerUrl,
     Guid Id,
@@ -536,7 +540,9 @@ public sealed record EventSummaryResponse(
     string? CategoryName,
     long? PriceFromPaise,
     string Currency,
-    bool IsFeatured);
+    bool IsFeatured,
+    /// <summary>D-361 — the unit the "From" price is charged in. See <see cref="EventSummary.PriceFromUnit"/>.</summary>
+    string? PriceFromUnit = null);
 
 /// <summary><c>GET /v1/events</c> — the paged discovery feed.</summary>
 public sealed record EventSummaryPage(IEnumerable<EventSummaryResponse> Items, int Total);

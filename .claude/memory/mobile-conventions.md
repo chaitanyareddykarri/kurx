@@ -99,7 +99,7 @@ Loading / error / empty / retry is a **standard shared pattern** in `common/` co
 
 ## Authentication
 
-WhatsApp OTP: `POST /v1/auth/otp/request` → `POST /v1/auth/otp/verify` → store tokens → `GET /v1/me`. `otp/verify` is a **combined sign-in-or-register** (D-011/D-037): an unknown number gets an account, a known one gets a session, and `is_new_user` distinguishes them. There is deliberately no "is this phone registered?" check to branch the UI on before the code is verified — that would be an account-enumeration oracle (D-311) — so the screens *state* the branch ("we'll sign you in, or set up a new account") rather than predicting it.
+Phone OTP, delivered over **SMS** (D-281 — never WhatsApp): `POST /v1/auth/otp/request` → `POST /v1/auth/otp/verify` → store tokens → `GET /v1/me`. `otp/verify` is a **combined sign-in-or-register** (D-011/D-037): an unknown number gets an account, a known one gets a session, and `is_new_user` distinguishes them. There is deliberately no "is this phone registered?" check to branch the UI on before the code is verified — that would be an account-enumeration oracle (D-311) — so the screens *state* the branch ("we'll sign you in, or set up a new account") rather than predicting it.
 
 `needs_onboarding: true` when the name is blank **or** Username is null **or** — for accounts created at or after the `AddUserDateOfBirth` migration timestamp — `date_of_birth` is null **or** the account has no password (D-311; supersedes D-037's Name+Username rule, which superseded D-012's Name-only check). The last two are **not retroactive**: an established account is prompted through `remaining`, never blocked. It routes to the registration ceremony, whose steps run in the server's `remaining` order: **complete profile** (name + username with a live availability check against `GET /v1/usernames/availability`, date of birth, optional bio) → **set password** → **verify email** (skippable) → success. Only the first two gate `needs_onboarding`, so only the third has a "Skip for now".
 
@@ -215,3 +215,17 @@ not `controller.text`. A bare national number is read by the backend in the lega
 phone-change screen meant texting the confirmation code to a stranger and moving the account onto their
 number. For displaying a phone, the API already returns canonical E.164 — print it as-is; do not prepend a
 country code. Mixed identifier fields use `common/util/phone_utils.dart` `toE164Identifier`.
+
+## Capabilities are asked, never inferred from a name (D-357/D-366)
+
+Whether an event may have **teams** is the capability engine's answer — `GET /v1/archetypes/{slug}/capabilities`,
+via `archetypeSupportsTeamsProvider` — not a list of type names in the app. The matrix is data an admin
+can edit, so a second copy here silently disagrees with the server the day someone changes it. The
+provider **fails closed**: an unreadable answer, or a Type with no `archetype_slug`, offers individual
+entry only.
+
+This needs `archetype_slug` on the taxonomy DTO. It was missing for a long time, and its absence is why
+the create-event wizard hardcoded `'pricingUnit': 'PerTicket', 'registrationMode': 'Individual'` — an
+organiser on a phone could not create a team registration in any form, on an API that had supported one
+since D-020. **When a client "only supports one mode", check whether it is missing the field that would
+let it ask.**

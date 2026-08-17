@@ -272,10 +272,12 @@ public partial class PostService(
         var access = await authority.ResolveAsync(viewerId, eventId, isAdmin: false, ct);
         if (!access.EventExists) return ServiceResult<PostPage>.Fail("event_not_found");
 
+        // Was a hand-written copy of the exposure rule, and had already drifted from it: it omitted
+        // `DeletedAt == null`, so a soft-deleted event still served its post feed. Composed now, with
+        // `IsHidden` kept as the extra condition it actually is.
         if (!access.Can(EventPermission.Participate)
-            && !await db.Events.AsNoTracking().AnyAsync(e => e.Id == eventId
-                && e.Status == EventStatus.Published && e.Product == EventProduct.Public
-                && e.Visibility == EventVisibility.Listed && !e.IsHidden, ct))
+            && !await db.Events.AsNoTracking().Where(EventExposure.PubliclyVisible)
+                .AnyAsync(e => e.Id == eventId && !e.IsHidden, ct))
             return ServiceResult<PostPage>.Fail("event_not_found");
 
         return ServiceResult<PostPage>.Success(await PageAsync(

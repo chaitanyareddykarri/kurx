@@ -152,6 +152,52 @@ class ApiError implements Exception {
     'holder_not_a_participant':
         "That person isn't a participant in this event yet, so they can't be issued a card for it.",
     'invalid_storage_key': "That file isn't one you uploaded. Upload the image again and retry.",
+
+    // D-363 §4 — the ticket-type editor can now be refused by the EVENT's review state, not just by its
+    // own rules, and neither code was mapped anywhere an organiser edits prices. Worded as in
+    // packages/ui/src/problem-copy.ts.
+    'event_under_review':
+        "This event is with a reviewer right now, so it can't be edited. You'll get it back with their notes.",
+    'tickets_already_sold':
+        "This ticket type has already been sold, so it can't be deleted. Stop its sales instead by ending the sale period.",
+
+    // The V3 §14.2 lifecycle gates, worded as in packages/ui/src/problem-copy.ts. None of them had copy
+    // on any surface, so `open_registration` on an event with no ticket type read as "Something went
+    // wrong" — a refusal the organiser could have cleared in a minute if anyone had told them what it was.
+    // D-367 — the `teams` capability is now a domain invariant, so these arrive from the API rather
+    // than being prevented only by this app hiding a radio. Worded as in packages/ui.
+    'teams_not_supported':
+        "This kind of event doesn't support team entry. Choose an event type that does, or register people individually.",
+    'type_conflicts_with_team_ticket':
+        "This event has a team registration, and the type you picked doesn't support teams. Change the registration to individual first, or choose a different type.",
+    // D-366 — team-size price bands, worded as in packages/ui/src/problem-copy.ts.
+    'overlapping_price_tiers':
+        'Two price rules cover the same team size. Each size can have only one price — narrow one of the rules.',
+    'price_tier_gap':
+        'Some allowed team sizes have no price. Cover every size from the smallest team to the largest, with no gaps.',
+    'price_tier_outside_group_size':
+        "A price rule covers a team size this event doesn't allow. Keep every rule inside your smallest and largest team size.",
+    'invalid_price_tier':
+        'A price rule is incomplete — each needs a team size range and a price above zero.',
+    'price_tiers_require_group': 'Price-by-team-size only applies to team registration.',
+    'price_tiers_require_group_size':
+        'Set the smallest and largest team size before pricing by team size.',
+    'no_price_for_team_size':
+        "There's no price set for a team of this size. Ask the organiser to add one, or change your team size.",
+    'ambiguous_price_rule':
+        "This event has two prices for a team of your size, so we can't charge you. We've told the organiser.",
+    'no_pass':
+        'Add at least one ticket type before opening registration — there is nothing for anyone to book yet.',
+    'no_inventory_pool':
+        'This event has no ticket inventory yet. Set a quantity on a ticket type, then open registration.',
+    'no_currency':
+        "This event has no settlement currency set, so it can't sell anything yet.",
+    'no_staff_assigned':
+        'Assign at least one staff member who has accepted before taking this event live.',
+    'results_not_published':
+        'Publish the results before marking this event completed.',
+    'missing_owner_unit':
+        "This event isn't attached to a team yet. Set one before publishing.",
   };
 
   @override

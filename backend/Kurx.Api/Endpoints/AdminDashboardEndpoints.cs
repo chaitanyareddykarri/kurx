@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Kurx.Application.Abstractions;
+using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Kurx.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -44,7 +45,10 @@ public static class AdminDashboardEndpoints
                     .Select(r => r.UserId).Distinct().CountAsync(ct),
                 await db.Users.CountAsync(u => u.CreatedAt >= dayAgo, ct),
                 await db.Users.CountAsync(ct),
-                await db.Organizations.CountAsync(o => o.DeletedAt == null, ct),
+                // D-368: real organizations only. `!IsPersonal` is not a filter this tile chooses — it is
+                // what the word "organization" means (OrganizationScope.Real), and it is the same predicate
+                // the admin registry list uses, so the tile and the page it sits above cannot disagree.
+                await db.Organizations.CountAsync(OrganizationScope.Real, ct),
                 await db.Events.CountAsync(ct)));
         }).RequireAuthorization().WithTags("admin").Produces<AdminDashboardSummary>();
     }

@@ -153,6 +153,67 @@ public class EventTests : IClassFixture<KurxApiFactory>
         Assert.Equal("validation_failed", (await Json(res)).GetProperty("error").GetString());
     }
 
+    /// <summary>A hand-rolled request must not be able to file an event that already happened.
+    ///
+    /// <para>The wizard's picker floors `Starts at` at the current instant and `validateDetails` refuses
+    /// anything earlier, but a `min` attribute is a UI affordance — removable in devtools and absent
+    /// entirely from a curl. This is the boundary that actually holds.</para>
+    ///
+    /// <para>The floor is the start of the current UTC **day**, deliberately coarser than the wizard's:
+    /// a start typed at 16:35 and submitted six steps later at 16:41 is an honest organiser, not an
+    /// attack, and must not take a 400. Yesterday still cannot be filed, and a future instant can never
+    /// fall below the floor, so the rule has no false refusals.</para></summary>
+    [Fact]
+    public async Task Start_date_in_the_past_is_rejected_by_validation()
+    {
+        var (client, orgId) = await OwnerWithOrgAsync("9700000024", "Past Date Org");
+        var res = await client.CreateEventAsync(orgId, new
+        {
+            title = "Yesterday's Summit",
+            categoryId = _categoryId,
+            startsAt = DateTime.UtcNow.AddDays(-1),
+            endsAt = DateTime.UtcNow.AddDays(-1).AddHours(2),
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal("validation_failed", (await Json(res)).GetProperty("error").GetString());
+    }
+
+    /// <summary>Earlier TODAY is accepted, and that is the deliberate half of the rule above — the wizard
+    /// refuses it against the live clock, the API does not, so the six minutes an organiser spends on the
+    /// remaining steps cannot turn a valid submission into a 400.</summary>
+    [Fact]
+    public async Task Start_earlier_today_is_accepted_so_a_slow_wizard_does_not_fail()
+    {
+        var (client, orgId) = await OwnerWithOrgAsync("9700000025", "Today Org");
+        var res = await client.CreateEventAsync(orgId, new
+        {
+            title = "Started This Morning",
+            categoryId = _categoryId,
+            // Just after midnight UTC today — past by the clock, but not a past DATE.
+            startsAt = DateTime.UtcNow.Date.AddMinutes(1),
+            endsAt = DateTime.UtcNow.Date.AddDays(1),
+        });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    /// <summary>`EndsAt > StartsAt`, with equality refused — the boundary the wizard also holds. Equal
+    /// timestamps are the case a `&lt;` comparison would silently let through.</summary>
+    [Fact]
+    public async Task End_equal_to_start_is_rejected_by_validation()
+    {
+        var (client, orgId) = await OwnerWithOrgAsync("9700000026", "Equal Dates Org");
+        var at = DateTime.UtcNow.AddDays(3);
+        var res = await client.CreateEventAsync(orgId, new
+        {
+            title = "Zero Length Event",
+            categoryId = _categoryId,
+            startsAt = at,
+            endsAt = at,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal("validation_failed", (await Json(res)).GetProperty("error").GetString());
+    }
+
     [Fact]
     public async Task Invalid_category_is_rejected_by_service()
     {
@@ -329,6 +390,40 @@ public class EventTests : IClassFixture<KurxApiFactory>
 
         var draftBySlug = await anon.GetAsync($"/v1/events/{draft.GetProperty("slug").GetString()}");
         Assert.Equal(HttpStatusCode.NotFound, draftBySlug.StatusCode);
+    }
+
+    /// <summary>D-356 — the platform's own cut is not attendee-facing.
+    ///
+    /// <para><c>EventDetailResponse</c> serves the public <c>GET /v1/events/{slug}</c> as well as every
+    /// organiser read, and it passed <c>EventCommerceView</c> straight through — so
+    /// <c>platform_fee_percent</c> and <c>platform_fee_flat_paise</c>, the Kurx↔organiser commercial
+    /// arrangement, sat on an anonymous response. The same seam already excludes <c>MeetingPassword</c>;
+    /// this is the other half.</para>
+    ///
+    /// <para>Asserted on the raw JSON rather than a parsed DTO on purpose: the defect is the presence of a
+    /// KEY, and a typed read of a record that no longer declares it would pass either way.</para></summary>
+    [Fact]
+    public async Task Public_event_body_carries_no_platform_fee_fields()
+    {
+        var (client, orgId) = await OwnerWithOrgAsync("9700000027", "Commerce Leak Org");
+        var created = await Json(await client.CreateEventAsync(orgId, ValidCreateBody("Commerce Projection")));
+        var eventId = created.GetProperty("id").GetGuid();
+        _factory.SeedApprovedEventAuthorization(eventId);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "publish" })).StatusCode);
+
+        var anon = _factory.CreateClient();
+        var res = await anon.GetAsync($"/v1/events/{created.GetProperty("slug").GetString()}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadAsStringAsync();
+
+        Assert.DoesNotContain("platform_fee_percent", body);
+        Assert.DoesNotContain("platform_fee_flat_paise", body);
+        // The public half survives: tax is a property of what the attendee pays, and a prize pool is
+        // advertised. Removing the whole group would have been a different bug.
+        var commerce = (await Json(res)).GetProperty("commerce");
+        Assert.True(commerce.TryGetProperty("tax_inclusive", out _));
+        Assert.True(commerce.TryGetProperty("prize_pool_json", out _));
     }
 
     [Fact]

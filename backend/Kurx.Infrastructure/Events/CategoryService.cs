@@ -185,7 +185,10 @@ public class CategoryService(KurxDbContext db, IAuditWriter audit, ICapabilitySe
 
         return await query.OrderBy(c => c.Sort).ThenBy(c => c.Name)
             .Select(c => new CategoryView(c.Id, c.ParentId, c.Level.ToString(), c.Name, c.Slug, c.Sort, c.IsVisible,
-                c.ProductClass.HasValue ? c.ProductClass.Value.ToString() : null))
+                c.ProductClass.HasValue ? c.ProductClass.Value.ToString() : null,
+                // D-357 — the Type's archetype, which is what decides whether the event can have teams.
+                // Same column D-266 M1 snapshots onto the event; projecting it is all that was missing.
+                c.ArchetypeSlug))
             .ToListAsync(ct);
     }
 

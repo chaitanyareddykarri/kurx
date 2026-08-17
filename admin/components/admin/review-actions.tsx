@@ -45,7 +45,12 @@ function actionsFor(status: string): string[] {
     case "pendingreview": return ["claim_review", "withdraw"];
     case "underreview": return ["approve_review", "request_changes", "reject_review", "release_review"];
     case "changesrequested": return ["submit_for_review"];
-    case "approved": return ["publish_approved"];
+    // `withdraw` (D-363 §1) because approving in error had no undo: once here the console offered only
+    // "Publish", so a reviewer who cleared the wrong event could do nothing but publish it or ask the
+    // organiser to withdraw it for them. It returns the event to Draft, where it can be reworked.
+    // Requires the SuperAdmin claim — `withdraw` is not a reviewer-scoped action, so a reviewer without
+    // it is refused, exactly as on the `pendingreview` button beside it.
+    case "approved": return ["publish_approved", "withdraw"];
     case "rejected": return ["submit_for_review"];
     case "draft": return ["submit_for_review"];
     default: return [];

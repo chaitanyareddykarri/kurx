@@ -4,8 +4,8 @@ Where the Loop Engineering OS and the Kurx codebase should grow next. Not a back
 
 ## Verification & testing gaps (highest value)
 
-- **Frontend test suite.** `web`/`admin` have no automated tests — browser verification is a manual substitute today (`testing-standards`). A Playwright smoke test for OTP-login → organizer-dashboard would close the biggest verification gap and remove "manual only" from the frontend workflow.
-- **Contract tests.** No snapshot/diff of the `/v1` contract exists. A generated OpenAPI + a CI diff would catch accidental breaking changes automatically (`versioning.md`).
+- **End-to-end browser tests.** *(Superseded in part — `web` and `admin` now have vitest suites, 625 and 40 tests. What is still missing is a real browser path.)* A Playwright smoke test for OTP-login → create event → publish would close the remaining verification gap; today that path is only walked by hand or by an ad-hoc HTTP script.
+- ~~**Contract tests.**~~ *Shipped:* `scripts/contract-check.mjs` diffs 36 client models against 440 OpenAPI schemas and runs in CI. Its own test (`contract-check.test.mjs`) still runs nowhere — CI runs the tool, never the tool's tests.
 - **Per-worktree test DBs.** All worktrees share one `kurx_test`, forcing serialized integration runs (`COLLABORATION.md`). Per-worktree ephemeral DBs would unlock true parallel verification.
 
 ## Automation the OS is ready for

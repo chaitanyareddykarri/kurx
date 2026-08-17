@@ -14,8 +14,8 @@ If something here conflicts with `docs/DECISIONS.md`, the decision log wins; fil
 >
 > | Fact | Measured 2026-08-15 | What this file used to say |
 > |---|---|---|
-> | Test suite | **1825 total / 1824 passed / 1 skipped / 0 failed** (29 m 23 s, SDK container, clamd up, 2026-08-15) | "1743 total / 5 failed" (2026-08-12) |
-> | Decisions in `DECISIONS.md` | **294 entries / 276 distinct numbers**, highest D-345 | "277" (2026-08-12) |
+> | Test suite | **Do not quote a figure here.** The measured baseline lives in `.claude/CLAUDE.md` §9 and `.claude/memory/testing-standards.md`, which are updated per run — it moved from 1825 to 1831 while this table was being corrected. Green is the standard; only a **full-suite** run is evidence. | "1825 total" (hours old); "1743 total / 5 failed" (2026-08-12) |
+> | Decisions in `DECISIONS.md` | **300 entries / 282 distinct numbers**, highest D-355 (2026-08-15, 18:0x) — and it moved twice *during* this measurement pass, so **derive it, never quote it**: `grep -cE '^## D-[0-9]+' docs/DECISIONS.md` and `grep -oE '^## D-[0-9]+' docs/DECISIONS.md \| tail -1`. Entries exceed distinct numbers because D-266 carries 11 milestone headings and three numbers genuinely collide (D-105, D-114, D-299 each name two unrelated decisions). | "294 / 276, highest D-345" (measured hours earlier the same day); "277" (2026-08-12) |
 > | Database tables | **162** | "158" (2026-08-12) |
 > | Admin console modules | **20 of 20 live, none disabled**; 24 console pages, 27 total | "12 live modules" (§8/§9/§10) |
 > | API surface | **441 paths / 535 operations**, 496 with declared responses | "427 paths / 518 operations" |
@@ -59,7 +59,7 @@ If something here conflicts with `docs/DECISIONS.md`, the decision log wins; fil
 ## 3. Project Scope
 
 **What Kurx does today (built):**
-- Auth (WhatsApp OTP + JWT + refresh rotation), mandatory unique-username onboarding, phone-number change with full session revocation, case-insensitive unique email (D-037, D-038). Organizations with a role matrix, org KYC + Razorpay Route + payout schedule seeding (all mocked providers — see below).
+- Auth (**phone OTP over SMS** — D-281; WhatsApp is deliberately never selected for auth — + JWT + refresh rotation), mandatory unique-username onboarding, phone-number change with full session revocation, case-insensitive unique email (D-037, D-038). Organizations with a role matrix, org KYC + Razorpay Route + payout schedule seeding (all mocked providers — see below).
 - Full event content management: Event CRUD + status workflow, categories/tags, venues, speakers, sponsors, schedule, media, 11 seeded event templates.
 - Ticket types + custom registration forms (`TicketType`/`FormField` CRUD, org auth, sold-count inventory guards, public on-sale listing — D-020).
 - `OrderService` implements **free/guest and paid checkout** (`backend/Kurx.Infrastructure/Orders/OrderService.cs`): free/guest for individual non-competition tickets (D-036), authenticated group/team registration, competition team invitations, ticket issuance, auto event-chat membership; and **paid checkout (M10/D-049)** — a priced ticket type creates a `Pending` order + gateway order and issues on capture (`POST /v1/webhooks/razorpay` → `ConfirmPaymentAsync` → ticket + Collected ledger + wallet). It drives `MockPaymentGateway`, so no real money moves until the Razorpay adapter ships.
@@ -163,10 +163,23 @@ Draft --submit_for_review--> PendingReview --claim_review--> UnderReview --appro
   |            |                    --release_review-------------->                              |
   |            --withdraw---------->|         --request_changes--> ChangesRequested --------------|
   |                                           --reject_review----> Rejected                      |
+  |                                                                    publish_approved (creator) |
   |                                                                                              v
   --------------publish (Private products only, no review)---------------------------> Published --close--> Closed --archive--> Archived
-  unpublish: only allowed pre-registration/sales, returns to a Draft-like state
+  unpublish: refused once anyone has registered (`event_has_history`) — cancel or close instead
 ```
+
+**Approval grants permission to publish; it does not publish** ([D-362](DECISIONS.md)). `Approved` is a
+real state an event sits in: reviewed, permitted, and **not public**. From `PendingReview`/`UnderReview`
+the creator is refused with `reviewer_required` — the decision is the reviewer's. From `Approved` the
+decision is the **creator's**, paid or free, and it is also where the Event Host Workspace opens. Only
+`Published` is publicly visible; `EventExposure` carries that as part of the one exposure rule.
+
+**An event that has carried commerce or attendance is never deleted** ([D-363](DECISIONS.md)). The line
+above was long documented and never enforced, which left `Published → unpublish → Draft → delete` open —
+a hard delete cascading through 46 tables. Both `unpublish` and delete now refuse with
+`event_has_history`; such an event ends at `Cancelled` (with refunds, D-101) or `Archived`. The delete
+itself is now **soft** ([D-364](DECISIONS.md)) — `DeletedAt` plus a global query filter, nothing cascades.
 
 **One reviewer holds an item at a time.** `claim_review` records the holder (`events.review_claimed_by`);
 release and every decision clear it, and anyone else is refused with `claimed_by_another_reviewer` (an admin
@@ -275,13 +288,13 @@ kurx/
 - `Kurx.Infrastructure` — EF Core, auth, org/event services, dev providers.
 - `Kurx.Domain` — entities/enums, no framework dependencies.
 
-**Frontend**: `web/` is Next.js serving both the public site and the signed-in app (91 routes); `admin/` is a separate Next.js staff console on `:3001` — **20 of 20 sidebar modules live, none disabled**, 24 pages inside the console shell (`admin/STATUS.md`). Note the terminology: web has **no organizer dashboard** (D-267) — `/workspace` is a user's activity hub and event management lives in the Event Host Workspace.
+**Frontend**: `web/` is Next.js serving both the public site and the signed-in app (**93 routes** — `find web/app -name page.tsx | wc -l`, 2026-08-15; this said 91); `admin/` is a separate Next.js staff console on `:3001` — **20 of 20 sidebar modules live, none disabled**, 24 pages inside the console shell (`admin/STATUS.md`). Note the terminology: web has **no organizer dashboard** (D-267) — `/workspace` is a user's activity hub and event management lives in the Event Host Workspace.
 
 **Database**: Postgres is the system of record; all IDs are `uuid`; money is stored as `long`/`bigint` paise in columns suffixed `_paise` (D-004, D-006). EF Core migrations auto-apply on boot and abort startup on failure.
 
 **Storage**: `IStorage` abstraction; only a local-disk dev implementation exists today; S3 is the intended production provider.
 
-**Authentication**: WhatsApp OTP → JWT (HMAC-SHA256, access token 1h, refresh token 30d, rotated on use; reuse revokes all sessions — D-009, D-014). Web stores tokens in httpOnly `SameSite=Lax` cookies, never localStorage.
+**Authentication**: phone OTP delivered **over SMS** (`OtpChannelPolicy`, D-281 — WhatsApp is a supported channel but never selected for a one-time code, because a WhatsApp account is portable across devices) → JWT (HMAC-SHA256, access token 1h, refresh token 30d, rotated on use; reuse revokes all sessions — D-009, D-014). Web stores tokens in httpOnly `SameSite=Lax` cookies, never localStorage.
 
 **Notifications**: `INotificationService`/`IEmailSender`/`IWhatsAppSender` abstractions exist; only console/mock dev senders are wired.
 
@@ -346,7 +359,7 @@ Full step-by-step detail with edge cases and recovery paths: `docs/planning/04-u
 Source of truth: [`docs/roadmap/README.md`](roadmap/README.md), [`CHANGELOG.md`](../CHANGELOG.md), [`.claude/memory/trust-verification.md`](../.claude/memory/trust-verification.md), [`docs/DECISIONS.md`](DECISIONS.md).
 
 **Completed — foundation & content:**
-- Auth & Organizations (WhatsApp OTP, JWT + rotating refresh with reuse-revocation, Org CRUD/roles, org bank verification + Route seeding — providers still mocked).
+- Auth & Organizations (phone OTP over SMS — D-281, JWT + rotating refresh with reuse-revocation, Org CRUD/roles, org bank verification + Route seeding — providers still mocked).
 - Identity hardening: mandatory unique-username onboarding, phone-number change with full session revocation, case-insensitive unique email, 30-day reclaim-hold (D-037, D-038).
 - Phase 1 foundation hardening (secret validation, RFC7807 errors, FluentValidation, JWT claim safety, EF auto-migrate fail-closed, health checks, structured logging, SignalR, CI).
 - Phase 2 Event Management (CRUD + status workflow, categories/tags/venues/speakers/sponsors/schedule/media, 11 templates, public discovery, organizer dashboard).
@@ -386,7 +399,7 @@ From `.claude/CLAUDE.md` and reinforced throughout the planning docs:
 
 ## 15. Important Decisions
 
-Full text: `docs/DECISIONS.md`, which now holds **277 decisions** (measured 2026-08-12). The index below covers only **D-001–D-052** — it was written when those were all that existed and has never been extended; it is kept as an orientation aid for the foundational decisions, **not** as a complete list. For anything after D-052, read `DECISIONS.md` directly. Each entry describes what was true *at the time it was written*; later decisions may supersede earlier ones without rewriting them, per the append-only convention, and `docs/DECISIONS.md` always wins if this index and that file disagree:
+Full text: `docs/DECISIONS.md`. Its size changes most working days — derive it (`grep -cE '^## D-[0-9]+' docs/DECISIONS.md`) rather than trusting a figure here; the "277" that stood in this sentence was three weeks and ~23 entries out of date. The index below covers only **D-001–D-052** — it was written when those were all that existed and has never been extended; it is kept as an orientation aid for the foundational decisions, **not** as a complete list. For anything after D-052, read `DECISIONS.md` directly. Each entry describes what was true *at the time it was written*; later decisions may supersede earlier ones without rewriting them, per the append-only convention, and `docs/DECISIONS.md` always wins if this index and that file disagree:
 
 | ID | Summary |
 |---|---|
@@ -480,7 +493,7 @@ date.
 1. **[`architecture/TERMINOLOGY.md`](architecture/TERMINOLOGY.md)** — read this *first*, before any prose in
    this handbook. It is the canonical vocabulary (D-271) and it **wins over this file** wherever they
    disagree. It is also the shortest thing here.
-2. [`DECISIONS.md`](DECISIONS.md) — the spec, and the only one. 277 entries; skim the recent ones, then
+2. [`DECISIONS.md`](DECISIONS.md) — the spec, and the only one. ~300 entries and growing; skim the recent ones, then
    search rather than read end to end.
 3. [`architecture/overview.md`](architecture/overview.md) + [`.claude/memory/architecture.md`](../.claude/memory/architecture.md)
    — how the backend is actually laid out.

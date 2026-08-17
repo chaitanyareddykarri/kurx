@@ -204,10 +204,18 @@ public static class DependencyInjection
             services.AddDistributedMemoryCache();
         }
 
-        // Provider flags: only the dev implementations exist so far; real ones
-        // (ses / cloudapi / razorpay-sandbox / s3 / fcm) slot in behind the same switch.
-        // Email (D-284). Same explicit-switch shape as push and SMS, because more than one implementation
-        // now genuinely exists. Console stays the dev default; an unrecognised value still throws.
+        // Provider flags. Boundaries with a REAL implementation get an explicit switch below —
+        // email (ses), push (firebase), SMS (sns); secrets and signing-key protection do the same
+        // further down. The ones still dev-only (cloudapi / razorpay-sandbox / s3 / mock KYC) go
+        // through AddProvider, which refuses every value but the dev one.
+        //
+        // This comment used to read "only the dev implementations exist so far; real ones (ses /
+        // cloudapi / razorpay-sandbox / s3 / fcm) slot in behind the same switch" — stale directly
+        // above the `case "ses"` that disproves it, and `fcm` was never an accepted value (the push
+        // switch takes `firebase`), so anyone following it would have been refused at startup.
+        //
+        // Email (D-284). Explicit-switch shape because more than one implementation genuinely
+        // exists. Console stays the dev default; an unrecognised value still throws.
         var emailProvider = config["EMAIL_PROVIDER"] ?? "console";
         switch (emailProvider)
         {

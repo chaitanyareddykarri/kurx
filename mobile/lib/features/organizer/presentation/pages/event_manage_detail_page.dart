@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../common/widgets/async_value_view.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/utils/event_status.dart';
 import '../../../../core/utils/money.dart';
 import '../providers/organizer_providers.dart';
 
@@ -51,7 +52,7 @@ class EventManageDetailPage extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(KRadius.pill),
                     ),
                     child: Text(
-                      event.status,
+                      eventStatusLabel(event.status),
                       style: TextStyle(
                         color: _statusColor(event.status, c),
                         fontSize: 12,

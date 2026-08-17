@@ -2,8 +2,9 @@ import { Card } from "@kurx/ui";
 import { requireSession } from "@/lib/session";
 import {
   getMe, listMyRepresentations, listCategories, listSubcategories, listFieldPresets, getMyIdentity,
-  getRepresentativeRoles, section
+  getRepresentativeRoles, getArchetypeCapabilities, section
 } from "@/lib/api";
+import { archetypeSupportsTeams } from "@/lib/event-wizard";
 import { CreateEventGate } from "@/components/host/create-event-gate";
 
 /// Create Event is entered from **Profile** (D-305) and opens the **gate**, not the form: eligibility is
@@ -44,6 +45,23 @@ export default async function CreateEventPage() {
    */
   const representationsFailed = representations.state !== "ok";
 
+  /*
+   * D-357 — which of the archetypes on offer permit team entry.
+   *
+   * Asked of the capability engine, once per DISTINCT archetype among the Types this caller could
+   * choose, and resolved here rather than in the wizard: the wizard is a client component, and a
+   * `@/lib/api` import there drags React's server-only `cache()` into the browser bundle and the test
+   * environment. One server round-trip per archetype beats a client fetch on every Type click.
+   *
+   * Fails CLOSED — an archetype whose capability set cannot be read is simply absent from the list, so
+   * the Registration step offers individual entry only rather than a team option the server may refuse.
+   */
+  const archetypeSlugs = [...new Set(subcategories.map((s) => s.archetype_slug).filter((a): a is string => !!a))];
+  const teamCapableArchetypes = (await Promise.all(
+    archetypeSlugs.map(async (slug) =>
+      archetypeSupportsTeams(await getArchetypeCapabilities(slug).catch(() => null)) ? slug : null)
+  )).filter((s): s is string => s !== null);
+
   return (
     <div className="space-y-6">
       <div>
@@ -77,6 +95,7 @@ export default async function CreateEventPage() {
           // Under the dev bypass it does not, and the gate must not add a rule the server has lifted.
           requiresRepresentation={me.requires_representation}
           representativeRoles={representativeRoles}
+          teamCapableArchetypes={teamCapableArchetypes}
         />
       </Card>
     </div>

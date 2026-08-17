@@ -6,6 +6,7 @@ import { CreditCard, Ticket } from "lucide-react";
 import { Alert, Button } from "@kurx/ui";
 import { createBookingAction } from "@/lib/booking-actions";
 import { formatCurrency } from "@/lib/formatters";
+import { priceLabel } from "@/components/events/event-detail-sections";
 import type { PublicTicketType } from "@/lib/api";
 
 /**
@@ -96,8 +97,14 @@ export function BookingForm({ eventId, ticketTypes }: { eventId: string; ticketT
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="text-label text-text">{t.name}</span>
+                    {/* D-366 — a banded ticket has no single price, so printing `price_paise` here would
+                        quote the cheapest band as if it were THE price. `priceLabel` says what the
+                        number is: a range, charged per team, resolved by size at checkout. */}
                     <span className="text-label text-text">
-                      {t.price_paise === 0 ? "Free" : formatCurrency(t.price_paise, "en-IN", t.currency ?? "INR")}
+                      {t.price_paise === 0 && !t.price_tiers?.length
+                        ? "Free"
+                        : priceLabel(t.price_paise, t.pricing_unit,
+                            (p) => formatCurrency(p, "en-IN", t.currency ?? "INR"), t.price_tiers)}
                     </span>
                   </span>
                   {t.description ? <span className="mt-1 block text-caption text-muted">{t.description}</span> : null}

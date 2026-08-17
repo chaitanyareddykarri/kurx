@@ -106,10 +106,11 @@ The consequence is narrower than it used to be but still decisive: **no real mon
 
 **Backend Files**:
 - `backend/Kurx.Application/Abstractions/Providers.cs:8-13` — `IEmailSender` (`SendAsync(to, subject, htmlBody, attachments?, ct) -> Task<string?>`).
-- `backend/Kurx.Infrastructure/Providers/ConsoleProviders.cs:8-17` — `ConsoleEmailSender`, the only implementation. Logs `[email→console] to=... subject=... attachments=...`; returns a synthetic id `console-{guid}`. No SMTP/SES call.
+- `backend/Kurx.Infrastructure/Providers/ConsoleProviders.cs` — `ConsoleEmailSender`, the dev default. Logs `[email→console] to=... subject=... attachments=...`; returns a synthetic id `console-{guid}`. No SMTP/SES call.
+- `backend/Kurx.Infrastructure/Providers/SesEmailSender.cs` — **the real AWS SES v2 adapter (D-284)**. Selected by `EMAIL_PROVIDER=ses`. Credentials come from the default AWS chain (env vars or a task role), never hard-coded. Attachments switch the send from SES `Simple` content to raw MIME, because SES's Simple content has no attachment field. The provider message id is propagated to the caller rather than discarded, so a send can later be correlated to a delivery/bounce/complaint event.
 - `backend/Kurx.Infrastructure/Orders/OrderService.cs` — `ResendTicketAsync`/`ResendGuestOrderAsync` call `emailSender.SendAsync(...)`.
 - `backend/Kurx.Infrastructure/Events/CertificateService.cs` — `GenerateForEventAsync` emails the rendered certificate PDF as an attachment.
-- `backend/Kurx.Infrastructure/DependencyInjection.cs` — `AddProvider<IEmailSender, ConsoleEmailSender>(services, config, "EMAIL_PROVIDER", "console")`.
+- `backend/Kurx.Infrastructure/DependencyInjection.cs` — an explicit `switch` on `EMAIL_PROVIDER` (**not** the generic `AddProvider` helper, because more than one implementation genuinely exists): `ses` → `SesEmailSender`, `console` → `ConsoleEmailSender`, anything else throws at startup.
 
 **Mobile Files**: None.
 
@@ -118,20 +119,21 @@ The consequence is narrower than it used to be but still decisive: **no real mon
 **Environment Variables**:
 | Variable | Read in code? |
 |---|---|
-| `EMAIL_PROVIDER` | Yes — `ses` \| `console`; requesting `ses` throws `NotSupportedException` today |
-| `AWS_REGION` | No |
-| `AWS_ACCESS_KEY_ID` | No |
-| `AWS_SECRET_ACCESS_KEY` | No |
-| `SES_FROM_ADDRESS` | No |
-| `SES_FROM_NAME` | No |
+| `EMAIL_PROVIDER` | Yes — `ses` \| `console` (default). **`ses` selects the real adapter**; this row said it throws, which stopped being true at D-284 |
+| `AWS_REGION` | Yes (`SesEmailSender.cs`) — defaults to `ap-south-1` |
+| `AWS_ACCESS_KEY_ID` | Indirectly — read by the AWS SDK's default credential chain, not by Kurx code |
+| `AWS_SECRET_ACCESS_KEY` | Indirectly — same |
+| `SES_FROM_ADDRESS` | Yes (`SesEmailSender.cs`) — **required**; construction throws without it, because SES refuses to send from an unverified identity and there is no sensible default |
+| `SES_FROM_NAME` | Yes (`SesEmailSender.cs`) — optional display name |
+| `SES_CONFIGURATION_SET` | Yes (`SesEmailSender.cs`) — optional; this is what routes bounce/complaint events to a destination. Absent today because that pipeline is deployment work |
 
-**Production Provider**: AWS SES v2 — the `AWSSDK.SimpleEmailV2` 4.0.100.2 NuGet package is already referenced in `backend/Kurx.Infrastructure/Kurx.Infrastructure.csproj`, but **zero code anywhere calls it** (confirmed by repo-wide grep for `Amazon.SimpleEmailV2`/`AmazonSimpleEmailServiceV2Client` — no hits).
+**Production Provider**: AWS SES v2 — the `AWSSDK.SimpleEmailV2` package is referenced in `backend/Kurx.Infrastructure/Kurx.Infrastructure.csproj` **and is called**: `SesEmailSender.cs` constructs an `AmazonSimpleEmailServiceV2Client` and issues `SendEmailAsync`. *(This paragraph previously said "zero code anywhere calls it" — true when written on 2026-07-12, false since D-284.)*
 
-**API Direction**: Planned: `Kurx → AWS SDK call (SES SendEmailAsync) → SES → SMTP delivery → recipient`. No webhook/bounce handling exists.
+**API Direction**: Kurx → AWS SDK call (SES `SendEmailAsync`) → SES → SMTP delivery → recipient. Built, dormant until `EMAIL_PROVIDER=ses` plus credentials. No webhook/bounce handling exists — `SES_CONFIGURATION_SET` is the seam for it and is unset.
 
 **Cost Model**: AWS SES is pay-per-email (roughly $0.10 per 1,000 emails in most regions, plus data transfer) — not configured/estimated in this repo.
 
-**Production Readiness**: **Missing.** Package is present; needs a real `SesEmailSender : IEmailSender` implementation, a verified SES sending domain/identity, IAM credentials, and `AddProvider` routing for `ses`.
+**Production Readiness**: **Code complete, not credentialed.** `SesEmailSender : IEmailSender` exists and `EMAIL_PROVIDER=ses` routes to it. What remains is *deployment*, not engineering: a verified SES sending domain/identity, `SES_FROM_ADDRESS`, IAM credentials (or a task role), SES production access, and a bounce/complaint pipeline behind `SES_CONFIGURATION_SET`. *(This row said "Missing — needs a real implementation" until 2026-08-15; the implementation landed at D-284.)*
 
 **Risks**: New AWS SES accounts start in sandbox mode (can only send to verified addresses) until a production-access request is approved — a real lead-time risk if not requested early; deliverability requires SPF/DKIM/DMARC DNS setup on the sending domain; no bounce/complaint handling designed yet.
 
@@ -299,32 +301,39 @@ The consequence is narrower than it used to be but still decisive: **no real mon
 
 **Purpose**: Push notifications to the mobile app.
 
-**Current Status**: **Stub.**
+**Current Status**: **Real adapter, dormant until credentialed** (was "Stub" — corrected 2026-08-15; this whole section was written on 2026-07-12 and every "unbuilt" claim in it had since been closed).
 
 **Used In**: Notifications.
 
 **Backend Files**:
-- `backend/Kurx.Application/Abstractions/Providers.cs:65-68` — `IPushSender` (`SendAsync(fcmToken, title, body, data?, ct)`).
-- `backend/Kurx.Infrastructure/Providers/ConsoleProviders.cs:34-42` — `ConsolePushSender`, the only implementation. Logs `[push→console] ...`. No FCM SDK call, despite the `FirebaseAdmin` 3.5.0 NuGet package being referenced in `Kurx.Infrastructure.csproj` (confirmed unused via grep — zero `FirebaseApp`/`FirebaseMessaging` hits anywhere in `backend/`).
+- `backend/Kurx.Application/Abstractions/Providers.cs` — `IPushSender` (`SendAsync(fcmToken, title, body, data?, ct)`).
+- `backend/Kurx.Infrastructure/Providers/ConsoleProviders.cs` — `ConsolePushSender`, the dev default. Logs `[push→console] ...`.
+- `backend/Kurx.Infrastructure/Providers/FirebasePushSender.cs` — **the real adapter**. Imports `FirebaseAdmin` / `FirebaseAdmin.Messaging` / `Google.Apis.Auth.OAuth2` and sends through `FirebaseMessaging`. *(This entry said `ConsolePushSender` was "the only implementation" and that the `FirebaseAdmin` package was "confirmed unused via grep — zero `FirebaseApp`/`FirebaseMessaging` hits". Both were true on 2026-07-12 and are false now.)*
 - `backend/Kurx.Domain/Entities/Users.cs` — `Device` entity (`FcmToken`, `Platform`, `LastSeen`).
 - `backend/Kurx.Infrastructure/Events/AnnouncementService.cs:152-161` — **a genuine, live call site**: when an announcement's `Channels` include `"push"`, it queries `db.Devices` for the batch of recipient user ids and calls `push.SendAsync(token, ann.Title, bodyExcerpt, null, ct)` per device token.
-- `backend/Kurx.Infrastructure/Notifications/NotificationService.cs:33-47,49-67` — `RegisterDeviceAsync` (upserts a `Device` row) and `NotifyAsync` (writes a `Notification` row, then pushes to every device token for that user) both exist and are correctly wired internally — **but confirmed dead code**: repo-wide grep found zero endpoint or other call site invoking either `NotificationService.NotifyAsync` or `RegisterDeviceAsync` anywhere in `Kurx.Api/Endpoints/`. `INotificationService` is registered in DI but nothing calls it.
-- **Net effect**: the announcement→push path (`AnnouncementService`) is real and reachable via `POST` announcement-send endpoints, but since `RegisterDeviceAsync` has no API endpoint, **no client can ever get a device token into the `Devices` table** — so in practice this path can never actually deliver a push today, independent of `ConsolePushSender` being a stub. Two separate gaps, not one.
-- `backend/Kurx.Infrastructure/DependencyInjection.cs` — `AddProvider<IPushSender, ConsolePushSender>(services, config, "PUSH_PROVIDER", "console")`.
+- `backend/Kurx.Infrastructure/Notifications/NotificationService.cs` — `RegisterDeviceAsync` (upserts a `Device` row) and `NotifyAsync` (writes a `Notification` row, then pushes to every device token for that user). **Both are live**, not dead code: `NotifyAsync` has call sites in `Kurx.Api` and across nine `Kurx.Infrastructure` files, and it is the single dispatch point that the D-263 notification-preference gate sits inside, so every caller inherits it. *(This entry said "confirmed dead code — zero call sites". That was true on 2026-07-12.)*
+- **Net effect, re-verified 2026-08-15**: the gap this section described is **closed on both ends**. `POST /v1/devices/register`, `PATCH`/`DELETE /v1/devices/{id}` and `GET`/`POST /v1/me/devices` all exist, and the Flutter app calls them — `mobile/lib/core/push/push_service.dart` obtains a token via `_messaging.getToken()` and `POST`s it to `/v1/devices/register`. What remains is *credentials and iOS config*, not code.
+- `backend/Kurx.Infrastructure/DependencyInjection.cs` — an explicit `if/else` on `PUSH_PROVIDER` (**not** the generic `AddProvider` helper): `firebase` → `FirebasePushSender`, `console` → `ConsolePushSender`, anything else throws at startup.
 
-**Mobile Files**: **None.** No `firebase_messaging`, `firebase_core`, or any Firebase package in `mobile/pubspec.yaml` (verified — the full dependency list has zero Firebase entries). No `firebase_options.dart`, `google-services.json`, or `GoogleService-Info.plist` found anywhere under `mobile/`. The mobile app cannot receive a push today even if the backend sent one — both ends are unbuilt.
+**Mobile Files**: `mobile/pubspec.yaml` carries `firebase_core: ^4.12.1` and `firebase_messaging: ^16.4.3`; `mobile/lib/core/push/push_service.dart` requests the token and uploads it (the HTTP call is injected so the flow is testable); `mobile/android/app/google-services.json` is present. **iOS is still unconfigured** — no `GoogleService-Info.plist` exists, so Android is the only platform that can receive a push today. *(This entry said "None — zero Firebase entries, both ends unbuilt".)*
 
 **Web Files**: None.
 
-**Environment Variables**: `PUSH_PROVIDER` (read; `fcm` \| `console`, `fcm` throws `NotSupportedException` today), `FCM_SERVICE_ACCOUNT_JSON_PATH` (declared in `.env.example`, not read anywhere in code).
+**Environment Variables**:
+
+| Variable | Read in code? |
+|---|---|
+| `PUSH_PROVIDER` | Yes — **`firebase`** \| `console` (default). ⚠️ This row previously named the value **`fcm`**, which is not accepted: `AddKurxInfrastructure` throws `NotSupportedException` at startup on any value but those two, so following the old text would have refused the boot it was meant to enable. |
+| `FIREBASE_CREDENTIALS_JSON` | Yes (`FirebasePushSender.cs`) — the service-account JSON itself |
+| `FCM_SERVICE_ACCOUNT_JSON_PATH` | **No** — declared in `.env.example`, read nowhere. Superseded by `FIREBASE_CREDENTIALS_JSON` above |
 
 **Production Provider**: Firebase Cloud Messaging (Google) — the only push provider named anywhere in the repo.
 
-**API Direction**: Planned: `Kurx (event trigger) → Firebase Admin SDK → FCM → device`. Mobile side (also unbuilt): `FCM → device token registration → Kurx POST /v1/devices (or similar, not found)`.
+**API Direction**: Kurx (event trigger) → Firebase Admin SDK → FCM → device. Mobile side: `firebase_messaging.getToken()` → `POST /v1/devices/register` → `Devices` table → `NotificationService.NotifyAsync` fans out to every token for that user. **Both halves are built**; the endpoint this row once described as "not found" is `POST /v1/devices/register`.
 
 **Cost Model**: Free — FCM has no usage-based cost for standard push delivery.
 
-**Production Readiness**: **Missing on both ends.** Needs: a real `FcmPushSender : IPushSender` backend implementation, a Firebase project + service-account JSON, `AddProvider` routing for `fcm`; on mobile, the `firebase_messaging`/`firebase_core` packages, platform config files (`google-services.json`/`GoogleService-Info.plist`), and a device-token-registration endpoint + call site (none of which currently exist).
+**Production Readiness**: **Code complete on Android, not credentialed; iOS unconfigured.** `FirebasePushSender` ships behind `PUSH_PROVIDER=firebase`, the registration endpoints exist and the Flutter client calls them. What remains: a Firebase project and its service-account JSON in `FIREBASE_CREDENTIALS_JSON`, and for iOS a `GoogleService-Info.plist` plus an APNs key configured inside Firebase. *(This row said "Missing on both ends"; every item it listed as absent — the adapter, the packages, `google-services.json`, the registration endpoint and its call site — now exists except the iOS plist.)*
 
 **Risks**: Free, low cost/vendor-lock risk relative to other providers here; iOS push requires an Apple Push Notification (APNs) certificate/key configured inside Firebase, an extra credential to manage beyond the Firebase service account.
 
@@ -341,8 +350,8 @@ The consequence is narrower than it used to be but still decisive: **no real mon
 **Used In**: Every module (Authentication, Events, Orders, Certificates, Chat, Notifications, Profile, Orgs/Wallet/KYC, Hangfire job storage).
 
 **Backend Files**:
-- `backend/Kurx.Infrastructure/Persistence/KurxDbContext.cs` — 70 `DbSet`s, the entire schema.
-- `backend/Kurx.Infrastructure/Migrations/` — 19 migration files (`Initial` → `EventManagement` → … → `AddVerificationSubstrate`, `AddPlatformRoles`, `DropIsKurxAdmin`, `AddUserIdentity`, `AddOrgRegistry`, `AddOrgVerification`, `AddMembershipClaims`, `RenameKycToOrgBankVerification`, `DropRegistrationForms`, `AddFraudTables`), auto-applied at boot (`Program.cs`), host aborts on migration failure.
+- `backend/Kurx.Infrastructure/Persistence/KurxDbContext.cs` — **162** `DbSet`s, the entire schema (this said 70; `grep -c 'public DbSet<'`, 2026-08-15). Per-table reference: [`database/DATABASE_TABLES.md`](database/DATABASE_TABLES.md).
+- `backend/Kurx.Infrastructure/Migrations/` — **91** migration files (this said 19, the M0–M13 figure, which predates the entire V3 program), auto-applied at boot (`Program.cs`); the host aborts on migration failure. The live database agrees: `SELECT count(*) FROM "__EFMigrationsHistory"`.
 - `backend/Kurx.Infrastructure/Kurx.Infrastructure.csproj` — `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.2.
 - `backend/Kurx.Tests/KurxApiFactory.cs` — tests run against a real `kurx_test` Postgres database, never mocked persistence.
 
@@ -644,7 +653,7 @@ These are features Kurx's own product documentation describes as needing an exte
 | Feature | Provider needed | Verified status |
 |---|---|---|
 | **Maps** (venue location display) | Google Maps / Mapbox | **Not Started.** `web/app/e/[slug]/page.tsx` renders venue as plain text with a static `MapPin` icon (lucide-react glyph, not a map). No maps package in `web/package.json` or `mobile/pubspec.yaml`. `Event` entity stores lat/lng as plain columns (D-026) but nothing renders them on a map anywhere. |
-| **Google/Apple Sign-In (OAuth)** | Google Identity, Sign in with Apple | **Not Started.** Repo-wide grep for OAuth/Google/Apple sign-in code found zero hits; the only auth mechanism anywhere is WhatsApp OTP → JWT. No `google_sign_in`/`sign_in_with_apple` package in `mobile/pubspec.yaml`; no `next-auth` or OAuth library in `web/package.json`. |
+| **Google/Apple Sign-In (OAuth)** | Google Identity, Sign in with Apple | **Not Started.** Repo-wide grep for OAuth/Google/Apple sign-in code found zero hits; the only *external-IdP* mechanism is none — Kurx authenticates with its own phone OTP over SMS (D-281) plus passwords, passkeys, trusted devices and recovery codes. No `google_sign_in`/`sign_in_with_apple` package in `mobile/pubspec.yaml`; no `next-auth` or OAuth library in `web/package.json`. |
 | **Analytics** (product/usage analytics) | e.g. PostHog, Mixpanel, GA | **Not Started.** No analytics SDK in `web/package.json` or `mobile/pubspec.yaml`. `Event.ViewCount` (D-018) is the only "analytics" that exists — a single DB counter, not a real analytics pipeline. |
 | **Crash reporting** | e.g. Sentry, Firebase Crashlytics | **Not Started.** No Sentry/Crashlytics package anywhere in `web/package.json` or `mobile/pubspec.yaml`. |
 | **Search** (beyond simple substring match) | e.g. Algolia, Elasticsearch, Postgres full-text | **Not Started as "search engine."** Verified: `EventService.cs`/`CategoryService.cs` use `EF.Functions.ILike(...)` (case-insensitive substring match) — there is **no** `tsvector`/`to_tsquery` full-text search despite `docs/PROJECT_HANDBOOK.md` describing "Postgres full-text search" as the starting point; that claim does not match the code. |
@@ -660,7 +669,7 @@ These are features Kurx's own product documentation describes as needing an exte
 
 | Service | Provider | Purpose | Current Status | Production Ready | Configuration Complete | Estimated Cost Model | Criticality |
 |---|---|---|---|---|---|---|---|
-| WhatsApp OTP (outbound) | WhatsApp Cloud API (Meta) | OTP delivery, messaging | Stub (console) | No | No | Per-message | **Critical** — the only login mechanism |
+| WhatsApp (outbound messaging) | WhatsApp Cloud API (Meta) | Messaging. **NOT OTP delivery** — D-281 routes every auth code to SMS | Stub (console) | No | No | Per-message | **Critical** — the only login mechanism |
 | WhatsApp webhook (inbound) | WhatsApp Cloud API (Meta) | Delivery-status receipt | Implemented, untested live | Needs Testing | Partial (verify token/secret only) | N/A | Medium |
 | Email | AWS SES | Ticket resend, certificates | Stub (console) | No | No | Per-email (~$0.10/1k) | High |
 | Payments | Razorpay | Checkout, capture, refunds | Mock (write-path live D-049, adapter still mock) | No | No | % per transaction | **Critical** — blocks all real paid tickets |
@@ -690,4 +699,15 @@ These are features Kurx's own product documentation describes as needing an exte
 | CDN | Not chosen | Static/media delivery | Not Started | No | No | Usage-based | Low |
 | SMS | Not chosen (interface doesn't exist despite doc claim) | Alternate OTP channel | Not Started | No | No | Per-message | Low |
 
-**Bottom line for production readiness**: every "Critical" row above (WhatsApp OTP, Payments, Payouts, Database, Deploy target) is either fully mocked/stubbed or unprovisioned. None of Kurx's revenue-critical or login-critical paths can go live without real implementations for WhatsApp Cloud API, Razorpay (both products), and a provisioned production Postgres + deploy host. This matches — and gives file-level evidence for — `docs/PROJECT_HANDBOOK.md`'s own (accurate, in this instance) summary: "No real third-party providers — Razorpay, AWS SES, WhatsApp Cloud API, FCM, and S3 are all mocked/console/localdisk."
+**Bottom line for production readiness** *(rewritten 2026-08-15 — the version here was wrong on the
+single most important point)*: it said **login** was blocked on WhatsApp Cloud API. It is not.
+[D-281](DECISIONS.md) routes every authentication code to **SMS**, and `SnsSmsProvider` is a **real
+adapter** — so the login path needs credentials, not an implementation. WhatsApp is messaging only, and
+is deliberately never selected for a one-time code.
+
+What genuinely blocks a production launch is **revenue and durability, not login**: Razorpay payments
+and Route payouts are `MockPaymentGateway`/`MockRouteClient`, storage is `LocalDiskStorage` (uploads do
+not survive a redeploy), KYC is `MockKycProvider`, and no staging/production host is provisioned. The
+quoted `PROJECT_HANDBOOK.md` line — "no real third-party providers … AWS SES, FCM … all mocked" — was
+also true when written and is not now: **six boundaries have real adapters** (SES, SNS, Firebase,
+ClamAV, KMS, Secrets Manager), all dormant until credentialed. See §0 above.

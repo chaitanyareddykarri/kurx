@@ -191,10 +191,10 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
     public async Task<IReadOnlyList<RepresentableOrganization>> ListRepresentableAsync(Guid userId, CancellationToken ct = default)
         => await db.Memberships.AsNoTracking()
             .Where(m => m.UserId == userId)
-            // `!o.IsPersonal` excludes the self-representation persistence row (D-268). Representing
-            // yourself is not an organization, so it must never surface as one — filtering here rather
-            // than in each client is what keeps the concept out of the API entirely.
-            .Join(db.Organizations.Where(o => o.DeletedAt == null && !o.IsPersonal), m => m.OrgId, o => o.Id,
+            // `OrganizationScope.Real` excludes the self-representation persistence row (D-268/D-368).
+            // Representing yourself is not an organization, so it must never surface as one — filtering
+            // here rather than in each client is what keeps the concept out of the API entirely.
+            .Join(db.Organizations.Where(OrganizationScope.Real), m => m.OrgId, o => o.Id,
                 // IsVerified is the ORG's registry status, not the caller's standing (that is Role). A
                 // staged representation request is a PendingReview row that belongs in this list — the
                 // caller may well represent it once approved — but a paid event may only represent a
@@ -235,7 +235,11 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
         // Excluded rather than filterable: there is no reviewer task it belongs to. It stays reachable by
         // id for support (`GetAsync` with isAdmin), so nothing becomes un-debuggable — it just stops
         // appearing in a registry it was never a member of.
-        var q = db.Organizations.AsNoTracking().Where(o => o.DeletedAt == null && !o.IsPersonal);
+        //
+        // D-368 moved the predicate itself into `OrganizationScope.Real` without changing it. This rule
+        // was retyped per call site, and the admin dashboard/analytics COUNTs were never given it — so the
+        // console reported three organizations above a registry listing one.
+        var q = db.Organizations.AsNoTracking().Where(OrganizationScope.Real);
         if (!string.IsNullOrWhiteSpace(filter.Q))
         {
             var like = $"%{filter.Q.Trim()}%";

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Kurx.Domain.Enums;
 
 namespace Kurx.Domain.Entities;
@@ -40,6 +41,40 @@ public class Organization
     public string SettlementCurrency { get; set; } = Money.DefaultCurrency;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>D-368 — the one rule for what counts as an organization.
+///
+/// <para><b>A row in <c>organizations</c> is a real organization only when it is not soft-deleted and not
+/// a self-representation row.</b> An <c>IsPersonal</c> row is persistence infrastructure — the thing that
+/// satisfies the non-null <c>events."OrgId"</c> FK for an event hosted by a person (D-268/D-273b) — and
+/// the domain says plainly that Kurx has no personal organizations.</para>
+///
+/// <para>This exists as one expression rather than a predicate each caller retypes because the copies had
+/// already drifted: D-353 added <c>!IsPersonal</c> to every organization <i>list</i> — the admin registry,
+/// <c>/v1/me/representations</c>, registry search — and to neither organization <i>count</i>, so the admin
+/// dashboard reported three organizations over a registry holding one. One rule spelled two ways is how
+/// that happens.</para>
+///
+/// <para><b>Never write the pair inline.</b> A query that asks "is this a real organization?" composes
+/// <see cref="Real"/>. Anything else is a second source of truth.</para>
+///
+/// <para>Scope only. This says nothing about whether an organization is <i>verified</i> (that is
+/// <c>VerificationStatus</c>, D-044) or whether a caller may act on it (that is org RBAC, D-015). A
+/// self-representation row stays reachable by id for support, exactly as D-353 left it — this predicate
+/// governs the surfaces that enumerate or count organizations, not the ones that fetch a known one.</para></summary>
+public static class OrganizationScope
+{
+    /// <summary>EF-translatable. Compose into any query that lists or counts organizations:
+    /// <c>db.Organizations.Where(OrganizationScope.Real)</c>,
+    /// <c>db.Organizations.CountAsync(OrganizationScope.Real, ct)</c>, or chained with a further
+    /// predicate — <c>.Where(OrganizationScope.Real).Where(o =&gt; o.Id == someId)</c>.
+    ///
+    /// <para>Deliberately expression-only. <c>EventExposure</c> carries an in-memory twin because it has
+    /// materialised callers; this has none, and an unused second spelling of a rule about drift would be
+    /// the joke writing itself.</para></summary>
+    public static Expression<Func<Organization, bool>> Real =>
+        o => o.DeletedAt == null && !o.IsPersonal;
 }
 
 /// <summary>A node in an organisation's structural tree (V3 §4.1, Phase 4). Universities and companies are

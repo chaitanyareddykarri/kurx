@@ -49,8 +49,11 @@ const MODE_LABEL: Record<string, string> = { online: "Online", hybrid: "Hybrid �
 function priceLabel(event: EventSummary): string | null {
   const paise = event.price_from_paise;
   if (paise === null || paise === undefined) return null;
-  if (paise === 0) return "Free";
-  return `From ${formatCurrency(paise, "en-IN", event.currency ?? "INR")}`;
+  // D-361 — the unit, even on a condensed card. "From ₹2,000" on a team event reads as a per-person
+  // minimum; "From ₹2,000 per team" is the same length and true.
+  const unit = event.price_from_unit === "PerGroup" ? " per team" : "";
+  if (paise === 0) return unit ? "Free per team" : "Free";
+  return `From ${formatCurrency(paise, "en-IN", event.currency ?? "INR")}${unit}`;
 }
 
 export function EventCard({ event }: { event: EventSummary }) {

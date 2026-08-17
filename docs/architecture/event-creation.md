@@ -101,9 +101,9 @@ cannot finish; it does not replace org verification or `paid_event_requires_revi
 **Every wizard step gates its own required fields (D-327).** `canNext` ended in `step >= 4` — an
 unconditional pass covering Type, **Details**, Content, Location, Windows, Eligibility and Legal — so
 `title`, `startsAt` and `endsAt` could all be skipped and the wizard first objected on step 11 of 11.
-The rule now lives on the step that asks: Details requires a title and correctly-ordered times, Pricing
-requires a bookable ticket, Type is required only when the category offers one, and the Windows pairs
-must be ordered. `blockedReason` names the specific missing field, because "Make a choice to continue."
+The rule now lives on the step that asks: Details requires a title and correctly-ordered times,
+Registration requires a bookable ticket (and, for a paid event, the eligibility to charge — D-365), Type
+is required only when the category offers one, and the Windows pairs must be ordered. `blockedReason` names the specific missing field, because "Make a choice to continue."
 on a four-input step is what made the disabled button useless. **Nothing invalid could ever have been
 stored** — `CreateEventBodyValidator` and `EventService` refuse all of it; this moves the refusal to
 where the field is still on screen.
@@ -146,7 +146,7 @@ not alter the `identity_verified`/`bank_verified` values the gate *displays* —
 truth even when the gate is open. Production refuses to start with it set. Delete it when a real
 DigiLocker/penny-drop adapter ships; until then it is the only thing that makes this flow testable.
 
-1. **Login** (WhatsApp OTP → JWT).
+1. **Login** (phone OTP over SMS → JWT; D-281).
 2. **Profile → Create Event** → the gate above → the creation form (`POST /v1/events`) → event details
    (title, schedule, venue, category, …).
 3. **"Representing"** — a step of the form, not a gate in front of it:

@@ -62,6 +62,26 @@ public class TeamService(KurxDbContext db, IEventPermissionService permissions) 
         var min = input.MinSize ?? p.MinSize;
         var max = input.MaxSize ?? p.MaxSize;
         if (min < 1 || max < min) return ServiceResult<TeamPolicyView>.Fail("invalid_size");
+
+        /*
+         * D-357 — the ticket type owns team size, because that is the bound people were CHARGED against.
+         *
+         * `SyncPolicyAsync` already seeds this policy from `TicketType.GroupMin/GroupMax` and re-syncs it
+         * whenever they change, so the two start and stay in step — but nothing stopped this method from
+         * pulling them apart again. An organiser selling a 2–4 team entry could widen the policy to 2–10,
+         * and the sixth member would join a team whose registration bought room for four: `CreateOrderAsync`
+         * validates the purchase against `GroupMin/GroupMax`, and the roster cap is the size that order
+         * recorded. The policy may narrow within the sold bounds; it may not exceed them.
+         */
+        var bounds = await db.TicketTypes.AsNoTracking()
+            .Where(t => t.Id == ticketTypeId).Select(t => new { t.GroupMin, t.GroupMax }).FirstOrDefaultAsync(ct);
+        if (bounds is not null)
+        {
+            if (bounds.GroupMin is > 0 && min < bounds.GroupMin.Value)
+                return ServiceResult<TeamPolicyView>.Fail("size_below_ticket_type");
+            if (bounds.GroupMax is > 0 && max > bounds.GroupMax.Value)
+                return ServiceResult<TeamPolicyView>.Fail("size_above_ticket_type");
+        }
         if (input.SubstitutesAllowed is < 0) return ServiceResult<TeamPolicyView>.Fail("invalid_substitutes");
 
         p.MinSize = min; p.MaxSize = max; p.FormationMode = formation; p.JoinApproval = approval;
@@ -83,6 +103,86 @@ public class TeamService(KurxDbContext db, IEventPermissionService permissions) 
     }
 
     // ── Formation ────────────────────────────────────────────────────────────
+    /*
+     * D-359 — the §6.5 hook Phase 10 left open.
+     *
+     * `Team.RegistrationId` was added with the note "Null this phase — the team-slot purchase flow is
+     * deferred; the field exists so the later competitive-purchase phase can link without a migration."
+     * This is that phase: a competition group registration now produces the authoritative Team beside the
+     * legacy purchase `Group`, so the two stop disagreeing about who is on a team.
+     *
+     * Deliberately NOT routed through `CreateTeamAsync`: that entry point enforces formation mode, the
+     * per-person team limit and a required name — rules a completed purchase has already settled, and any
+     * one of which would refuse a team the buyer has been charged for. The purchase is the authorisation.
+     * Same entities, same policy, same slug rule; no second team model.
+     *
+     * Idempotent in all three directions (no policy, team already made, member already on the roster), so a
+     * webhook replay or a re-run projection cannot fork a team or double a roster.
+     */
+    public async Task MaterialiseForGroupAsync(Guid groupId, CancellationToken ct = default)
+    {
+        var group = await db.Groups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == groupId, ct);
+        if (group is null) return;
+
+        // Teams exist only where competition does (V3 §6) — the same gate `SyncPolicyAsync` applies, so a
+        // plain group purchase keeps its Group and nothing else, exactly as before.
+        var tt = await db.TicketTypes.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == group.TicketTypeId, ct);
+        if (tt is null || !tt.IsCompetition) return;
+
+        // `(EventId, Slug)` is the team's unique key, and the slug is derived from the group — so this both
+        // finds a team made by an earlier run and, via `Local`, one added in this very transaction.
+        var slug = GroupSlug(group);
+        var team = await db.Teams.FirstOrDefaultAsync(t => t.EventId == group.EventId && t.Slug == slug, ct)
+            ?? db.Teams.Local.FirstOrDefault(t => t.EventId == group.EventId && t.Slug == slug);
+
+        if (team is null)
+        {
+            var name = string.IsNullOrWhiteSpace(group.DisplayName) ? $"Team {group.GroupNumber}" : group.DisplayName!.Trim();
+            team = new Team
+            {
+                EventId = group.EventId,
+                TicketTypeId = group.TicketTypeId,
+                Name = name,
+                Slug = slug,
+                State = TeamState.Forming,
+            };
+            db.Teams.Add(team);
+            Audit(group.LeaderUserId, "user", "team.created", team.Id,
+                $"{{\"event_id\":\"{group.EventId}\",\"name\":\"{team.Name}\",\"from_group\":\"{group.Id}\"}}");
+        }
+
+        // Link the Team to the registration the money path produced, which is the whole point of the field.
+        // Read rather than passed in so this stays callable from any projection order.
+        team.RegistrationId ??= await db.Registrations.AsNoTracking()
+            .Where(r => r.OrderId == group.OrderId).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(ct);
+
+        // The roster, mirrored from the group. The leader is the captain; everyone else is a member.
+        var groupMembers = await db.GroupMembers.AsNoTracking()
+            .Where(m => m.GroupId == group.Id && m.UserId != null)
+            .Select(m => m.UserId!.Value).ToListAsync(ct);
+        var existing = (await db.TeamMemberships.AsNoTracking()
+            .Where(m => m.TeamId == team.Id).Select(m => m.PersonId).ToListAsync(ct))
+            .Concat(db.TeamMemberships.Local.Where(m => m.TeamId == team.Id).Select(m => m.PersonId))
+            .ToHashSet();
+
+        foreach (var personId in groupMembers.Where(p => !existing.Contains(p)))
+        {
+            db.TeamMemberships.Add(new TeamMembership
+            {
+                TeamId = team.Id,
+                PersonId = personId,
+                Role = personId == group.LeaderUserId ? TeamRole.Captain : TeamRole.Member,
+                State = TeamMembershipState.Active,
+            });
+        }
+    }
+
+    /// <summary>A team's slug, derived from the group it mirrors. Deterministic on purpose: it is what makes
+    /// <see cref="MaterialiseForGroupAsync"/> idempotent without a second lookup key, and `groups (EventId,
+    /// GroupNumber)` is already unique, so it cannot collide within an event.</summary>
+    private static string GroupSlug(Group group) => $"team-{group.GroupNumber}";
+
     public async Task<ServiceResult<TeamView>> CreateTeamAsync(Guid userId, Guid eventId, Guid ticketTypeId, TeamInput input, CancellationToken ct = default)
     {
         var tt = await db.TicketTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, ct);

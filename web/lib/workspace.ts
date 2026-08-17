@@ -11,7 +11,14 @@
 /// Statuses where the **Event Host Workspace** is genuinely open. Everything before approval shows its
 /// state instead of being presented as a working workspace (product flow: "Admin Review → Approved →
 /// Host Workspace Opens").
-export const OPEN_HOST_STATES = new Set(["published", "scheduled", "live", "completed", "closed"]);
+///
+/// D-362 — `approved` belongs here, and its absence contradicted the sentence directly above. Approval
+/// is the moment the workspace opens: the event is reviewed, permitted, and waiting on its host to
+/// publish it. Without it the row drew an hourglass reading "Opens after approval" on an event that WAS
+/// approved, and the one action the host now had — Publish — sat behind a link the page would not offer.
+export const OPEN_HOST_STATES = new Set([
+  "approved", "published", "scheduled", "live", "completed", "closed"
+]);
 
 /// D-266 M4: the states where the event is with the platform and the host is waiting on a decision.
 /// `changesrequested`/`rejected` are deliberately excluded — those are decided outcomes the host has to

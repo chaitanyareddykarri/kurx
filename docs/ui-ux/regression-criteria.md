@@ -15,8 +15,12 @@ harness to `package.json` would contradict an accepted decision for tooling conv
 | Tier | Surface | Method | When |
 |---|---|---|---|
 | **T1 — unauthenticated** | `(public)/*` (9 routes), auth screens (`/register`, `/recover`, `/reset`), admin `/login`, `/forbidden` | Browser at the six Phase-25 widths; PNG into `docs/ui-ux/baselines/<surface>/<route>@<width>.png` | Before the first phase that touches the surface |
-| **T2 — authenticated** | the remaining 76 web + 24 admin routes | Same, against a locally seeded stack (Postgres + API + `next dev`) | Before Phases 11, 25 and 47 |
-| **T3 — Flutter** | 91 pages | Simulator screenshots for the 20 journey-critical pages only | Before Phases 33 and 40 |
+| **T2 — authenticated** | every web and admin route not covered by T1 | Same, against a locally seeded stack (Postgres + API + `next dev`) | Before Phases 11, 25 and 47 |
+| **T3 — Flutter** | every page in `inventory-mobile.md` | Simulator screenshots for the 20 journey-critical pages only | Before Phases 33 and 40 |
+
+*Tiers are defined by scope, not by a headcount: the counts that stood here (76 web, 91 Flutter pages)
+were the 2026-08-08 baseline and both had drifted by 2026-08-15. The live totals are the
+[inventories](inventory-web.md), which are re-derived from the filesystem.*
 
 Session-level browser tooling (the Playwright/Chrome MCP servers available to the agent) may be used
 to *take* these captures — it adds nothing to `package.json`, so D-109 is not violated. What is
@@ -32,7 +36,9 @@ independent and always apply.
 * Deterministic data only — a seeded fixture user, never live data.
 * Both themes where the surface supports them.
 * Filed in the Screenshot Tracking table of `UI_REDESIGN_PROGRESS.md` on capture, so an uncaptured
-  screen is visible as a gap rather than silently skipped.
+  screen is visible as a gap rather than silently skipped. *(That tracker is a historical record as of
+  2026-08-08 — see the warning at its top. The discipline stands; a resumed program needs a live home
+  for the table.)*
 
 ---
 
@@ -55,13 +61,23 @@ A drop in static-page count means a route stopped pre-rendering — a real regre
 
 | Suite | Baseline @ `c66ae16` | Criterion |
 |---|---|---|
-| web `npm test` | 8 files · 145 tests · 145 pass | **≥ 145 passing, 0 failing** |
-| mobile `flutter test` | 275 tests · all pass | **≥ 275 passing, 0 failing** |
-| backend `dotnet test` | 1433 total · 1432 pass · 1 skip · 0 fail | **≥ 1432 passing, 0 failing, ≤ 1 skipped** |
-| admin | no suite exists | recorded browser verification per screen |
+> ⚠️ **The absolute numbers that stood in this table were the 2026-08-08 baseline and every one of them
+> is now far below reality** (it read web 145, mobile 275, backend 1432, and "admin — no suite exists";
+> admin has had a suite for weeks). A floor that low passes trivially, so it was not a gate at all.
+> **The live baseline is `.claude/CLAUDE.md` §9 and `.claude/memory/testing-standards.md`**, which are
+> updated per measured run — read the count there rather than restating it here, which is exactly how
+> this table rotted.
+
+| Suite | Gate |
+|---|---|
+| web `npm test` | **0 failing**, and no fewer passing than the current baseline in `.claude/CLAUDE.md` §9 |
+| admin `npm test` | **0 failing**, same rule (this row said "no suite exists") |
+| mobile `flutter analyze --no-fatal-infos` + `flutter test` | analyze clean of errors/warnings; **0 failing** |
+| backend `dotnet test` | **0 failing**, ≤ 1 skipped — and only a **full-suite** run is evidence (the suite is order-sensitive) |
 
 **Assertions are never weakened to reach these numbers.** Test counts may rise; they may not fall.
-See the Flutter Test Policy in `UI_REDESIGN_PROGRESS.md` for the finder-vs-assertion rule.
+The Flutter finder-vs-assertion rule (change finders, never assertions) came from
+`UI_REDESIGN_PROGRESS.md`, now a historical record — the rule itself still holds.
 
 ### 2.3 Functional criteria — per changed screen
 

@@ -28,6 +28,10 @@ public class SeatBlockService(KurxDbContext db, TokenService tokens, IInventoryS
         if (!TryEnum(input.PaymentMode, out DelegatedPaymentMode payment, DelegatedPaymentMode.Free)) return ServiceResult<SeatBlockView>.Fail("invalid_payment_mode");
         var tt = await db.TicketTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == input.TicketTypeId && t.EventId == eventId, ct);
         if (tt is null) return ServiceResult<SeatBlockView>.Fail("invalid_ticket_type");
+        // D-369 — a block reserves N seats a delegate later binds to N individual people, so it has no team
+        // size at purchase time and none to price from. Since D-366 `PricePaise` on a banded ticket is only
+        // the CHEAPEST band, so a DEFERRED block would invoice the organisation an amount nobody decided.
+        if (tt.RegistrationMode == RegistrationMode.Group) return ServiceResult<SeatBlockView>.Fail("group_ticket_not_supported");
         var unit = await db.OrgUnits.AsNoTracking().FirstOrDefaultAsync(u => u.Id == input.RegistrantOrgUnitId && u.OrgId == ev.RepresentingOrgId, ct);
         if (unit is null) return ServiceResult<SeatBlockView>.Fail("invalid_org_unit");
         if (!await db.Users.AnyAsync(u => u.Id == input.DelegateUserId, ct)) return ServiceResult<SeatBlockView>.Fail("invalid_delegate");

@@ -77,8 +77,22 @@ public class AdminEventManagementTests : IClassFixture<KurxApiFactory>
             startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
         }))).GetProperty("id").GetGuid();
         _factory.SeedApprovedEventAuthorization(eventId);   // D-266 M5 — fixture needs a published event
-        await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "submit_review" });
-        await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "publish" });
+
+        /*
+         * D-362 — this helper used to submit for review and then publish as the OWNER, which worked only
+         * because the reviewer gate was misplaced. A fixture named `PublishedEventAsync` was quietly
+         * exercising the bypass, and the one test in this class that needs the event to actually be past
+         * review (`Content_edit_requires_a_real_org_role_not_the_admin_claim`, which the edit lock 409s in
+         * PendingReview) is what surfaced it.
+         *
+         * The real path, and the one the corrected rule describes: the reviewer decides, then the OWNER
+         * publishes their approved event.
+         */
+        var reviewer = await ReviewerAsync("99600001" + ownerPhone[^2..]);
+        await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "submit_for_review" });
+        await reviewer.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "claim_review" });
+        await reviewer.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "approve_review" });
+        await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/transition", new { action = "publish_approved" });
         return (owner, orgId, eventId);
     }
 

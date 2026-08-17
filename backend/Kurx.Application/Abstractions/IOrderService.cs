@@ -37,11 +37,16 @@ public record JoinGroupInput(string JoinCode, string? DisplayName, IReadOnlyDict
 /// Free path (D-021): registration issues tickets immediately. Paid path (M10/D-049): a ticket type
 /// with PricePaise > 0 is gated live (organizer CanOrganizePaid + org verified, M8), creates a Pending
 /// order + gateway order, and issues on the Razorpay capture webhook (ConfirmPaymentAsync).
-/// Group registration reserves capacity incrementally: the leader takes one slot at CreateOrderAsync,
-/// each JoinGroupAsync call (via the group's JoinCode) takes one more, up to the OrderItem.Qty target
-/// set at creation. Joining always requires an authenticated caller (the client logs in via the
-/// existing OTP endpoints first) — there is no separate inline OTP step here, since that would
-/// duplicate /auth/otp/* (D-009).
+/// Group capacity depends on the PRICING UNIT (D-357), because that is what the organiser sold:
+///   · PerTicket — each person is a separately-priced seat. The leader takes one slot at
+///     CreateOrderAsync and each JoinGroupAsync takes one more, so a team of 4 costs 4 units. This is
+///     the pre-D-357 behaviour and every existing ticket type is this shape.
+///   · PerGroup  — the TEAM is the unit. One slot at CreateOrderAsync and none thereafter, so
+///     `Quantity` means "number of teams" and 50 stays 50 as rosters fill.
+/// The roster cap is `Order.GroupSize` (falling back to `OrderItem.Qty` for pre-D-357 rows, where the
+/// two were necessarily the same number). Joining always requires an authenticated caller (the client
+/// logs in via the existing OTP endpoints first) — there is no separate inline OTP step here, since
+/// that would duplicate /auth/otp/* (D-009).
 /// D-036: CreateOrderAsync's userId is optional — a free, non-competition, Individual-mode ticket type
 /// may be purchased anonymously (userId null), producing a guest Order addressable only via its
 /// GuestAccessToken (GetGuestOrderAsync/ResendGuestOrderAsync). Competition ticket types route team

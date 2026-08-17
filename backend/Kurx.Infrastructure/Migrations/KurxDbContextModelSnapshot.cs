@@ -1951,10 +1951,12 @@ namespace Kurx.Infrastructure.Migrations
                     b.HasIndex("SeriesId");
 
                     b.HasIndex("ShortCode")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.HasIndex("Slug")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.HasIndex("StartsAt");
 
@@ -4252,6 +4254,12 @@ namespace Kurx.Infrastructure.Migrations
 
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("GroupDisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("GroupSize")
+                        .HasColumnType("integer");
 
                     b.Property<string>("GuestAccessToken")
                         .HasColumnType("text");
@@ -6936,6 +6944,40 @@ namespace Kurx.Infrastructure.Migrations
                     b.ToTable("tickets", null, t =>
                         {
                             t.HasCheckConstraint("ck_tickets_state", "\"State\" IN ('Issued', 'CheckedIn', 'Void')");
+                        });
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.TicketPriceTier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MaxSize")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinSize")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("PricePaise")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TicketTypeId")
+                        .HasDatabaseName("ix_ticket_price_tiers_ticket_type");
+
+                    b.ToTable("ticket_price_tiers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ticket_price_tiers_price", "\"PricePaise\" > 0");
+
+                            t.HasCheckConstraint("ck_ticket_price_tiers_size", "\"MinSize\" >= 1 AND \"MaxSize\" >= \"MinSize\"");
                         });
                 });
 
@@ -9720,6 +9762,15 @@ namespace Kurx.Infrastructure.Migrations
                     b.HasOne("Kurx.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId");
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.TicketPriceTier", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.TicketType", null)
+                        .WithMany()
+                        .HasForeignKey("TicketTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Kurx.Domain.Entities.TicketTransfer", b =>

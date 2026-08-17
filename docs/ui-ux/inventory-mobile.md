@@ -2,9 +2,12 @@
 
 Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation applied` · `Partially migrated` · `Redesigned` · `Verified` · `Blocked` · `N/A`. Every row starts `Legacy`. This file is regenerated only by hand — edit rows in place as work lands.
 
-**Total: 91 pages** (`mobile/lib/**/*_page.dart`).
+**Total: 95 pages** (`find mobile/lib -name '*_page.dart' | wc -l`, re-measured 2026-08-15 — this said
+91, and four pages that shipped after the Phase 0.1 baseline were never added; they are listed at the
+bottom with no fabricated status).
 
-> Widget tests under `mobile/test/features/**` assert against several of these pages. See the Flutter test policy in `UI_REDESIGN_PROGRESS.md` — change finders, never assertions.
+> Widget tests under `mobile/test/features/**` assert against several of these pages — change finders,
+> never assertions.
 
 | Page | Area | Phase | File | Status | Responsive | A11y | Functional |
 |---|---|---|---|---|---|---|---|
@@ -99,3 +102,16 @@ Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation ap
 | `category_detail` | Categories | 34 | `mobile/lib/features/taxonomy/presentation/pages/category_detail_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `participant_workspace` | Workspace | 38B | `mobile/lib/features/workspace/presentation/pages/participant_workspace_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `workspace_hub` | Workspace | 38B | `mobile/lib/features/workspace/presentation/pages/workspace_hub_page.dart` | Legacy | ☐ | ☐ | ☐ |
+
+## Shipped after the Phase 0.1 baseline — not yet assessed
+
+Four pages exist under `mobile/lib` that the table above never listed. They carry **no status**: the
+redesign/responsive/a11y pass has not been run against them, and inventing a value would be worse
+than an empty cell.
+
+| Page | Area | File | Status | Responsive | A11y | Functional |
+|---|---|---|---|---|---|---|
+| `guest_gate` | Authentication | `mobile/lib/features/auth/presentation/pages/guest_gate_page.dart` | *Not assessed* | ☐ | ☐ | ☐ |
+| `create_event_gate` | Organizer (D-305 gate) | `mobile/lib/features/organizer/presentation/pages/create_event_gate_page.dart` | *Not assessed* | ☐ | ☐ | ☐ |
+| `post_search` | Posts (D-297) | `mobile/lib/features/posts/presentation/pages/post_search_page.dart` | *Not assessed* | ☐ | ☐ | ☐ |
+| `my_assignments` | Profile | `mobile/lib/features/profile/presentation/pages/my_assignments_page.dart` | *Not assessed* | ☐ | ☐ | ☐ |

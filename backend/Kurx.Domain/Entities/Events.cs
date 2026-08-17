@@ -390,6 +390,33 @@ public class TicketType
     public DateTime? DeletedAt { get; set; }
 }
 
+/// <summary>D-366 — what a team of a given size pays.
+///
+/// <para><see cref="TicketType.PricePaise"/> is one number for a whole <c>GroupMin..GroupMax</c> range,
+/// so every team size in it costs the same. Organisers price by size — 2 → ₹250, 3 → ₹300, 4–5 → ₹400 —
+/// which is a set of rules, not a number. A min/max range describes *eligibility*; overloading it to
+/// mean a price curve would be a lie in the schema.</para>
+///
+/// <para>Bands rather than single sizes, because a range is the general form and <c>Min == Max</c>
+/// expresses the specific one. Overlap is prevented by a Postgres exclusion constraint over
+/// <c>int4range(MinSize, MaxSize, '[]')</c> per ticket type, so "two rules match this team" cannot exist
+/// in the database — and <see cref="TicketType.Quantity"/> stays one pool meaning "how many teams", which
+/// is what a ticket-type-per-size would have destroyed.</para>
+///
+/// <para><b>No tiers means unchanged:</b> a ticket type with none prices from <c>PricePaise</c> exactly
+/// as it always has, so every event that predates this is untouched.</para></summary>
+public class TicketPriceTier
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TicketTypeId { get; set; }
+    /// <summary>Inclusive, both ends. A team whose size falls inside pays <see cref="PricePaise"/> in
+    /// total — never multiplied by the roster, which is the D-357 rule this must not reintroduce.</summary>
+    public int MinSize { get; set; }
+    public int MaxSize { get; set; }
+    public long PricePaise { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class FormField
 {
     public Guid Id { get; set; } = Guid.NewGuid();

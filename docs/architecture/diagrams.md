@@ -20,22 +20,39 @@ There is no "personal organization": representing yourself creates nothing.
 
 ```mermaid
 flowchart LR
-    U([User]) --> W[Workspace<br/>my events]
-    W --> C[Create Event]
-    C --> R{Representing?}
-    R -->|Personal — default, creates nothing| E[Event]
-    R -->|An org I represent| E
-    E --> M[Event workspace<br/>tickets · people · check-in · analytics]
+    U([User]) --> P[Profile<br/>owns the entry point, D-305]
+    U --> W[User Workspace<br/>second door, D-333]
+    P --> G{{Eligibility gate<br/>D-305 — runs BEFORE the form}}
+    W --> G
+    G -->|Public| PUB{Represents a<br/>verified org? D-353}
+    G -->|Private| PRIV[Representing: Personal<br/>creates nothing]
+    PUB -->|yes| F[Creation form]
+    PUB -->|no| BLOCK[/refused — self-hosting<br/>is Private-only, D-353/]
+    PRIV --> F
+    F --> E[Draft Event<br/>owner = CreatedBy, D-268]
+    E --> RV[Review / approval]
+    RV --> M[Event Host Workspace<br/>tickets · people · check-in · analytics]
 
     subgraph optional [Optional, independent errand]
-        P[Profile → Representing] --> RQ[Request to represent<br/>an institution]
-        RQ --> AV[Admin verifies]
+        RQ[Request to represent<br/>an institution] --> AV[Admin verifies]
     end
-    AV -. adds a choice to .-> R
+    AV -. adds a choice to .-> PUB
 
     classDef gone fill:#fee,stroke:#c00,stroke-dasharray:4 3;
     X["RETIRED: Workspace → Organizations → Organization → Events → Create Event<br/>RETIRED: User → Personal Organization → Event"]:::gone
 ```
+
+**Corrected 2026-08-15.** This flow was drawn as `Workspace → Create Event → Representing? → Event` and
+was missing three things that ship today:
+
+- **The gate.** [D-305](../DECISIONS.md) put an eligibility/verification gate *in front of* the form,
+  and it also chooses Public vs Private. It is real code on both clients —
+  `web/components/host/create-event-gate.tsx` and Flutter's `create_event_gate_page.dart`.
+- **The entry point.** D-305 moved it to **Profile**; [D-333](../DECISIONS.md) later added Workspace
+  back as a *second door* to the same gate. Both link to `host/events/new`.
+- **[D-353](../DECISIONS.md).** "Personal" is no longer an unconditional path to any event — a
+  **Public** event must represent a verified organization; self-hosting is **Private-only**. The server
+  states this as `requires_representation` on `/v1/me` so the clients do not each infer it.
 
 The retired paths are drawn only to name what no longer exists: there is no organization list, no
 organization detail page, no per-organization event list, no "current organization" — the routes
@@ -243,7 +260,16 @@ erDiagram
 
 ---
 
-## 3. Sequence — WhatsApp OTP auth + refresh rotation (D-009 / D-014)
+## 3. Sequence — Phone OTP auth + refresh rotation (D-009 / D-014 / **D-281** / D-215)
+
+> ⚠️ **This was titled "WhatsApp OTP" and drew a WhatsApp sender. That is not merely stale — it
+> contradicts a deliberate security decision.** [D-281](../DECISIONS.md) centralised channel selection
+> in `OtpChannelPolicy` and made **SMS** the rail for every phone-addressed purpose (login,
+> registration, recovery, password reset, device enrollment, step-up). **WhatsApp is deliberately
+> excluded from authentication**: a WhatsApp account is portable across devices and recoverable through
+> a takeover chain Kurx does not control, which makes it a weaker credential path than SMS. The
+> provider seam, the inbound webhook and the message log all remain — WhatsApp is simply never
+> *selected* for a one-time code. Email carries only `EmailLogin`/`EmailVerification`.
 
 ```mermaid
 sequenceDiagram
@@ -251,11 +277,11 @@ sequenceDiagram
     participant C as Client
     participant API as Kurx API
     participant DB as Postgres
-    participant WA as WhatsApp sender (console in dev)
+    participant SMS as ISmsProvider (console in dev, SNS in prod)
 
     C->>API: POST /v1/auth/otp/request { phone }
-    API->>DB: store SHA-256(otp), rate-limit (D-005)
-    API->>WA: send code (dev: printed to log, D-008)
+    API->>DB: store HMAC-peppered code (D-215), rate-limit (D-005)
+    API->>SMS: send code via OtpChannelPolicy.For(purpose) = Sms (D-281)
     C->>API: POST /v1/auth/otp/verify { phone, code }
     API->>DB: verify hash, create/find user
     API-->>C: access(1h) + refresh(30d, rotated)
@@ -351,27 +377,81 @@ sequenceDiagram
 
 ## 7. State — Event lifecycle (`EventStatusWorkflow`)
 
+> Corrected 2026-08-15 against `EventStatusWorkflow.Actions`. This diagram predated **Phase 14**
+> (V3 §14.1) and was missing four states — `Scheduled`, `Live`, `Completed`, `Cancelled` — and five
+> transitions: `schedule`, `open_registration`, `go_live`, `complete`, `cancel`. It showed 15 of the
+> 19 that exist.
+>
+> **`Published` is still the authoritative registration-open state** — the Phase-14 states were added
+> *around* it, not in front of it, and the direct `publish` is preserved. `Cancelled` is terminal and
+> deliberately has no path back to `Published`: a cancelled event is cloned, never resurrected (D-101).
+
 ```mermaid
 stateDiagram-v2
     [*] --> Draft
-    Draft --> PendingReview : submit_for_review (required for paid, M8)
-    Draft --> Published : publish (free / Private only)
+
+    %% ── review leg (D-266 M4) ──
+    Draft --> PendingReview : submit_for_review<br/>(submit_review = legacy alias)
     PendingReview --> UnderReview : claim_review
-    PendingReview --> Draft : withdraw
+    PendingReview --> Draft : withdraw / reject (legacy)
     UnderReview --> PendingReview : release_review
     UnderReview --> Approved : approve_review
     UnderReview --> ChangesRequested : request_changes
     UnderReview --> Rejected : reject_review
+    UnderReview --> Draft : reject (legacy)
     ChangesRequested --> PendingReview : submit_for_review
     Rejected --> PendingReview : submit_for_review
-    Approved --> Published : publish_approved
-    PendingReview --> Draft : reject (legacy)
-    UnderReview --> Draft : reject (legacy)
+
+    %% ── publish doors ──
+    Draft --> Published : publish (Private — never reviewed)
+    Approved --> Published : publish_approved / publish
+    PendingReview --> Published : publish (legacy one-step approve+publish)
+    UnderReview --> Published : publish (legacy one-step approve+publish)
+
+    %% ── Phase 14 granular lifecycle (V3 §14.1) ──
+    Draft --> Scheduled : schedule
+    Approved --> Scheduled : schedule / publish_approved
+    Scheduled --> Published : open_registration
+    Scheduled --> Draft : unpublish
+    Published --> Live : go_live
+    Published --> Completed : complete
+    Live --> Completed : complete
+
+    %% ── exits ──
     Published --> Closed : close
-    Published --> Draft : unpublish (pre-sales only)
+    Published --> Draft : unpublish
+    Draft --> Cancelled : cancel
+    PendingReview --> Cancelled : cancel
+    UnderReview --> Cancelled : cancel
+    Scheduled --> Cancelled : cancel
+    Published --> Cancelled : cancel
+    Live --> Cancelled : cancel
+    Draft --> Archived : archive
     Closed --> Archived : archive
+    Completed --> Archived : archive
+    Cancelled --> Archived : archive
     Archived --> [*]
 ```
+
+**Complete as of 2026-08-15** — all **19 actions / 37 `(From, To)` pairs** in
+`EventStatusWorkflow.Actions`, deduplicated to 33 edges where two action names share a transition.
+`publish` retains three legacy doors (from `Draft`, and the one-step approve-and-publish from
+`PendingReview`/`UnderReview`) which are kept because clients still post them; `publish_approved` from
+`Approved` is the M4 path, not their replacement. `Archived` is terminal; `Cancelled` reaches it but
+never returns to `Published`.
+
+**This is a map of which transitions exist, not of who may take them or when.** Three guards sit on top
+of it and are not drawable as edges:
+
+- **`→ Published` is gated by status *and* actor** (D-362). From `PendingReview`/`UnderReview` only a
+  reviewer or admin may take it — a creator is refused `reviewer_required`. From `Approved` the creator
+  takes it themselves, paid or free. The gate keys on the *target* state, so both `publish` and
+  `publish_approved` pass through it. A paid event is refused `paid_event_requires_review` from `Draft`
+  only, `Draft` being the one status reaching `Published` that has not been reviewed.
+- **`unpublish` is refused with `event_has_history`** once the event has any order, ticket or
+  registration (D-363) — from `Published` and `Scheduled` alike.
+- **Only `Published` is publicly visible.** `Approved` and `Scheduled` are not; `EventExposure` carries
+  the status as part of the one exposure rule.
 
 ## 8. State — Organization verification (M5, `Organization.verification_status`)
 
@@ -379,17 +459,33 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> Unverified
     Unverified --> PendingReview : submit + evidence
-    PendingReview --> Verified : approve (name-dedup passes)
-    PendingReview --> Rejected : reject
-    PendingReview --> ChangesRequested : request-changes
     ChangesRequested --> PendingReview : resubmit
     Rejected --> PendingReview : resubmit
+
+    PendingReview --> Verified : review approve (name/domain dedup passes)
+    PendingReview --> Rejected : review reject
+    PendingReview --> ChangesRequested : review request-changes
+    ChangesRequested --> Verified : review approve
+    ChangesRequested --> Rejected : review reject
+
     Verified --> Suspended : suspend (admin / fraud)
-    Suspended --> Verified : reinstate
     Verified --> Blacklisted : blacklist
     PendingReview --> Blacklisted : blacklist
+    Suspended --> Blacklisted : blacklist
     Blacklisted --> [*]
 ```
+
+**Guards checked against `OrgVerificationService` 2026-08-15 — one edge removed, three added.**
+
+- **`Suspended → Verified : reinstate` was drawn and does not exist.** There is no reinstate method or
+  endpoint; `SuspendAsync` is one-way, `ReviewAsync` refuses anything but `PendingReview`/
+  `ChangesRequested` (`not_pending`), and `SubmitAsync` explicitly refuses `Suspended`. **`Suspended` is
+  terminal apart from blacklisting** — a suspended organization has no path back today.
+- `ReviewAsync` accepts `ChangesRequested` as well as `PendingReview`, so an org in changes-requested can
+  be approved or rejected directly without resubmitting; both edges were missing.
+- `BlacklistAsync` has **no state guard at all** — any state can be blacklisted. The diagram shows the
+  three reachable-in-practice sources; treat blacklist as available everywhere.
+- `Unverified` is the entity default (`Orgs.cs`), never assigned by the service.
 
 ## 9. State — Person identity verification (M3, `user_identity_verifications.status`)
 
@@ -400,13 +496,22 @@ stateDiagram-v2
     Submitted --> UnderReview : provider / reviewer picks up
     UnderReview --> Approved
     UnderReview --> Rejected
-    UnderReview --> ChangesRequested
-    ChangesRequested --> Submitted : resubmit (capped)
-    Approved --> Expired : expires_at passed
-    Approved --> Revoked : admin / fraud
+    Approved --> [*]
     Rejected --> [*]
-    Revoked --> [*]
+
+    UnderReview --> ChangesRequested : modeled; unreachable
+    ChangesRequested --> Submitted : modeled; unreachable
+    Approved --> Expired : modeled; unreachable
+    Approved --> Revoked : modeled; unreachable
 ```
+
+**Reachability checked against code 2026-08-15.** `IdentityVerificationService` only ever assigns
+`NotStarted · Submitted · UnderReview · Approved · Rejected`. **`ChangesRequested`, `Expired` and
+`Revoked` exist on the `IdentityStatus` enum but have zero non-test assignment sites** — `ExpiresAt` is
+projected into the response and read by nothing, and no job expires or revokes an identity. Those four
+edges were drawn as if live; they are labelled here rather than deleted because the enum genuinely
+carries the states, and the same convention already applies to §10's refund edges. **Reaching them is
+unimplemented work, not a documentation gap.**
 
 ## 10. State — Order / payment (free vs paid, M10)
 
@@ -433,10 +538,18 @@ stateDiagram-v2
     OfficialContactVerification --> Approved
     UnderReview --> Approved : approve → verified read-only Staff seat
     UnderReview --> Rejected : reviewer reject
-    Rejected --> Appealed : appeal
-    Appealed --> UnderReview
     Approved --> [*]
+    Rejected --> [*]
+
+    Rejected --> Appealed : modeled; unreachable
+    Appealed --> UnderReview : modeled; unreachable
 ```
+
+**Reachability checked against code 2026-08-15.** `MembershipVerificationService` assigns
+`Submitted · UnderReview · OfficialContactVerification · Approved · Rejected`.
+**`MembershipClaimStatus.Appealed` is assigned and read *nowhere* in the backend** — there is no appeal
+endpoint, and the only mention of appeals is a comment in `AdminOrgEndpoints.cs` naming them as M12
+work. The two edges above were drawn as live; `Rejected` is terminal in shipped code.
 
 ---
 

@@ -165,6 +165,12 @@ public class EventAuthorizationService(
             After: new { event_id = eventId, resubmission = isResubmission }));
 
         await db.SaveChangesAsync(ct);
+
+        // D-363 §4 — the letter is evidence the reviewer read, and §4 names it material. Resubmitting
+        // already clears the authorization's own verdict (above); this clears the EVENT's, which is the
+        // one that decides whether it may be published. Otherwise an approved event goes live on a
+        // decision made about a letter that has since been swapped.
+        await EventReviewReopen.IfApprovedAsync(db, eventId, ev!.Status, userId, "the authorization letter", ct);
         return ServiceResult<EventAuthorizationView>.Success(await ProjectAsync(row, ct));
     }
 

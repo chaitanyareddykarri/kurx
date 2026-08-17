@@ -1,35 +1,35 @@
 {
-  "$comment": "Machine-readable mirror of UI_REDESIGN_PROGRESS.md. That file is authoritative for prose; this one is authoritative for state. Keep both in sync in the same commit.",
+  "$comment": "HISTORICAL RECORD, not a live tracker (checked 2026-08-15). The redesign was merged by D-314 on 2026-08-09 and the branch below no longer exists. Phases 46/47/51 remain IN_PROGRESS and 13 items deferred — that is why this file is kept. Re-derive state from the repository before resuming. See the warning at the top of UI_REDESIGN_PROGRESS.md.",
   "schemaVersion": 1,
   "overallProgress": 99.9,
   "currentPhase": "50",
   "currentSubPhase": "46.3c",
   "status": "READY_TO_RESUME",
   "lastUpdated": "2026-08-08",
-  "branch": "redesign/ui-ux-phase-18a",
+  "branch": "(merged to main by D-314; redesign/ui-ux-phase-18a no longer exists)",
   "baselineCommit": "c66ae16",
   "totalWeight": 1000,
-  "earnedWeight": 999.0,
+  "earnedWeight": 999,
   "tracks": {
     "designSystem": {
       "weight": 180,
       "earned": 180,
-      "percent": 100.0
+      "percent": 100
     },
     "web": {
       "weight": 388,
       "earned": 388,
-      "percent": 100.0
+      "percent": 100
     },
     "admin": {
       "weight": 98,
       "earned": 98,
-      "percent": 100.0
+      "percent": 100
     },
     "mobile": {
       "weight": 194,
       "earned": 194,
-      "percent": 100.0
+      "percent": 100
     },
     "accessibility": {
       "surfaces": 206,
@@ -669,22 +669,22 @@
         },
         {
           "id": "18A.2",
-          "name": "Professional identity \u2014 provenance, metrics, shared history",
+          "name": "Professional identity — provenance, metrics, shared history",
           "status": "COMPLETE"
         },
         {
           "id": "18A.3",
-          "name": "Profile sections \u2014 tabs, timeline, events, orgs, certificates, allies",
+          "name": "Profile sections — tabs, timeline, events, orgs, certificates, allies",
           "status": "COMPLETE"
         },
         {
           "id": "18A.4",
-          "name": "/allies \u2014 shell, manager, people search, suggestions",
+          "name": "/allies — shell, manager, people search, suggestions",
           "status": "COMPLETE"
         },
         {
           "id": "18A.5",
-          "name": "Action controls \u2014 connect, message, follow",
+          "name": "Action controls — connect, message, follow",
           "status": "COMPLETE"
         },
         {
@@ -709,17 +709,17 @@
       "subPhases": [
         {
           "id": "19.1",
-          "name": "/tickets \u2014 real ticket QR, order status, outage handling",
+          "name": "/tickets — real ticket QR, order status, outage handling",
           "status": "COMPLETE"
         },
         {
           "id": "19.2",
-          "name": "/tickets/refunds \u2014 status tones, outage handling, empty state",
+          "name": "/tickets/refunds — status tones, outage handling, empty state",
           "status": "COMPLETE"
         },
         {
           "id": "19.3",
-          "name": "/book/[slug] \u2014 remove the false-success checkout (REG-009)",
+          "name": "/book/[slug] — remove the false-success checkout (REG-009)",
           "status": "COMPLETE"
         },
         {
@@ -743,12 +743,12 @@
       "subPhases": [
         {
           "id": "20.1",
-          "name": "/workspace \u2014 counts, views, event rows, REG-003",
+          "name": "/workspace — counts, views, event rows, REG-003",
           "status": "COMPLETE"
         },
         {
           "id": "20.2",
-          "name": "/workspace/[eventId] \u2014 participant launcher",
+          "name": "/workspace/[eventId] — participant launcher",
           "status": "COMPLETE"
         }
       ],
@@ -767,12 +767,12 @@
       "subPhases": [
         {
           "id": "20A.1",
-          "name": "PostCard \u2014 counts, toggle state, dead links, verification badge",
+          "name": "PostCard — counts, toggle state, dead links, verification badge",
           "status": "COMPLETE"
         },
         {
           "id": "20A.2",
-          "name": "PostFeed \u2014 failure reporting, load-more announcement, empty state",
+          "name": "PostFeed — failure reporting, load-more announcement, empty state",
           "status": "COMPLETE"
         }
       ],
@@ -796,12 +796,12 @@
         },
         {
           "id": "20B.2",
-          "name": "MessageBubble \u2014 delivery state, locale, recovery controls",
+          "name": "MessageBubble — delivery state, locale, recovery controls",
           "status": "COMPLETE"
         },
         {
           "id": "20B.3",
-          "name": "Chat empty states \u2014 real icons",
+          "name": "Chat empty states — real icons",
           "status": "COMPLETE"
         }
       ],
@@ -820,12 +820,12 @@
       "subPhases": [
         {
           "id": "20C.1",
-          "name": "/certificates \u2014 the owner's own credentials",
+          "name": "/certificates — the owner's own credentials",
           "status": "COMPLETE"
         },
         {
           "id": "20C.2",
-          "name": "/groups \u2014 tokens",
+          "name": "/groups — tokens",
           "status": "COMPLETE"
         }
       ],
@@ -844,12 +844,12 @@
       "subPhases": [
         {
           "id": "20D.1",
-          "name": "/verify/[code] \u2014 the verdict, and REG-005's third instance",
+          "name": "/verify/[code] — the verdict, and REG-005's third instance",
           "status": "COMPLETE"
         },
         {
           "id": "20D.2",
-          "name": "/invitations, /i/[token], /notifications \u2014 outages, dates, tokens",
+          "name": "/invitations, /i/[token], /notifications — outages, dates, tokens",
           "status": "COMPLETE"
         }
       ],
@@ -868,7 +868,7 @@
       "subPhases": [
         {
           "id": "21.1",
-          "name": "Event workspace shell \u2014 tab strip, header, overview",
+          "name": "Event workspace shell — tab strip, header, overview",
           "status": "COMPLETE",
           "commit": "f202615"
         },
@@ -880,7 +880,7 @@
         },
         {
           "id": "21.7",
-          "name": "Cross-cutting sweeps \u2014 contrast, shims, the last lint warning",
+          "name": "Cross-cutting sweeps — contrast, shims, the last lint warning",
           "status": "COMPLETE",
           "commit": "f202615"
         },
@@ -892,18 +892,18 @@
         },
         {
           "id": "21.10",
-          "name": "Destructive-action sweep \u2014 13 unguarded deletes",
+          "name": "Destructive-action sweep — 13 unguarded deletes",
           "status": "COMPLETE",
           "commit": "59e5377"
         },
         {
           "id": "21.11",
-          "name": "Form controls \u2014 the Field gap across 21 files",
+          "name": "Form controls — the Field gap across 21 files",
           "status": "COMPLETE"
         },
         {
           "id": "21.2",
-          "name": "Event workspace screens \u2014 details, schedule, people, media",
+          "name": "Event workspace screens — details, schedule, people, media",
           "status": "COMPLETE"
         },
         {
@@ -918,7 +918,7 @@
         },
         {
           "id": "21.8",
-          "name": "Payouts, wallet & KYC \u2014 the route redirects into Finance",
+          "name": "Payouts, wallet & KYC — the route redirects into Finance",
           "status": "COMPLETE"
         },
         {
@@ -942,17 +942,17 @@
       "subPhases": [
         {
           "id": "22.1",
-          "name": "The five single-select steps \u2014 real radio groups",
+          "name": "The five single-select steps — real radio groups",
           "status": "COMPLETE"
         },
         {
           "id": "22.2",
-          "name": "Step chrome \u2014 FormSteps, step announcement",
+          "name": "Step chrome — FormSteps, step announcement",
           "status": "COMPLETE"
         },
         {
           "id": "22.3",
-          "name": "Blocked navigation \u2014 say why, not just refuse",
+          "name": "Blocked navigation — say why, not just refuse",
           "status": "COMPLETE"
         },
         {
@@ -962,7 +962,7 @@
         },
         {
           "id": "22.5",
-          "name": "/host/events/new \u2014 the representation outage",
+          "name": "/host/events/new — the representation outage",
           "status": "COMPLETE"
         }
       ],
@@ -981,12 +981,12 @@
       "subPhases": [
         {
           "id": "23.1",
-          "name": "EditEventForm \u2014 both outcomes of a save",
+          "name": "EditEventForm — both outcomes of a save",
           "status": "COMPLETE"
         },
         {
           "id": "23.2",
-          "name": "updateEventAction \u2014 deliver the contract the form was written against",
+          "name": "updateEventAction — deliver the contract the form was written against",
           "status": "COMPLETE"
         }
       ],
@@ -1007,12 +1007,12 @@
       "subPhases": [
         {
           "id": "24.1",
-          "name": "AuthorizationForm \u2014 field names, document integrity",
+          "name": "AuthorizationForm — field names, document integrity",
           "status": "COMPLETE"
         },
         {
           "id": "24.2",
-          "name": "RepresentativePicker \u2014 search announcement",
+          "name": "RepresentativePicker — search announcement",
           "status": "COMPLETE"
         },
         {
@@ -1059,7 +1059,7 @@
         },
         {
           "id": "25.2",
-          "name": "PublicNav \u2014 overflow at 360 and at 768",
+          "name": "PublicNav — overflow at 360 and at 768",
           "status": "COMPLETE"
         },
         {
@@ -1069,7 +1069,7 @@
         },
         {
           "id": "25.4",
-          "name": "Dialog \u2014 viewport bound",
+          "name": "Dialog — viewport bound",
           "status": "COMPLETE"
         }
       ],
@@ -1100,7 +1100,7 @@
       "subPhases": [
         {
           "id": "26.1",
-          "name": "Reachability audit \u2014 nav <-> routes, both directions",
+          "name": "Reachability audit — nav <-> routes, both directions",
           "status": "COMPLETE"
         },
         {
@@ -1139,12 +1139,12 @@
         },
         {
           "id": "27.2",
-          "name": "The mobile drawer \u2014 the modal it claimed to be",
+          "name": "The mobile drawer — the modal it claimed to be",
           "status": "COMPLETE"
         },
         {
           "id": "27.3",
-          "name": "Sidebar \u2014 targets, tint, count semantics",
+          "name": "Sidebar — targets, tint, count semantics",
           "status": "COMPLETE"
         }
       ],
@@ -1163,12 +1163,12 @@
       "subPhases": [
         {
           "id": "28.1",
-          "name": "DataTable \u2014 keyboard operation, selection semantics, busy state",
+          "name": "DataTable — keyboard operation, selection semantics, busy state",
           "status": "COMPLETE"
         },
         {
           "id": "28.2",
-          "name": "PageHeader / SectionHeader \u2014 contrast, and the promotion decision",
+          "name": "PageHeader / SectionHeader — contrast, and the promotion decision",
           "status": "COMPLETE"
         },
         {
@@ -1524,7 +1524,7 @@
         "tests": 340,
         "staticPages": 65,
         "typecheck": "clean",
-        "lint": "clean \u2014 zero warnings"
+        "lint": "clean — zero warnings"
       },
       "admin": {
         "tests": 27,
@@ -1582,7 +1582,7 @@
     },
     {
       "id": "UX-6",
-      "summary": "Anek replaces Plus Jakarta Sans \u2014 no Devanagari coverage and hi.json is a shipped locale",
+      "summary": "Anek replaces Plus Jakarta Sans — no Devanagari coverage and hi.json is a shipped locale",
       "dNumber": "D-287",
       "recordedIn": "docs/DECISIONS.md"
     }
@@ -1618,7 +1618,7 @@
       "id": "REG-004",
       "severity": "S2",
       "surface": "web",
-      "problem": "event card bookmark button had no onClick \u2014 a dead control on the most-rendered card",
+      "problem": "event card bookmark button had no onClick — a dead control on the most-rendered card",
       "status": "open-preexisting",
       "owner": "Phase 13"
     },
@@ -1661,7 +1661,7 @@
       "id": "REG-009",
       "severity": "S1",
       "surface": "web",
-      "problem": "web checkout opened Razorpay with no order_id or amount, ignored the payment result, and navigated to /tickets regardless \u2014 reporting a purchase that never happened",
+      "problem": "web checkout opened Razorpay with no order_id or amount, ignored the payment result, and navigated to /tickets regardless — reporting a purchase that never happened",
       "status": "neutralised",
       "owner": "needs a product decision + D-NNN",
       "commit": null
@@ -1679,7 +1679,7 @@
       "id": "REG-011",
       "severity": "S2",
       "surface": "web",
-      "problem": "20 colour classes across 8 files named tokens that do not exist (bg-card, text-fg, text-destructive, text-muted-foreground) \u2014 incoming chat bubbles had no background and every auth error was not red",
+      "problem": "20 colour classes across 8 files named tokens that do not exist (bg-card, text-fg, text-destructive, text-muted-foreground) — incoming chat bubbles had no background and every auth error was not red",
       "status": "fixed",
       "owner": "Phase 20B",
       "commit": null
@@ -1697,7 +1697,7 @@
       "id": "REG-013",
       "severity": "S1",
       "surface": "web",
-      "problem": "160 hand-rolled form controls across 21 host files with zero Field wrappers \u2014 Phase 7's S1-1 aria wiring never reached the host surface; the forked class string carried 40px height, the decorative border token at 1.30:1 and no focus ring",
+      "problem": "160 hand-rolled form controls across 21 host files with zero Field wrappers — Phase 7's S1-1 aria wiring never reached the host surface; the forked class string carried 40px height, the decorative border token at 1.30:1 and no focus ring",
       "status": "fixed",
       "owner": "Phase 21",
       "commit": null
@@ -1706,7 +1706,7 @@
       "id": "REG-014",
       "severity": "S2",
       "surface": "web",
-      "problem": "the create-event wizard's five single-select steps were grids of plain buttons \u2014 no group name, no mutual exclusivity, and the choice carried only by a border colour; /host/events/new caught its representation read to [] so an outage offered Personal alone",
+      "problem": "the create-event wizard's five single-select steps were grids of plain buttons — no group name, no mutual exclusivity, and the choice carried only by a border colour; /host/events/new caught its representation read to [] so an outage offered Personal alone",
       "status": "fixed",
       "owner": "Phase 22",
       "commit": null
@@ -1715,7 +1715,7 @@
       "id": "REG-015",
       "severity": "S2",
       "surface": "web",
-      "problem": "EditEventForm's error branch was dead code \u2014 updateEventAction threw instead of returning {error}, so a failed save hit an error boundary; its {ok:true} success was rendered nowhere",
+      "problem": "EditEventForm's error branch was dead code — updateEventAction threw instead of returning {error}, so a failed save hit an error boundary; its {ok:true} success was rendered nowhere",
       "status": "fixed",
       "owner": "Phase 23",
       "commit": null
@@ -1742,7 +1742,7 @@
       "id": "REG-018",
       "severity": "S2",
       "surface": "admin",
-      "problem": "the console's role-based IA was declared in NAV and enforced nowhere \u2014 every page guarded with requireStaffSession() alone, so all 24 console routes were reachable by any platform role",
+      "problem": "the console's role-based IA was declared in NAV and enforced nowhere — every page guarded with requireStaffSession() alone, so all 24 console routes were reachable by any platform role",
       "status": "fixed",
       "owner": "Phase 26",
       "commit": null
@@ -1751,7 +1751,7 @@
       "id": "REG-019",
       "severity": "S1",
       "surface": "admin",
-      "problem": "the admin mobile drawer declared role=dialog and aria-modal=true while implementing none of it \u2014 no focus trap, no Escape, no focus restore, no scroll lock (audit S1-2, never wired to admin)",
+      "problem": "the admin mobile drawer declared role=dialog and aria-modal=true while implementing none of it — no focus trap, no Escape, no focus restore, no scroll lock (audit S1-2, never wired to admin)",
       "status": "fixed",
       "owner": "Phase 27",
       "commit": null
@@ -1769,7 +1769,7 @@
       "id": "REG-021",
       "severity": "S1",
       "surface": "all",
-      "problem": "Button set no default type, so every Button inside a form submitted it \u2014 a moderation decision recorded twice, and ConfirmDialog's Cancel submitted the form",
+      "problem": "Button set no default type, so every Button inside a form submitted it — a moderation decision recorded twice, and ConfirmDialog's Cancel submitted the form",
       "status": "fixed",
       "owner": "Phase 30",
       "commit": null
@@ -1778,7 +1778,7 @@
       "id": "REG-022",
       "severity": "S2",
       "surface": "mobile",
-      "problem": "15 tappable surfaces are bare GestureDetectors with no Semantics \u2014 no role, no name; the shared chip's delete is a 14px target against the 48dp floor",
+      "problem": "15 tappable surfaces are bare GestureDetectors with no Semantics — no role, no name; the shared chip's delete is a 14px target against the 48dp floor",
       "status": "fixed",
       "owner": "Phase 39",
       "commit": null,
@@ -1789,7 +1789,7 @@
       "id": "REG-023",
       "severity": "S1",
       "surface": "mobile",
-      "problem": "CheckoutPage was fully implemented and nothing navigated to it \u2014 registration was reachable only by typing a URL; the mirror of REG-009 on web",
+      "problem": "CheckoutPage was fully implemented and nothing navigated to it — registration was reachable only by typing a URL; the mirror of REG-009 on web",
       "status": "fixed",
       "owner": "Phase 35",
       "commit": null
@@ -1798,7 +1798,7 @@
       "id": "REG-024",
       "severity": "S2",
       "surface": "mobile",
-      "problem": "MyDevicesPage is an orphan carrying a dead 'Remove' button with an empty onPressed \u2014 implying a device revocation that never happened; security_page has the working one",
+      "problem": "MyDevicesPage is an orphan carrying a dead 'Remove' button with an empty onPressed — implying a device revocation that never happened; security_page has the working one",
       "status": "control-neutralised",
       "owner": "Phase 49 (page deletion)",
       "commit": null
@@ -1807,7 +1807,7 @@
       "id": "REG-024",
       "severity": "S2",
       "surface": "mobile",
-      "problem": "11 sites wrote a colour as a literal where a token existed (7 ambers for warning, a red for danger, a brown as body text, 2 callout backgrounds fixed light) \u2014 a literal has one value where a token has two, so each was also a dark-theme defect",
+      "problem": "11 sites wrote a colour as a literal where a token existed (7 ambers for warning, a red for danger, a brown as body text, 2 callout backgrounds fixed light) — a literal has one value where a token has two, so each was also a dark-theme defect",
       "status": "fixed",
       "owner": "Phase 41",
       "commit": "5b29ec8"
@@ -1816,7 +1816,7 @@
       "id": "REG-025",
       "severity": "S3",
       "surface": "mobile",
-      "problem": "an order web labels Paid or Free the app labelled Confirmed for both \u2014 same status, two vocabularies, collapsing the distinction a refund turns on",
+      "problem": "an order web labels Paid or Free the app labelled Confirmed for both — same status, two vocabularies, collapsing the distinction a refund turns on",
       "status": "fixed",
       "owner": "Phase 41",
       "commit": "5b29ec8"
@@ -1861,7 +1861,7 @@
       "id": "REG-030",
       "severity": "S3",
       "surface": "web",
-      "problem": "no not-found.tsx, so every notFound() \u2014 including D-018's deliberate 404 for hidden resources \u2014 rendered Next's default dead-end 404",
+      "problem": "no not-found.tsx, so every notFound() — including D-018's deliberate 404 for hidden resources — rendered Next's default dead-end 404",
       "status": "fixed",
       "owner": "Phase 44",
       "commit": "4d72baf"
@@ -1897,7 +1897,7 @@
       "id": "REG-034",
       "severity": "S2",
       "surface": "web",
-      "problem": "not-found.tsx's primary CTA linked to /events, a route with no page \u2014 a 404 whose main button led to another 404; the Phase 44 test asserted the broken href",
+      "problem": "not-found.tsx's primary CTA linked to /events, a route with no page — a 404 whose main button led to another 404; the Phase 44 test asserted the broken href",
       "status": "fixed",
       "owner": "Phase 47.2",
       "commit": "1a06421"
@@ -1944,7 +1944,7 @@
       "item": "Self-host Anek webfont binaries (next/font needs network)",
       "originPhase": "4.2",
       "targetPhase": "45",
-      "risk": "low \u2014 token already correct, adoption is a no-code change"
+      "risk": "low — token already correct, adoption is a no-code change"
     },
     {
       "item": "Admin's two Tabs call sites have keyboard navigation but no tab-panel wiring",
@@ -1953,7 +1953,7 @@
       "risk": "low"
     },
     {
-      "item": "The web booking journey is unbuilt \u2014 no order creation, ticket-type selection or payment",
+      "item": "The web booking journey is unbuilt — no order creation, ticket-type selection or payment",
       "originPhase": "19",
       "targetPhase": "needs a product owner",
       "risk": "high"
@@ -1971,7 +1971,7 @@
       "risk": "low"
     },
     {
-      "item": "POST /v1/groups/join exists and nothing in the Flutter app calls it \u2014 no join screen, data source method or route",
+      "item": "POST /v1/groups/join exists and nothing in the Flutter app calls it — no join screen, data source method or route",
       "originPhase": "38B",
       "targetPhase": "needs a product owner",
       "risk": "medium"
@@ -1995,16 +1995,16 @@
       "id": "DEF-013",
       "surface": "web",
       "owner": "unassigned",
-      "item": "settle whether Escape dismisses Dialog \u2014 real defect or jsdom artifact",
+      "item": "settle whether Escape dismisses Dialog — real defect or jsdom artifact",
       "why": "skipped test in web/test/focus-return.test.tsx documents both readings; one browser check resolves it",
-      "status": "resolved \u2014 jsdom artifact, Escape works in Chrome"
+      "status": "resolved — jsdom artifact, Escape works in Chrome"
     },
     {
       "id": "DEF-014",
       "surface": "web+admin",
       "owner": "unassigned",
       "item": "six-width sweep of the admin console (15 routes remain; /users at 360 verified)",
-      "why": "admin sets X-Frame-Options/CSP frame-ancestors, so the iframe batch technique cannot be used \u2014 needs top-level navigation per page-width. Staff seeding and session are solved; see 47.4."
+      "why": "admin sets X-Frame-Options/CSP frame-ancestors, so the iframe batch technique cannot be used — needs top-level navigation per page-width. Staff seeding and session are solved; see 47.4."
     }
   ],
   "auditFindings": {
@@ -2013,7 +2013,7 @@
     "S3": 6,
     "S4": 5,
     "file": "docs/ui-ux/audit-findings.md",
-    "criticalPrerequisite": "S1-5 \u2014 collapse 8 forked primitives in web/components/ui before the S1-1 Field fix, or 5 of 6 auth components keep the broken copy"
+    "criticalPrerequisite": "S1-5 — collapse 8 forked primitives in web/components/ui before the S1-1 Field fix, or 5 of 6 auth components keep the broken copy"
   },
   "s1FindingsClosed": {
     "S1-1": "563c85e",

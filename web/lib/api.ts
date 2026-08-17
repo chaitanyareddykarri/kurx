@@ -405,7 +405,11 @@ export const categorySchema = z.object({
   /// classified. **Null means Public** — the same fallback `ResolveArchetypeAsync` applies server-side.
   /// The Create-Event gate filters Types by this; it never overrides the derivation (D-266 M1 / D-305).
   /// Optional so a response from a backend predating it still parses (the D-292 lesson).
-  product_class: z.string().nullable().optional()
+  product_class: z.string().nullable().optional(),
+  /// The behaviour archetype a Type derives (D-357). `Event.ArchetypeSlug` is snapshotted from it at
+  /// create (D-266 M1), and it is the key to `GET /v1/archetypes/{slug}/capabilities` — which is how the
+  /// Registration step learns whether this event may have teams, instead of hardcoding type names.
+  archetype_slug: z.string().nullable().optional()
 });
 export type Category = z.infer<typeof categorySchema>;
 
@@ -509,6 +513,12 @@ export const eventDetailSchema = z.object({
   legal: z
     .object({
       terms_url: z.string().nullable().optional(),
+      // Declared but never mapped before: `EventLegalView` has carried both since D-265, and the
+      // consent statement is the exact wording each `RegistrationConsent` row is recorded against —
+      // so it is the one legal field a registrant must be able to read *before* accepting it.
+      terms_text: z.string().nullable().optional(),
+      requires_consent: z.boolean().nullable().optional(),
+      consent_text: z.string().nullable().optional(),
       code_of_conduct: z.string().nullable().optional(),
       refund_policy: z.string().nullable().optional(),
       cancellation_policy: z.string().nullable().optional()
@@ -518,7 +528,23 @@ export const eventDetailSchema = z.object({
   schedule: z
     .object({
       registration_opens_at: z.string().nullable().optional(),
-      registration_closes_at: z.string().nullable().optional()
+      registration_closes_at: z.string().nullable().optional(),
+      // The check-in window is what a ticket holder needs on the day; it was on the wire and unmapped.
+      checkin_opens_at: z.string().nullable().optional(),
+      checkin_closes_at: z.string().nullable().optional()
+    })
+    .nullable()
+    .optional(),
+  /// The in-building detail — the whole group was absent from this schema, so an organiser could fill
+  /// in building/floor/room and a map link and an attendee was shown a street address alone.
+  /// `meeting_password` is deliberately not mapped: it is for confirmed registrants only.
+  location_detail: z
+    .object({
+      building: z.string().nullable().optional(),
+      floor: z.string().nullable().optional(),
+      room: z.string().nullable().optional(),
+      google_maps_url: z.string().nullable().optional(),
+      meeting_platform: z.string().nullable().optional()
     })
     .nullable()
     .optional(),
@@ -526,7 +552,8 @@ export const eventDetailSchema = z.object({
     .object({
       min_age: z.number().nullable().optional(),
       max_age: z.number().nullable().optional(),
-      gender_restriction: z.string().nullable().optional()
+      gender_restriction: z.string().nullable().optional(),
+      max_teams: z.number().nullable().optional()
     })
     .nullable()
     .optional()
@@ -544,12 +571,39 @@ export const publicTicketTypeSchema = z.object({
   quantity: z.number().nullable().optional(),
   sold: z.number().nullable().optional(),
   per_user_limit: z.number().nullable().optional(),
+  /// D-357 — what `price_paise` is charged FOR: `PerTicket` (per participant) or `PerGroup` (per team).
+  /// `TicketTypeView` has returned it on this public route all along and this schema dropped it, so
+  /// every surface rendered a bare "₹2,000" that a registrant could not interpret. Absent reads as
+  /// `PerTicket`, which is what every pre-D-357 row is.
+  pricing_unit: z.string().nullable().optional(),
   registration_mode: z.string().nullable().optional(),
   group_min: z.number().nullable().optional(),
   group_max: z.number().nullable().optional(),
+  /// D-366 — the price bands of a team ticket, ordered by size. Absent (not `[]`) when the ticket is
+  /// priced by one amount, which is what `price_paise` alone then means. When present, `price_paise` is
+  /// the CHEAPEST band — a "from" figure — and the amount charged is the band the team's size resolves
+  /// to, so a surface that prints `price_paise` beside a size is printing the wrong number.
+  price_tiers: z.array(z.object({
+    min_size: z.number(),
+    max_size: z.number(),
+    price_paise: z.number()
+  })).nullable().optional(),
   is_competition: z.boolean().nullable().optional()
 });
 export type PublicTicketType = z.infer<typeof publicTicketTypeSchema>;
+
+/// D-366 — what a team of `size` pays on this ticket, in paise, or null if nothing covers that size.
+///
+/// One function so the price shown on the event page, the price shown at checkout and the price the
+/// server charges are the same answer. Mirrors `OrderService.TierPriceAsync`: exactly one band must
+/// match, and no band means the ticket is priced by its single amount.
+export function priceForTeamSize(t: PublicTicketType, size: number): number | null {
+  if (!t.price_tiers || t.price_tiers.length === 0) return t.price_paise;
+  const matching = t.price_tiers.filter((b) => size >= b.min_size && size <= b.max_size);
+  // Two matches is a configuration error the server refuses with `ambiguous_price_rule`; showing one of
+  // them would be quoting a price nobody will be charged.
+  return matching.length === 1 ? matching[0].price_paise : null;
+}
 
 export async function listPublicTicketTypes(eventId: string) {
   const { data } = await api.get(`/v1/events/${eventId}/ticket-types`);
@@ -602,6 +656,9 @@ export const eventSummarySchema = z.object({
   category_name: z.string().nullable().optional(),
   // null means no ticket type exists yet — render "Registration not open", never "Free".
   price_from_paise: z.number().nullable().optional(),
+  /// D-361 — the unit the "From" price is charged in. Without it a card can only say "From ₹2,000",
+  /// which on a team event reads as a per-person minimum when it is the whole team's entry fee.
+  price_from_unit: z.string().nullable().optional(),
   currency: z.string().nullable().optional(),
   is_featured: z.boolean().nullable().optional()
 });
@@ -1856,7 +1913,15 @@ export const ticketTypeSchema = z.object({
   sale_ends: z.string(),
   per_user_limit: z.number(),
   is_all_access: z.boolean(),
-  is_competition: z.boolean()
+  is_competition: z.boolean(),
+  /// D-366 — the team-size price bands. Absent on a ticket priced by one amount. The organiser surface
+  /// has to SHOW these: this page can edit the ticket, and a price list it cannot display is a price
+  /// list its own edit form appears to contradict.
+  price_tiers: z.array(z.object({
+    min_size: z.number(),
+    max_size: z.number(),
+    price_paise: z.number()
+  })).nullable().optional()
 });
 export type TicketType = z.infer<typeof ticketTypeSchema>;
 

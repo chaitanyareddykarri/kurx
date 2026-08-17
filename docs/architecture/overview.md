@@ -147,7 +147,7 @@
 | Background jobs | Hangfire 1.8 + PostgreSQL storage (schema `hangfire`, 12 tables, inside the `kurx` database); **18 recurring jobs** (counted live from `hangfire.set`, 2026-08-14) — seat-hold and waitlist expiry, ledger settlement, inventory / registration / **wallet** reconciliation, database health probe, leaderboard and search-index refresh, notification cleanup, event reminders, signing-key maintenance, outbox dispatch, chat-room locking, chat-attachment and post-media cleanup, account deletion, and the convergence backfill moved off the boot path ([D-250](../DECISIONS.md)). Two further jobs (`ChatNotificationJob`, `PhoneE164BackfillJob`) are enqueue-driven and carry no schedule. It is the **only** background-work mechanism — the unused n8n service was deleted in [D-337](../DECISIONS.md). A Hangfire server runs on **every replica**, so each recurring job carries `[DisableConcurrentExecution]` + a cadence-matched `[AutomaticRetry]` ([D-243](../DECISIONS.md)); per-message jobs deliberately do not. Dashboard at `/hangfire` (dev-only) |
 | API contract | OpenAPI generated from the running API, committed at `docs/api/openapi.json`, and **gated in CI** — a surface change that skips `scripts/generate-openapi.sh` fails the build ([D-259](../DECISIONS.md)). Responses are snake_case, requests camelCase. Response bodies are declared on **496 of 535 operations** (461 JSON + 32 `204` + 3 binary downloads as `format: binary`; re-measured 2026-08-14 with `scripts/openapi-response-check.mjs`), ratcheted upward ([D-246](../DECISIONS.md), [D-313](../DECISIONS.md)) and enforced by `scripts/openapi-response-check.mjs`, which fails CI on a new undeclared response. A response DTO **must** be declared in `Kurx.Application.Abstractions` or `SnakeCaseResponseConverter` skips it and it silently emits camelCase. `required` is derived by `RequiredFromNonNullableSchemaFilter` because the pinned Swashbuckle 6.6.2 predates the switch for it |
 | Frontend | Next.js 14 (`web/`), next-intl 3.26.3 for i18n |
-| Mobile | Flutter (`mobile/`) — attendee slices only |
+| Mobile | Flutter 3.44.6 (`mobile/`, pinned in CI) — **not attendee-only**, which this row claimed: 95 screens across 17 feature areas, 24 of them organizer screens (check-in scanner, attendees, announcements, certificates, team assignment). Per-screen wiring status: [`../roadmap/README.md`](../roadmap/README.md) |
 | Admin | Next.js (`admin/`) — internal staff console, 20+ modules live (verification, event approval, users/orgs, blacklist/fraud, staff & roles, audit, analytics, categories, certificates, broadcast, health); premium UI redesign D-185. Current status: `admin/STATUS.md` |
 | CI/CD | GitHub Actions — `ci.yml` (build/test) + `cd.yml` (GHCR + SSH deploy) |
 
@@ -171,10 +171,10 @@ Dependency direction: `Api → Infrastructure → Application ← (implemented b
 ```
 backend/
   Kurx.Api/
-    Endpoints/          70 endpoint files — count them rather than trusting this line, which said
-                        "25" long after that stopped being true. Recent: Post (D-262),
-                        Account + Dm (D-263/D-264). Older list, still indicative:
-                        (Auth, Org, Event, Category, Venue, Speaker,
+    Endpoints/          72 files (`ls Kurx.Api/Endpoints/*.cs | wc -l`, 2026-08-15) carrying 534
+                        route registrations. This line said "25", then "70"; re-derive it rather
+                        than trusting it. Recent: Post (D-262), Account + Dm (D-263/D-264).
+                        Older list, still indicative: (Auth, Org, Event, Category, Venue, Speaker,
                         Sponsor, Schedule, Media, Template, TicketType, TicketTransfer,
                         Gate, PublicProfile, Webhook, Invitation, Announcement, Chat,
                         Order, Wallet, Certificate, Identity, MembershipClaim,
@@ -214,29 +214,39 @@ backend/
     Orgs/               OrgService, WalletService, OrganizationRegistryService (M4/D-043),
                         OrgVerificationService (M5/D-044),
                         MembershipVerificationService (M6/D-045)
-    Jobs/               15 Hangfire recurring jobs — ExpireSeatHoldsJob, ExpireWaitlistOffersJob,
-                        CollectedToAvailableLedgerJob, InventoryReconciliationJob,
-                        RegistrationReconciliationJob, WalletReconciliationJob (D-240),
+    Jobs/               20 job files; 18 of them recurring (`grep -c 'jobs.AddOrUpdate'
+                        Kurx.Api/Program.cs`, 2026-08-15) — ExpireSeatHoldsJob,
+                        ExpireWaitlistOffersJob, CollectedToAvailableLedgerJob,
+                        InventoryReconciliationJob, RegistrationReconciliationJob,
+                        WalletReconciliationJob (D-240), DatabaseHealthProbeJob (DB-9),
                         DataBackfillJob (D-250), LeaderboardRefreshJob, SearchIndexRefreshJob,
                         NotificationCleanupJob, EventReminderJob, SigningKeyMaintenanceJob,
-                        OutboxDispatchJob, LockExpiredChatRoomsJob, ChatAttachmentCleanupJob.
+                        OutboxDispatchJob, LockExpiredChatRoomsJob, ChatAttachmentCleanupJob,
+                        PostMediaCleanupJob (D-262), AccountDeletionJob (D-263).
                         Plus ChatNotificationJob (enqueued per message, NOT recurring — a
                         class-level lock there would serialise all chat fan-out) and
-                        PhoneE164BackfillJob (admin-invoked, not a Hangfire job at all)
+                        PhoneE164BackfillJob (admin-invoked, not a Hangfire job at all).
+                        This list said 15 and omitted the health probe, post-media cleanup and
+                        account deletion; the count above the table (§Stack) is the same 18.
     Localization/       SharedResources.cs + SharedResources.resx + SharedResources.hi.resx
     Messaging/          WhatsAppLogService
-    Migrations/         19 EF Core migrations (Initial → EventManagement → … →
-                        AddVerificationSubstrate, AddPlatformRoles, DropIsKurxAdmin,
-                        AddUserIdentity, AddOrgRegistry, AddOrgVerification,
-                        AddMembershipClaims, RenameKycToOrgBankVerification,
-                        DropRegistrationForms, AddFraudTables)
+    Migrations/         91 EF Core migrations (`ls Kurx.Infrastructure/Migrations/*.cs |
+                        grep -v Designer | grep -v ModelSnapshot | wc -l`, 2026-08-15; the
+                        live database agrees — `SELECT count(*) FROM "__EFMigrationsHistory"`).
+                        Initial → EventManagement → … → the V3 program's ~22 → AddIdCards,
+                        AddEntitlements, AddIdCardMealDisplay. This line said "19", which was
+                        the M0–M13 figure and predates the entire V3 program.
     Notifications/      NotificationService — the ONE dispatch point; the D-263 notification-preference
                         gate lives inside NotifyAsync so all callers inherit it
-    Persistence/        KurxDbContext (70 DbSets; incl. verification_documents /
+    Persistence/        KurxDbContext — 162 DbSets (`grep -c 'public DbSet<'
+                        Kurx.Infrastructure/Persistence/KurxDbContext.cs`, 2026-08-15; matches
+                        the 162 `ToTable` calls in the model snapshot and the 162 tables in the
+                        live database). This line said "70". Includes verification_documents /
                         verification_reviews trust substrate M0/D-039, platform_roles,
                         user_identity_verifications, membership_claims,
                         org_bank_verifications, organization_aliases,
-                        blacklist_entries, fraud_signals)
+                        blacklist_entries, fraud_signals. Per-table reference:
+                        docs/database/DATABASE_TABLES.md
     Providers/          ConsoleProviders, MockProviders, LocalDiskStorage, DocumentProviders
                         (real QuestPDF CertificateRenderer + real QRCoder QR +
                         DocumentRasterizerStub)
@@ -244,14 +254,22 @@ backend/
     Users/              PublicProfileService, AllyService, ReservedUsernames,
                         AccountService (settings, blocks, deletion — D-263)
   Kurx.Domain/
-    Entities/           Users.cs, Identity.cs, Orgs.cs, PlatformRoles.cs, Verification.cs,
-                        Events.cs, EventManagement.cs, Orders.cs, Money.cs, Design.cs,
-                        Operational.cs, Invitations.cs, Chat.cs, Fraud.cs
+    Entities/           42 files (`ls Kurx.Domain/Entities/*.cs | wc -l`, 2026-08-15), one per
+                        bounded area rather than one per entity — Users, Identity, AuthIdentity,
+                        Orgs, PlatformRoles, Verification, Events, EventManagement,
+                        EventArchetypes, EventAuthorization, EventExposure, Capabilities, Kinds,
+                        Orders, EventCommerce, Money, Registration, Participants, Teams,
+                        Competition, Series, Inventory, Entitlements, Passes, IdCards, Chat,
+                        ChatLifecycle, Posts, Allies, Gamification, Design, Operational,
+                        Invitations, Approvals, Audience, Analytics, Search, Fraud, and the rest.
+                        This line listed 14 of them.
     Enums/              All enum definitions
-  Kurx.Tests/           Integration test suite (WebApplicationFactory<Program>), 1,695 [Fact]/[Theory]
-                        across 175 files. Last full run measured 1,820 executed / 1,819 passed /
-                        1 skipped / 0 failed (2026-08-14, SDK container, 16m48s, clamd up).
-                        Quote a measured run, never this line — it has been stale twice.
+  Kurx.Tests/           Integration test suite (WebApplicationFactory<Program>). 172 .cs files
+                        carrying ~1,700 [Fact]/[Theory] attributes, which expand to more executed
+                        cases via [InlineData]. **Quote a measured full run, never a number from
+                        this file** — the baseline lives in `.claude/CLAUDE.md` §9 and
+                        `.claude/memory/testing-standards.md`, which are updated per run. This
+                        line has been stale three times; it no longer carries a run figure at all.
 ```
 
 ## Request pipeline (`Kurx.Api/Program.cs`)
@@ -332,10 +350,25 @@ One boundary's mock status now has a documented consequence in the authorization
 
 ## CI/CD
 
-`.github/workflows/ci.yml`:
-- Backend: `dotnet restore` → `dotnet build -warnaserror` → `dotnet test` against Postgres 17 service container; `kurx_test` DB created; test artifacts uploaded.
-- Web: `npm ci` → `tsc --noEmit` → `next lint` → `next build`.
-- Admin: `npm ci` → `tsc --noEmit` → `next build`.
+`.github/workflows/ci.yml` runs **four jobs**, not two — this list omitted the test steps and the
+whole mobile job:
+- **Backend**: `dotnet restore` → `dotnet build -warnaserror` → `dotnet test` against a Postgres 17
+  service container (`kurx_test` created; artifacts uploaded) → generate the OpenAPI spec from the
+  running API → **fail on contract drift** against the committed `docs/api/openapi.json` (D-259,
+  compared after `jq -S` so key ordering is not reported as drift) → validate the three client model
+  sets against the spec (`scripts/contract-check.mjs`) → **fail on new undeclared responses**
+  (`scripts/openapi-response-check.mjs`) → verify declared response types match the handler.
+- **Web**: `npm ci` → `tsc --noEmit` → `next lint` → **`npm test`** (vitest; carries the web half of
+  the D-288 cross-platform phone corpus) → `next build`.
+- **Admin**: `npm ci` → `tsc --noEmit` → `next lint` → **`npm test`** → `next build`.
+- **Mobile**: Flutter pinned to **3.44.6** → `flutter pub get` → `flutter analyze --no-fatal-infos`
+  (errors + warnings gate; ~62 pre-existing style infos tracked but not enforced) → `flutter test`.
+  `build_runner` deliberately does **not** run — generated Freezed/json_serializable output is
+  committed, so a stale generated file surfaces as an analyze failure.
+
+Two things run nowhere: `node --test scripts/contract-check.test.mjs` (CI runs the contract *tool*,
+never its own test), and mobile's `integration_test/` + `test_live/`, which need real hardware or a
+live backend.
 
 `.github/workflows/cd.yml`:
 - Job 1: Docker build + push to GHCR (`ghcr.io/{owner}/kurx-{api,web,admin}:sha-{sha}`).

@@ -237,7 +237,12 @@ public class SearchService(KurxDbContext db, IAudienceService audience, IStorage
             db.TicketTypes.Where(t => t.EventId == e.Id && t.DeletedAt == null)
                 .Select(t => (long?)t.PricePaise).Min(),
             e.SettlementCurrency,
-            e.IsFeatured);
+            e.IsFeatured,
+            // D-361 — the unit of the cheapest ticket, so the "From" price beside it means something.
+            // Same correlated-subquery shape and same ordering as the price itself, so the two can never
+            // describe different ticket types.
+            db.TicketTypes.Where(t => t.EventId == e.Id && t.DeletedAt == null)
+                .OrderBy(t => t.PricePaise).Select(t => t.PricingUnit.ToString()).FirstOrDefault());
 
     private static int Clamp(int limit) => Math.Clamp(limit, 1, 50);
 }

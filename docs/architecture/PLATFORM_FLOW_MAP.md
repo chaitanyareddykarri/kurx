@@ -4,9 +4,10 @@ The end-to-end journey across **app, web and admin as one system**: how a person
 event comes into being, how it gets sold, run and settled, and which surface owns each step.
 
 **Scope boundary — this file does not list pages.** Per-surface page inventories are owned by
-[`docs/ui-ux/inventory-web.md`](../ui-ux/inventory-web.md) (88 routes),
+[`docs/ui-ux/inventory-web.md`](../ui-ux/inventory-web.md) (93 routes),
 [`inventory-admin.md`](../ui-ux/inventory-admin.md) (27 routes) and
-[`inventory-mobile.md`](../ui-ux/inventory-mobile.md). Structural grouping and reachability are owned
+[`inventory-mobile.md`](../ui-ux/inventory-mobile.md) (95 pages) — all three re-derived from the
+filesystem on 2026-08-15, when this line still said 88. Structural grouping and reachability are owned
 by [`information-architecture.md`](../ui-ux/information-architecture.md). This file owns only what
 none of those do: the **flow between surfaces**, and where a journey cannot complete.
 

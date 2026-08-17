@@ -261,6 +261,19 @@ workflow, so adding an action cannot forget to authorize it.
 **`IsEditLocked` is the only definition of the edit lock**, and `ChangesRequested` is deliberately NOT
 locked: editing is the purpose of that state.
 
+**The reviewed substance of an event is not all on the `events` row (D-363 §4).** Ticket price and
+quantity live on `ticket_types`; who may attend lives on `audience_rules`. Each has its own endpoint and
+its own service, so a rule enforced only in `EventService.UpdateAsync` leaves those doors open — an
+organiser approved on a free event could price it at ₹5,000 and publish it. Both the edit lock and the
+post-approval reopen therefore run in `EventService`, `TicketTypeService` **and** `AudienceService`,
+through one shared `EventReviewReopen.IfApprovedAsync` rather than three copies. Before believing a rule
+about "the event" is complete, ask which of the fields it names live on another table.
+
+**The reopen is conditional in SQL, not on the snapshot** (`WHERE Status = Approved`), for the same
+reason the transition is: a concurrent transition may already have moved the event. It writes past the
+change tracker, so a caller holding a tracked `Event` must `ReloadAsync` before projecting a response —
+otherwise the client is told the edit kept its approval.
+
 **Retiring an enum member means auditing strings too — across the whole repo, not just the backend.** The
 Stage 4 sweep for `EventStatus.InReview` reported zero while a test still asserted the lowercased
 `"inreview"` from an API response, and web/admin/Flutter each still hard-coded it in status filters, badge
@@ -375,3 +388,68 @@ reviewer once passed through.
 `PendingEventView` has no `MeetingPassword` field at all — the DTO cannot carry it, so no projection of it
 can leak one. Filtering at each call site works until the next call site, which is the one that forgets.
 Apply the same shape to any field that is secret everywhere (D-266 §5).
+
+## A price without a unit is not a price (D-357)
+
+`TicketType.PricingUnit` — `PerTicket | PerGroup` — decides **both** what is charged and how many
+inventory units the registration takes. It is not a label:
+
+| PricingUnit | Mode | Charged | Units at order | Units per join |
+|---|---|---|---|---|
+| `PerTicket` | `Individual` | `price × 1` | 1 | — |
+| `PerTicket` | `Group` | `price × groupSize` | 1 | 1 |
+| `PerGroup` | `Group` | `price × 1` | 1 | **0** |
+
+`OrderService.BillableUnits` / `AmountFor` / `JoinConsumesInventory` are the only expressions of that
+rule; the charge, the gateway order, the `OrderItem` and the pool draw all read them, so they cannot
+disagree. **Never multiply a `PerGroup` price by the roster** — that is the ₹2,000-becomes-₹8,000 bug the
+rule exists to prevent, and `TeamPricingTests` fails if it returns.
+
+Two invariants worth knowing before touching this:
+
+- **`OrderItem.Qty` is the BILLABLE quantity**, so `Qty × UnitPricePaise == AmountPaise` always holds. The
+  team's *size* is `Order.GroupSize`. They were the same number before D-357, which is why `Qty` was
+  overloaded as the roster cap; `AddMemberToGroupAsync` still falls back to it for pre-D-357 rows.
+- **A paid group's `Group` row is created at CAPTURE, not at checkout.** A Pending team that could hand
+  out its join code would let an unpaid buyer recruit into a registration that may never be paid for.
+
+Team size has one upstream owner: `TicketType.GroupMin/GroupMax`, the bound people are charged against.
+`TeamPolicy.MinSize/MaxSize` (Phase 10) governs formation and is seeded from it and may narrow within it,
+never exceed it (D-358).
+
+**How many teams may enter has one owner too, and it is the pool.** `EventEligibilityView.MaxTeams` is
+*derived* — the sum of `Quantity` across the event's `PerGroup` ticket types — falling back to the stored
+`events.MaxTeams` only when the event has no team ticket (D-360). Do not enforce the stored column against
+inventory: that is a second capacity authority competing with the pool, which §17.1 exists to prevent. And
+do not `SUM` in SQL here — it answers 0 over an empty set and inverts the fallback.
+
+**A competition group purchase materialises the authoritative `Team`** (D-359) via
+`ITeamService.MaterialiseForGroupAsync`, in the same transaction as the `Group` it mirrors, filling the
+`Team.RegistrationId` hook Phase 10 reserved. It deliberately does not go through `CreateTeamAsync`, which
+enforces formation mode / per-person limits / a required name — rules a completed purchase has already
+settled and any of which would refuse a team the buyer was charged for. Teams still exist only where
+`IsCompetition` does.
+
+## `teams` is the one capability the domain enforces (D-367)
+
+The Capability Engine **describes**; `IEventAuthority` **authorizes** (D-266 M2 / D-269). `teams` is a
+single named exception: a `RegistrationMode.Group` ticket creates a `TeamPolicy`, a roster, a join code, a
+`PerGroup` inventory unit and a D-366 price band set, so on an archetype that does not support teams all
+of that is real, persisted, chargeable state describing something the event cannot run.
+
+Enforced in `TicketTypeService` (create; update **only when a ticket is becoming Group**) and in
+`EventService.ApplyUpdateAsync` (a Type change is refused while a Group ticket exists). Both read the
+existing engine — `GetForEventAsync` for an existing event, `GetForArchetypeAsync` for an incoming Type —
+and share one interpretation in `CapabilitySet.Supports`, because `Locked`-means-unsupported is a
+two-line rule and two copies of it drift.
+
+Three things to keep if you touch this:
+- **An archetype-less event supports nothing.** `CapabilityResolver.StateOf` returns `Unsupported` for a
+  null archetype deliberately; enforcement inherits it rather than special-casing it open.
+- **Old rows stay editable.** Enforcing on every update would strand tickets that were legal when
+  written, the moment an admin edits the matrix. The invariant is "no NEW invalid state".
+- **Refuse, never convert.** Converting a Group ticket on a Type change would delete a TeamPolicy and its
+  price bands as a side effect of a dropdown — the organiser resolves the conflict explicitly.
+
+Adding a second enforced capability needs its own decision entry and the same justification: that
+ignoring it leaves persisted state describing something the event cannot do.

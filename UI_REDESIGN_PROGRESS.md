@@ -1,7 +1,25 @@
 # Kurx UI/UX Redesign — Live Progress
 
-**This file is the source of truth for the redesign.** Tracker state and repository state must agree.
-If they disagree, STOP and report the discrepancy before modifying files.
+> ⚠️ **Read this before treating anything below as current (checked 2026-08-15).**
+>
+> - **The redesign was merged.** [D-314](docs/DECISIONS.md) merged this program into the feature branch
+>   on 2026-08-09 (with four changes explicitly refused), and it is on `main` today.
+> - **The branch named below no longer exists.** `redesign/ui-ux-phase-18a` is absent locally and on
+>   `origin`; the only branches are `main` and `origin/fix/compose-pgdata17-volume`.
+> - **The two mirrors disagree with each other.** This file's dashboard reads 94.1% overall / 87.5%
+>   weighted; `UI_REDESIGN_PROGRESS.json` reads `overallProgress: 99.9`, `status: READY_TO_RESUME`.
+>   By this file's own rule that is a STOP condition, and it has been true since 2026-08-08.
+> - **It is therefore a historical record, not a live tracker** — and it is kept rather than deleted
+>   because it is the only place the remaining work is written down: phases **46, 47 and 51** are
+>   `IN_PROGRESS` (46 = accessibility verification, which needs a running app), the queue is 46–50,
+>   and 13 items are deferred. Anyone resuming should re-derive state from the repository first.
+>
+> Current build status is [`docs/roadmap/README.md`](docs/roadmap/README.md); the shipped page
+> inventories are [`docs/ui-ux/inventory-{web,admin,mobile}.md`](docs/ui-ux/), which were re-derived
+> from the filesystem on 2026-08-15.
+
+**What this file was.** The live tracker for the redesign program. Tracker state and repository state
+were required to agree; a disagreement was a STOP.
 Machine-readable mirror: [`UI_REDESIGN_PROGRESS.json`](UI_REDESIGN_PROGRESS.json).
 
 ---

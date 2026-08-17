@@ -2248,6 +2248,10 @@
       "CategoryResponse": {
         "additionalProperties": false,
         "properties": {
+          "archetype_slug": {
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -4759,7 +4763,7 @@
             "type": "string"
           },
           "commerce": {
-            "$ref": "#/components/schemas/EventCommerceView"
+            "$ref": "#/components/schemas/PublicEventCommerceView"
           },
           "contact_email": {
             "type": "string"
@@ -5498,6 +5502,10 @@
             "format": "int64",
             "nullable": true,
             "type": "integer"
+          },
+          "price_from_unit": {
+            "nullable": true,
+            "type": "string"
           },
           "representing_org_id": {
             "format": "uuid",
@@ -10267,6 +10275,27 @@
         ],
         "type": "object"
       },
+      "PublicEventCommerceView": {
+        "additionalProperties": false,
+        "properties": {
+          "prize_pool_json": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tax_inclusive": {
+            "type": "boolean"
+          },
+          "tax_percent": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "tax_inclusive"
+        ],
+        "type": "object"
+      },
       "PublicInvitationView": {
         "additionalProperties": false,
         "properties": {
@@ -13925,6 +13954,52 @@
         ],
         "type": "object"
       },
+      "TicketPriceTierBody": {
+        "additionalProperties": false,
+        "properties": {
+          "maxSize": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "minSize": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "pricePaise": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxSize",
+          "minSize",
+          "pricePaise"
+        ],
+        "type": "object"
+      },
+      "TicketPriceTierView": {
+        "additionalProperties": false,
+        "properties": {
+          "max_size": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "min_size": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "price_paise": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_size",
+          "min_size",
+          "price_paise"
+        ],
+        "type": "object"
+      },
       "TicketResponse": {
         "additionalProperties": false,
         "properties": {
@@ -14037,6 +14112,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "priceTiers": {
+            "items": {
+              "$ref": "#/components/schemas/TicketPriceTierBody"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "pricingUnit": {
             "type": "string"
           },
@@ -14140,6 +14222,13 @@
           "price_paise": {
             "format": "int64",
             "type": "integer"
+          },
+          "price_tiers": {
+            "items": {
+              "$ref": "#/components/schemas/TicketPriceTierView"
+            },
+            "nullable": true,
+            "type": "array"
           },
           "pricing_unit": {
             "type": "string"
@@ -14298,6 +14387,9 @@
           },
           "level": {
             "type": "string"
+          },
+          "requires_representation": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -14308,7 +14400,8 @@
           "can_organize_paid",
           "can_receive_payout",
           "identity_verified",
-          "level"
+          "level",
+          "requires_representation"
         ],
         "type": "object"
       },
@@ -25554,7 +25647,7 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "Create a discount code — Owner/Manager of the event's org",
+        "summary": "Create a discount code \u2014 Owner/Manager of the event's org",
         "tags": [
           "coupons"
         ]
@@ -30789,7 +30882,7 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "The refund for one order — visible to its buyer, the org's Owner/Finance, or FinanceOps/SuperAdmin",
+        "summary": "The refund for one order \u2014 visible to its buyer, the org's Owner/Finance, or FinanceOps/SuperAdmin",
         "tags": [
           "refunds"
         ]
@@ -30848,7 +30941,7 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
-        "summary": "Refund a Paid order in full — Owner/Finance of the event's org, or FinanceOps/SuperAdmin",
+        "summary": "Refund a Paid order in full \u2014 Owner/Finance of the event's org, or FinanceOps/SuperAdmin",
         "tags": [
           "refunds"
         ]

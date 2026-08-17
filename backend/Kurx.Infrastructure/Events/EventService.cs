@@ -594,6 +594,20 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
                 PerUserLimit = tt.PerUserLimit, IsAllAccess = tt.IsAllAccess, IsCompetition = tt.IsCompetition,
             };
             db.TicketTypes.Add(copy);
+            /*
+             * D-366 — the price BANDS travel with the ticket type.
+             *
+             * Without this a cloned team event keeps `PricePaise` — which is only the cheapest band — and
+             * loses every other one, so a team of five that paid ₹400 on the original pays ₹250 on the
+             * clone and nothing on any screen says the price list changed. That is the D-340 failure
+             * repeating: a copy that names the fields it carries silently drops whatever is added later.
+             */
+            foreach (var band in await db.TicketPriceTiers.AsNoTracking().Where(b => b.TicketTypeId == tt.Id).ToListAsync(ct))
+                db.TicketPriceTiers.Add(new TicketPriceTier
+                {
+                    TicketTypeId = copy.Id, MinSize = band.MinSize, MaxSize = band.MaxSize,
+                    PricePaise = band.PricePaise,
+                });
             foreach (var f in await db.FormFields.AsNoTracking().Where(f => f.TicketTypeId == tt.Id).ToListAsync(ct))
                 db.FormFields.Add(new FormField
                 {
@@ -665,7 +679,35 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
 
         if (!await CanManageEventAsync(userId, ev, isAdmin: false, ct))
             return ServiceResult<EventDetail>.Fail("forbidden");
-        return await ApplyUpdateAsync(ev, userId, isAdmin, input, ct);
+
+        /*
+         * D-363 §4 — approval binds to what was reviewed.
+         *
+         * `IsEditLocked` covers the review states only, so an APPROVED event was fully editable with no
+         * re-review: approved, then retitled, re-dated, re-venued, and published as something no
+         * reviewer had seen. The approval was real; what it applied to was not.
+         *
+         * A material edit sends it back to the queue rather than being refused — refusing would mean an
+         * approved event can never be corrected, and the organiser's only route would be to cancel and
+         * start again. Cosmetic edits (banner, FAQ, contact, registration windows) stay free, because a
+         * re-review to fix a typo is a rule people route around rather than respect.
+         */
+        var returnsToQueue = ev.Status == EventStatus.Approved && EventStatusWorkflow.RequiresFreshReview(input);
+
+        var statusBefore = ev.Status;
+        var result = await ApplyUpdateAsync(ev, userId, isAdmin, input, ct);
+        if (!result.Ok || !returnsToQueue) return result;
+
+        // Applied first, moved second: an edit that the update path REFUSES must not leave the event in
+        // the queue for a change that never landed.
+        if (!await EventReviewReopen.IfApprovedAsync(db, ev.Id, statusBefore, userId, "a material field", ct))
+            return result;
+
+        // The reopen writes past the change tracker, so `ev` still reads Approved — project the response
+        // from the row, not from the stale copy, or the client is told the edit kept its approval.
+        await db.Entry(ev).ReloadAsync(ct);
+        log.LogInformation("Event {EventId} returned to review: material edit after approval", ev.Id);
+        return ServiceResult<EventDetail>.Success(await ToDetailAsync(ev, ct));
     }
 
     /// <summary>D-191: the one and only event-update implementation. <see cref="UpdateAsync"/> (organizer,
@@ -775,6 +817,33 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
     private async Task<ServiceResult<EventDetail>> ApplyUpdateAsync(Event ev, Guid userId, bool isAdmin, UpdateEventInput input, CancellationToken ct)
     {
         if (ev.Status == EventStatus.Archived) return ServiceResult<EventDetail>.Fail("event_archived");
+
+        /*
+         * D-367 — a Type change may not strand a team registration on an archetype that has none.
+         *
+         * Checked HERE, before a single field is assigned, so a refusal leaves nothing staged: the new
+         * archetype must not be half-applied to a tracked entity that some later save in the same scope
+         * could commit. Nothing below this point runs on the rejected path.
+         *
+         * Refused rather than converted. Converting would delete a `TeamPolicy`, its roster rules and its
+         * D-366 price bands as a side effect of a dropdown — data the organiser entered and never asked
+         * to lose. This repo refuses in exactly these situations (`event_has_history`,
+         * `tickets_already_sold`, `ambiguous_price_rule`) instead of mutating on the user's behalf; the
+         * organiser changes the registration first, and decides for themselves what happens to it.
+         */
+        if (input.TypeId is not null && input.TypeId != ev.TypeId)
+        {
+            var incoming = await ResolveArchetypeAsync(input.TypeId, ct);
+            if (incoming.Slug != ev.ArchetypeSlug
+                && await db.TicketTypes.AnyAsync(t => t.EventId == ev.Id && t.DeletedAt == null
+                                                      && t.RegistrationMode == RegistrationMode.Group, ct)
+                // A Type with no archetype supports nothing (CapabilityResolver.StateOf, null archetype),
+                // so it cannot receive a team registration either — asked of the same service every read
+                // surface uses rather than resolved a second way here.
+                && (incoming.Slug is null || !await ArchetypeSupportsTeamsAsync(incoming.Slug, ev.EventMode, ct)))
+                return ServiceResult<EventDetail>.Fail("type_conflicts_with_team_ticket");
+        }
+
         // V3 §14.5 material change — snapshot the material fields before applying the edit.
         var mcBeforeStart = ev.StartsAt; var mcBeforeEnd = ev.EndsAt; var mcBeforeVenue = ev.VenueId;
         var mcBeforeMode = ev.EventMode; var mcBeforeVenueName = ev.VenueName;
@@ -1107,6 +1176,21 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
         var gateError = await TransitionGateAsync(ev, target, ct);
         if (gateError is not null) return ServiceResult<EventDetail>.Fail(gateError);
 
+        /*
+         * D-363 — you cannot un-publish an event people have already bought into.
+         *
+         * `unpublish` returns a Published event to Draft, and Draft is the one status `DeleteDraftAsync`
+         * accepts. That made `Published → unpublish → Draft → delete` a working route to hard-deleting a
+         * sold event together with every order, ticket and registration cascading off it. Closing it at
+         * the entrance is what keeps it shut for paths nobody has written yet.
+         *
+         * It also happens to be the right rule on its own terms: an event with attendees is withdrawn by
+         * `cancel` — which is terminal and obliges refunds (D-101) — or ended by `close`. Quietly pulling
+         * it back to Draft would strand everyone holding a ticket with no refund and no notification.
+         */
+        if (action == "unpublish" && await HasCommerceOrAttendanceAsync(ev.Id, ct))
+            return ServiceResult<EventDetail>.Fail("event_has_history");
+
         // D-101 (M7): cancelling pulls a live event out of sale/discovery and, per the ratified refund
         // policy, obliges a full refund. An organizer may only cancel BEFORE the event starts; afterwards
         // it is an admin/reviewer call. Issuing the reverse-ledger refunds is M4's contract — this records
@@ -1158,16 +1242,42 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
             var readinessError = ValidatePublishReadiness(ev);
             if (readinessError is not null) return ServiceResult<EventDetail>.Fail(readinessError);
 
+            /*
+             * D-362 — approval and publication are two acts, by two different people.
+             *
+             *   PendingReview / UnderReview → the decision is the REVIEWER's. The creator may not publish.
+             *   Approved                    → the decision is the CREATOR's. Approval already granted the
+             *                                 permission; when to go live is theirs, paid or free.
+             *
+             * The reviewer gate used to sit inside `if (isPaid)`, which got this wrong in both directions:
+             *
+             *   · A FREE event never reached it, so an organiser could submit for review and immediately
+             *     publish the same event themselves — live, with no approval, and out of the queue while a
+             *     reviewer may have been holding it. Reproduced over HTTP: submit_for_review → 200, then
+             *     publish as the creator → 200, status `published`.
+             *   · A PAID event reached it even from `Approved`, so a creator whose event a reviewer had
+             *     already approved still could not publish it. Approval meant nothing they could act on.
+             *
+             * One gate replaces both. `Approved` is a real state — reviewed, permitted, and NOT yet public —
+             * and the creator is who ends it.
+             */
+            if (ev.Status is EventStatus.PendingReview or EventStatus.UnderReview && !isReviewer && !isAdmin)
+                return ServiceResult<EventDetail>.Fail("reviewer_required");
+
             if (isPaid)
             {
-                // A paid event can never self-publish: Draft -> PendingReview -> reviewer publish.
-                // Approved is the reviewed outcome; the two in-flight states satisfy it too, because the
-                // publish gate below is what actually blocks — this guard only refuses an event that never
-                // entered review at all.
-                if (ev.Status is not (EventStatus.Approved or EventStatus.PendingReview
-                                      or EventStatus.UnderReview))
+                // A paid event must have been through review before it can go live — `Draft → Published` is
+                // refused here, which is D-047 unchanged. What is no longer required is that a REVIEWER
+                // presses publish: reaching `Approved` is the reviewer's act, and publishing it is the
+                // organiser's. The financial gates below still run on every publish.
+                //
+                // Stated as "not from Draft" rather than as a list of reviewed states, because the list was
+                // wrong: it omitted `Scheduled`, and `Approved → schedule → open_registration` is a real
+                // path (D-319/V3 §14.1). A paid event routed that way was refused `paid_event_requires_review`
+                // *after* a reviewer had approved it — a dead end. Draft is the only status reaching Published
+                // that has not been through review, so it is the only one to name.
+                if (ev.Status == EventStatus.Draft)
                     return ServiceResult<EventDetail>.Fail("paid_event_requires_review");
-                if (!isReviewer) return ServiceResult<EventDetail>.Fail("forbidden");
                 var gate = await PaidOrganizerGateAsync(ev, ct);
                 if (gate is not null) return ServiceResult<EventDetail>.Fail(gate);
             }
@@ -1379,6 +1489,31 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
         return null;
     }
 
+    /// <summary>D-367 — does an archetype support team registration?
+    ///
+    /// <para>Asked of <see cref="ICapabilityService.GetForArchetypeAsync"/> — the established boundary for
+    /// "what does this archetype support", and the same persisted matrix the admin console owns (D-188).
+    /// The INCOMING archetype is the subject here, so this is the archetype-scoped read rather than the
+    /// event-scoped one: the event still carries its old slug at this point, by design.</para>
+    ///
+    /// <para><c>Locked</c> is how the resolver reports <c>Unsupported</c>. An unknown archetype answers
+    /// with an empty set, which is also "no teams" — fail closed, never fail open.</para></summary>
+    private async Task<bool> ArchetypeSupportsTeamsAsync(string archetypeSlug, EventMode mode, CancellationToken ct) =>
+        CapabilitySet.Supports(await capabilities.GetForArchetypeAsync(archetypeSlug, mode.ToString(), ct), "teams");
+
+    /// <summary>D-363 — has this event ever carried commerce or attendance?
+    ///
+    /// <para>Deleting an event is a HARD delete, and 46 tables cascade from <c>events</c> — orders,
+    /// tickets, registrations, certificates, passes, credentials, admissions. So a delete that reaches a
+    /// sold event does not orphan its records, it destroys them, silently and unrecoverably.</para>
+    ///
+    /// <para>One predicate, because both doors have to ask the same question and a second spelling of it
+    /// is how one of them stops asking.</para></summary>
+    private async Task<bool> HasCommerceOrAttendanceAsync(Guid eventId, CancellationToken ct) =>
+        await db.Orders.AnyAsync(o => o.EventId == eventId, ct)
+        || await db.Tickets.AnyAsync(t => t.EventId == eventId, ct)
+        || await db.Registrations.AnyAsync(r => r.EventId == eventId, ct);
+
     public async Task<ServiceResult<bool>> DeleteDraftAsync(Guid userId, Guid eventId, bool isAdmin, CancellationToken ct = default)
     {
         var ev = await db.Events.FirstOrDefaultAsync(e => e.Id == eventId, ct);
@@ -1386,9 +1521,36 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
         if (!await CanManageEventAsync(userId, ev, isAdmin, ct)) return ServiceResult<bool>.Fail("forbidden");
         if (ev.Status != EventStatus.Draft) return ServiceResult<bool>.Fail("not_draft");
 
+        /*
+         * D-363 — the guard that makes "Draft" mean "nothing has happened to this yet".
+         *
+         * `Status == Draft` was the ONLY check here, and Draft is reachable from Published via
+         * `unpublish`. So `Published (with orders) → unpublish → Draft → delete` hard-deleted an event
+         * and cascade-deleted every order, ticket and registration on it. Found live: the dev database
+         * held a Draft event with an order already sitting on it, so this was not hypothetical.
+         *
+         * `unpublish` refuses first (below, in TransitionAsync), which is the entrance. This is the exit,
+         * and it is checked too — a guard on the only path you thought of is a guard until someone adds
+         * a second path. An event with history ends at Cancelled or Archived, never at deletion.
+         */
+        if (await HasCommerceOrAttendanceAsync(eventId, ct))
+            return ServiceResult<bool>.Fail("event_has_history");
+
         var deletedOrgId = ev.RepresentingOrgId;
         var deletedTitle = ev.Title;
-        db.Events.Remove(ev);
+
+        /*
+         * D-364 — soft, as D-025 always said it was.
+         *
+         * This was `db.Events.Remove(ev)`: a hard delete cascading through 46 tables, on an entity whose
+         * `DeletedAt` column existed the whole time and was never once written. The admin console even
+         * described this button as "Soft delete — removed from every list but not purged", which was the
+         * decision's words attached to the opposite behaviour.
+         *
+         * The row now survives and the global query filter takes it out of every read. Nothing cascades,
+         * so the guard above and this are two independent reasons the record cannot be destroyed.
+         */
+        ev.DeletedAt = DateTime.UtcNow;
         db.AuditLogs.Add(new AuditLog
         {
             ActorType = "user", ActorId = userId,
@@ -1802,7 +1964,7 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
         // (D-268) — an `IsPersonal` row is filtered out of every user-facing surface, so it resolves to null
         // here and the clients render the creator alone rather than an organization that does not exist.
         var representing = await db.Organizations.AsNoTracking()
-            .Where(o => o.Id == ev.RepresentingOrgId && !o.IsPersonal && o.DeletedAt == null)
+            .Where(OrganizationScope.Real).Where(o => o.Id == ev.RepresentingOrgId)
             .Select(o => new EventRepresentationView(o.Id, o.Name, o.Slug, o.LogoKey,
                 o.VerificationStatus == OrgVerificationStatus.Verified))
             .FirstOrDefaultAsync(ct);
@@ -1823,11 +1985,40 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
                 ev.CheckinClosesAt, ev.ResultDate, ev.CertificateReleaseAt, ev.AutoClose),
             // MeetingPassword is intentionally absent — this projection is also the public one.
             new EventLocationDetailView(ev.Building, ev.Floor, ev.Room, ev.GoogleMapsUrl, ev.MeetingPlatform),
-            new EventEligibilityView(ev.MinAge, ev.MaxAge, ev.GenderRestriction.ToString(), ev.MaxTeams),
+            new EventEligibilityView(ev.MinAge, ev.MaxAge, ev.GenderRestriction.ToString(),
+                await TeamCapacityAsync(ev, ct)),
             new EventCommerceView(ev.PlatformFeePercent, ev.PlatformFeeFlatPaise, ev.TaxPercent,
                 ev.TaxInclusive, ev.PrizePoolJson),
             representing,
             await SignAsync(ev.BannerKey, ct));
+    }
+
+    /*
+     * D-360 — how many teams may enter, answered by the thing that actually decides.
+     *
+     * `events.MaxTeams` (D-265) was stored, echoed on the eligibility view, and enforced NOWHERE: an
+     * organiser could type 50 while their team ticket sold 20 slots, and both numbers were presented as
+     * fact on different screens. The authority is the registration unit's inventory — a `PerGroup` ticket
+     * type's `Quantity`, which is what the pool draws against (V3 §17.1) — so that is what a client is
+     * given whenever the event has one.
+     *
+     * The stored column survives as the fallback for an event with NO team ticket, where it contradicts
+     * nothing and is the organiser's own note. It is not enforced and is not made a second authority:
+     * wiring it into inventory is precisely the competing-capacity mistake §17.1 exists to prevent.
+     *
+     * Summed across team ticket types because an event may sell more than one team entry (a hackathon
+     * with a junior and an open track); the total slots are the total teams.
+     */
+    private async Task<int?> TeamCapacityAsync(Event ev, CancellationToken ct)
+    {
+        // The quantities are listed rather than SUMmed in SQL because `SUM` over an empty set answers 0,
+        // not null — which would report "0 teams may enter" for every event that has no team ticket at
+        // all, exactly inverting the fallback. An event has a handful of ticket types, so the list is free.
+        var teamSlots = await db.TicketTypes.AsNoTracking()
+            .Where(t => t.EventId == ev.Id && t.DeletedAt == null && t.PricingUnit == PricingUnit.PerGroup)
+            .Select(t => t.Quantity)
+            .ToListAsync(ct);
+        return teamSlots.Count > 0 ? teamSlots.Sum() : ev.MaxTeams;
     }
 
     /// <summary>Presign a storage key, or null when there is nothing stored. Null-in/null-out keeps

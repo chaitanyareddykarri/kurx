@@ -64,6 +64,8 @@ function renderGate(overrides: Partial<React.ComponentProps<typeof CreateEventGa
       canCreatePrivateEvent
       requiresRepresentation
       representativeRoles={["Principal", "Head of Department", "Other"]}
+      // D-357 — the gate passes this straight to the wizard; no gate rule depends on it.
+      teamCapableArchetypes={[]}
       {...overrides}
     />
   );

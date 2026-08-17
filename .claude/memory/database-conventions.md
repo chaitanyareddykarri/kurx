@@ -16,6 +16,44 @@ e.HasIndex(x => x.OrgId)
 ```
 The `\"..\"` escaping in C# string literals produces `"ColName" IS NULL` in SQL. Never use `HasFilter("DeletedAt IS NULL")` — that fails silently on PascalCase columns.
 
+### Enforcing it: the global query filter (D-364)
+
+Listing a table as soft-deletable is not the same as soft-deleting it. `events` sat in that list for a
+long time with the column present, `EventExposure` filtering on it, and **nothing ever writing it**,
+while the delete was a hard `Remove` cascading through 46 tables. Check both halves before believing a
+table is soft-deleted: something must *set* `DeletedAt`, and every read must *honour* it.
+
+`Event` enforces the read half with an EF global query filter rather than per-query clauses:
+
+```csharp
+b.Entity<Event>(e =>
+{
+    e.HasQueryFilter(x => x.DeletedAt == null);
+    e.HasIndex(x => x.Slug).IsUnique().HasFilter("\"DeletedAt\" IS NULL");   // partial, see below
+});
+```
+
+- **Prefer the filter over hand-written `Where(x => x.DeletedAt == null)`.** `Event` has ~169 query
+  sites; enforced per-caller, a soft delete holds only until the first caller forgets, and then the
+  deleted row reappears on exactly one surface with no pattern to it.
+- **To read deleted rows, say so:** `.IgnoreQueryFilters()`. It is deliberately loud.
+- **Unique indexes on a soft-deletable table must be partial.** A retained row keeps its `Slug`/
+  `ShortCode`, so a plain unique index makes recreating a deleted event's title collide on a row nobody
+  can see — a unique-violation 500 with no visible cause.
+- Existing redundant `DeletedAt == null` clauses are harmless and were left in place; don't sweep them.
+
+### Deleting is not the only way to lose data (D-363)
+
+**46 tables cascade from `events`** — orders, tickets, registrations, certificates, passes, credentials,
+admissions. Before adding or relaxing any delete path, check what cascades off it. Guards live in
+`EventService.HasCommerceOrAttendanceAsync` (any order, ticket or registration) and refuse `unpublish`
+and delete alike with `event_has_history`.
+
+One trap worth naming: **not every cascading child is evidence of use.** A `Pass` is the 1:1 *product
+mirror* of a ticket type, created for every type at creation — guarding ticket-type deletion on it
+blocked deleting any ticket type at all. Ask whether the child records a transaction (`order_items`,
+`tickets`) or merely mirrors the parent.
+
 ## Migrations
 
 - Always add a new migration (`dotnet ef migrations add <Name>`) for schema changes — never edit an already-applied one.

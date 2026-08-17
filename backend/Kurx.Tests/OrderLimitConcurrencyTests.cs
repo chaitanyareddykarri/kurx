@@ -174,7 +174,14 @@ public class OrderLimitConcurrencyTests : IClassFixture<KurxApiFactory>
         var type = await db.EventCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Slug == "limit-type");
         if (type is null)
         {
-            type = new EventCategory { Level = CategoryLevel.Type, Name = "Limit Type", Slug = "limit-type", ParentId = cat.Id };
+            // D-367 — this suite creates GROUP ticket types, which are only legal where the archetype
+            // supports `teams`. An unclassified Type carries no archetype at all, which resolves every
+            // capability to Unsupported — a Type existing is not the same as a Type saying something.
+            type = new EventCategory
+            {
+                Level = CategoryLevel.Type, Name = "Limit Type", Slug = "limit-type", ParentId = cat.Id,
+                ArchetypeSlug = "competitive",
+            };
             db.EventCategories.Add(type);
             await db.SaveChangesAsync();
         }

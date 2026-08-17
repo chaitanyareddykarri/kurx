@@ -22,6 +22,108 @@ Map<String, dynamic> _$$VenueDtoImplToJson(_$VenueDtoImpl instance) =>
       'google_maps_url': instance.googleMapsUrl,
     };
 
+_$EventContentDtoImpl _$$EventContentDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$EventContentDtoImpl(
+  tagline: json['tagline'] as String?,
+  shortDescription: json['short_description'] as String?,
+  rules: json['rules'] as String?,
+);
+
+Map<String, dynamic> _$$EventContentDtoImplToJson(
+  _$EventContentDtoImpl instance,
+) => <String, dynamic>{
+  'tagline': instance.tagline,
+  'short_description': instance.shortDescription,
+  'rules': instance.rules,
+};
+
+_$EventLegalDtoImpl _$$EventLegalDtoImplFromJson(Map<String, dynamic> json) =>
+    _$EventLegalDtoImpl(
+      termsUrl: json['terms_url'] as String?,
+      termsText: json['terms_text'] as String?,
+      codeOfConduct: json['code_of_conduct'] as String?,
+      refundPolicy: json['refund_policy'] as String?,
+      cancellationPolicy: json['cancellation_policy'] as String?,
+      requiresConsent: json['requires_consent'] as bool? ?? false,
+      consentText: json['consent_text'] as String?,
+    );
+
+Map<String, dynamic> _$$EventLegalDtoImplToJson(_$EventLegalDtoImpl instance) =>
+    <String, dynamic>{
+      'terms_url': instance.termsUrl,
+      'terms_text': instance.termsText,
+      'code_of_conduct': instance.codeOfConduct,
+      'refund_policy': instance.refundPolicy,
+      'cancellation_policy': instance.cancellationPolicy,
+      'requires_consent': instance.requiresConsent,
+      'consent_text': instance.consentText,
+    };
+
+_$EventScheduleDtoImpl _$$EventScheduleDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$EventScheduleDtoImpl(
+  registrationOpensAt: json['registration_opens_at'] == null
+      ? null
+      : DateTime.parse(json['registration_opens_at'] as String),
+  registrationClosesAt: json['registration_closes_at'] == null
+      ? null
+      : DateTime.parse(json['registration_closes_at'] as String),
+  checkinOpensAt: json['checkin_opens_at'] == null
+      ? null
+      : DateTime.parse(json['checkin_opens_at'] as String),
+  checkinClosesAt: json['checkin_closes_at'] == null
+      ? null
+      : DateTime.parse(json['checkin_closes_at'] as String),
+);
+
+Map<String, dynamic> _$$EventScheduleDtoImplToJson(
+  _$EventScheduleDtoImpl instance,
+) => <String, dynamic>{
+  'registration_opens_at': instance.registrationOpensAt?.toIso8601String(),
+  'registration_closes_at': instance.registrationClosesAt?.toIso8601String(),
+  'checkin_opens_at': instance.checkinOpensAt?.toIso8601String(),
+  'checkin_closes_at': instance.checkinClosesAt?.toIso8601String(),
+};
+
+_$EventEligibilityDtoImpl _$$EventEligibilityDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$EventEligibilityDtoImpl(
+  minAge: (json['min_age'] as num?)?.toInt(),
+  maxAge: (json['max_age'] as num?)?.toInt(),
+  genderRestriction: json['gender_restriction'] as String?,
+  maxTeams: (json['max_teams'] as num?)?.toInt(),
+);
+
+Map<String, dynamic> _$$EventEligibilityDtoImplToJson(
+  _$EventEligibilityDtoImpl instance,
+) => <String, dynamic>{
+  'min_age': instance.minAge,
+  'max_age': instance.maxAge,
+  'gender_restriction': instance.genderRestriction,
+  'max_teams': instance.maxTeams,
+};
+
+_$EventLocationDetailDtoImpl _$$EventLocationDetailDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$EventLocationDetailDtoImpl(
+  building: json['building'] as String?,
+  floor: json['floor'] as String?,
+  room: json['room'] as String?,
+  googleMapsUrl: json['google_maps_url'] as String?,
+  meetingPlatform: json['meeting_platform'] as String?,
+);
+
+Map<String, dynamic> _$$EventLocationDetailDtoImplToJson(
+  _$EventLocationDetailDtoImpl instance,
+) => <String, dynamic>{
+  'building': instance.building,
+  'floor': instance.floor,
+  'room': instance.room,
+  'google_maps_url': instance.googleMapsUrl,
+  'meeting_platform': instance.meetingPlatform,
+};
+
 _$EventDetailDtoImpl _$$EventDetailDtoImplFromJson(Map<String, dynamic> json) =>
     _$EventDetailDtoImpl(
       id: json['id'] as String,
@@ -56,6 +158,25 @@ _$EventDetailDtoImpl _$$EventDetailDtoImplFromJson(Map<String, dynamic> json) =>
           : EventRepresentationDto.fromJson(
               json['representing'] as Map<String, dynamic>,
             ),
+      content: json['content'] == null
+          ? null
+          : EventContentDto.fromJson(json['content'] as Map<String, dynamic>),
+      legal: json['legal'] == null
+          ? null
+          : EventLegalDto.fromJson(json['legal'] as Map<String, dynamic>),
+      schedule: json['schedule'] == null
+          ? null
+          : EventScheduleDto.fromJson(json['schedule'] as Map<String, dynamic>),
+      eligibility: json['eligibility'] == null
+          ? null
+          : EventEligibilityDto.fromJson(
+              json['eligibility'] as Map<String, dynamic>,
+            ),
+      locationDetail: json['location_detail'] == null
+          ? null
+          : EventLocationDetailDto.fromJson(
+              json['location_detail'] as Map<String, dynamic>,
+            ),
     );
 
 Map<String, dynamic> _$$EventDetailDtoImplToJson(
@@ -77,6 +198,11 @@ Map<String, dynamic> _$$EventDetailDtoImplToJson(
   'online_url': instance.onlineUrl,
   'media': instance.media,
   'representing': instance.representing,
+  'content': instance.content,
+  'legal': instance.legal,
+  'schedule': instance.schedule,
+  'eligibility': instance.eligibility,
+  'location_detail': instance.locationDetail,
 };
 
 _$EventMediaDtoImpl _$$EventMediaDtoImplFromJson(Map<String, dynamic> json) =>

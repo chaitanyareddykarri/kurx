@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { updateEventAction } from "@/lib/event-actions";
 import { toLocalInput, withUtcTimes } from "@/lib/event-wizard";
-import { Button, Spinner, controlClass } from "@kurx/ui";
+import { Alert, Button, Spinner, controlClass } from "@kurx/ui";
 import type { Category, EventDetail } from "@/lib/api";
 
 const inputClass = controlClass;
@@ -27,6 +27,15 @@ export function EditEventForm({ orgId, event, categories, subcategories = [] }: 
 
   return (
     <form action={(formData) => formAction(withUtcTimes(formData))} className="space-y-4">
+      {/* D-363 §4 — this form posts the whole record on every save (title, dates, venue, capacity all
+          go in the payload), so ANY save from here reads as a material edit and returns an approved
+          event to the queue. Finding that out afterwards, from a status badge, is the wrong way. */}
+      {event.status === "approved" ? (
+        <Alert tone="warning" title="This event is approved">
+          Saving a change here returns it to review — a reviewer approved what it says now. Publish it
+          first if you are ready to go live.
+        </Alert>
+      ) : null}
       <div>
         <label className="text-sm font-medium text-text" htmlFor="title">Title</label>
         <input id="title" name="title" defaultValue={event.title} minLength={2} maxLength={200} className={`mt-1 ${inputClass}`} />

@@ -41,7 +41,9 @@ mixin _$EventSummaryDto {
   @JsonKey(name: 'category_name')
   String? get categoryName => throw _privateConstructorUsedError;
   @JsonKey(name: 'price_from_paise')
-  int? get priceFromPaise => throw _privateConstructorUsedError;
+  int? get priceFromPaise => throw _privateConstructorUsedError; // D-361 — the unit the "From" price is charged in.
+  @JsonKey(name: 'price_from_unit')
+  String? get priceFromUnit => throw _privateConstructorUsedError;
   String? get currency => throw _privateConstructorUsedError;
   @JsonKey(name: 'is_featured')
   bool? get isFeatured => throw _privateConstructorUsedError;
@@ -77,6 +79,7 @@ abstract class $EventSummaryDtoCopyWith<$Res> {
     @JsonKey(name: 'event_mode') String? eventMode,
     @JsonKey(name: 'category_name') String? categoryName,
     @JsonKey(name: 'price_from_paise') int? priceFromPaise,
+    @JsonKey(name: 'price_from_unit') String? priceFromUnit,
     String? currency,
     @JsonKey(name: 'is_featured') bool? isFeatured,
   });
@@ -110,6 +113,7 @@ class _$EventSummaryDtoCopyWithImpl<$Res, $Val extends EventSummaryDto>
     Object? eventMode = freezed,
     Object? categoryName = freezed,
     Object? priceFromPaise = freezed,
+    Object? priceFromUnit = freezed,
     Object? currency = freezed,
     Object? isFeatured = freezed,
   }) {
@@ -167,6 +171,10 @@ class _$EventSummaryDtoCopyWithImpl<$Res, $Val extends EventSummaryDto>
                 ? _value.priceFromPaise
                 : priceFromPaise // ignore: cast_nullable_to_non_nullable
                       as int?,
+            priceFromUnit: freezed == priceFromUnit
+                ? _value.priceFromUnit
+                : priceFromUnit // ignore: cast_nullable_to_non_nullable
+                      as String?,
             currency: freezed == currency
                 ? _value.currency
                 : currency // ignore: cast_nullable_to_non_nullable
@@ -204,6 +212,7 @@ abstract class _$$EventSummaryDtoImplCopyWith<$Res>
     @JsonKey(name: 'event_mode') String? eventMode,
     @JsonKey(name: 'category_name') String? categoryName,
     @JsonKey(name: 'price_from_paise') int? priceFromPaise,
+    @JsonKey(name: 'price_from_unit') String? priceFromUnit,
     String? currency,
     @JsonKey(name: 'is_featured') bool? isFeatured,
   });
@@ -236,6 +245,7 @@ class __$$EventSummaryDtoImplCopyWithImpl<$Res>
     Object? eventMode = freezed,
     Object? categoryName = freezed,
     Object? priceFromPaise = freezed,
+    Object? priceFromUnit = freezed,
     Object? currency = freezed,
     Object? isFeatured = freezed,
   }) {
@@ -293,6 +303,10 @@ class __$$EventSummaryDtoImplCopyWithImpl<$Res>
             ? _value.priceFromPaise
             : priceFromPaise // ignore: cast_nullable_to_non_nullable
                   as int?,
+        priceFromUnit: freezed == priceFromUnit
+            ? _value.priceFromUnit
+            : priceFromUnit // ignore: cast_nullable_to_non_nullable
+                  as String?,
         currency: freezed == currency
             ? _value.currency
             : currency // ignore: cast_nullable_to_non_nullable
@@ -323,6 +337,7 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
     @JsonKey(name: 'event_mode') this.eventMode,
     @JsonKey(name: 'category_name') this.categoryName,
     @JsonKey(name: 'price_from_paise') this.priceFromPaise,
+    @JsonKey(name: 'price_from_unit') this.priceFromUnit,
     this.currency,
     @JsonKey(name: 'is_featured') this.isFeatured,
   }) : super._();
@@ -365,6 +380,10 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
   @override
   @JsonKey(name: 'price_from_paise')
   final int? priceFromPaise;
+  // D-361 — the unit the "From" price is charged in.
+  @override
+  @JsonKey(name: 'price_from_unit')
+  final String? priceFromUnit;
   @override
   final String? currency;
   @override
@@ -373,7 +392,7 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
 
   @override
   String toString() {
-    return 'EventSummaryDto(id: $id, title: $title, slug: $slug, subtitle: $subtitle, venueName: $venueName, city: $city, startsAt: $startsAt, endsAt: $endsAt, status: $status, bannerUrl: $bannerUrl, eventMode: $eventMode, categoryName: $categoryName, priceFromPaise: $priceFromPaise, currency: $currency, isFeatured: $isFeatured)';
+    return 'EventSummaryDto(id: $id, title: $title, slug: $slug, subtitle: $subtitle, venueName: $venueName, city: $city, startsAt: $startsAt, endsAt: $endsAt, status: $status, bannerUrl: $bannerUrl, eventMode: $eventMode, categoryName: $categoryName, priceFromPaise: $priceFromPaise, priceFromUnit: $priceFromUnit, currency: $currency, isFeatured: $isFeatured)';
   }
 
   @override
@@ -401,6 +420,8 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
                 other.categoryName == categoryName) &&
             (identical(other.priceFromPaise, priceFromPaise) ||
                 other.priceFromPaise == priceFromPaise) &&
+            (identical(other.priceFromUnit, priceFromUnit) ||
+                other.priceFromUnit == priceFromUnit) &&
             (identical(other.currency, currency) ||
                 other.currency == currency) &&
             (identical(other.isFeatured, isFeatured) ||
@@ -424,6 +445,7 @@ class _$EventSummaryDtoImpl extends _EventSummaryDto {
     eventMode,
     categoryName,
     priceFromPaise,
+    priceFromUnit,
     currency,
     isFeatured,
   );
@@ -460,6 +482,7 @@ abstract class _EventSummaryDto extends EventSummaryDto {
     @JsonKey(name: 'event_mode') final String? eventMode,
     @JsonKey(name: 'category_name') final String? categoryName,
     @JsonKey(name: 'price_from_paise') final int? priceFromPaise,
+    @JsonKey(name: 'price_from_unit') final String? priceFromUnit,
     final String? currency,
     @JsonKey(name: 'is_featured') final bool? isFeatured,
   }) = _$EventSummaryDtoImpl;
@@ -500,7 +523,10 @@ abstract class _EventSummaryDto extends EventSummaryDto {
   String? get categoryName;
   @override
   @JsonKey(name: 'price_from_paise')
-  int? get priceFromPaise;
+  int? get priceFromPaise; // D-361 — the unit the "From" price is charged in.
+  @override
+  @JsonKey(name: 'price_from_unit')
+  String? get priceFromUnit;
   @override
   String? get currency;
   @override

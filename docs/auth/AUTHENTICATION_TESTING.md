@@ -151,16 +151,18 @@ A Flutter failure **does** block CI. (It did not until the mobile job was added;
 
 ## 4. Current baseline
 
-> ⚠️ **The backend row below is stale and is not a floor you can measure against today.** It records
-> **1297 discovered** on 2026-08-05; the tree now declares **1500 `[Fact]`/`[Theory]` attributes across
-> 145 classes**, and `.claude/CLAUDE.md` §9 carries a different figure again (1433, measured 2026-08-06
-> on the shared branch). Three numbers, three dates, one suite.
+> ⚠️ **Every row below is a dated historical measurement, not a floor you can measure against today.**
+> Re-checked 2026-08-15: the backend row records 1297 discovered (2026-08-05) and the tree has moved
+> well past it — but **do not chase the number here.** The one live baseline is `.claude/CLAUDE.md` §9
+> plus `.claude/memory/testing-standards.md`, which are updated per measured run; this file listing a
+> competing figure is exactly what produced the "three numbers, three dates, one suite" problem this
+> warning was written about, and it happened again while the warning stood.
 >
 > **Do not substitute a count of attributes for a run.** A `[Theory]` contributes one attribute and many
-> cases, so an attribute count is an undercount of discovered tests and is not comparable to the numbers
-> below. The only honest baseline is a **full-suite run in the container** (`.claude/memory/testing-standards.md`
+> cases, so an attribute count is an undercount of discovered tests and is not comparable to a run. The
+> only honest baseline is a **full-suite run in the container** (`.claude/memory/testing-standards.md`
 > — the Windows host runner is blocked by Application Control, and the suite is order-sensitive, so a
-> single class in isolation proves nothing). Re-measure and replace this block rather than citing it.
+> single class in isolation proves nothing).
 
 | Surface | Result | When |
 |---|---|---|

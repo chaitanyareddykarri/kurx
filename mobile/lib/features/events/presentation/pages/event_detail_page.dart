@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../../../common/widgets/async_value_view.dart';
 import '../../../../common/widgets/kurx_button.dart';
@@ -129,6 +130,15 @@ class EventDetailPage extends ConsumerWidget {
                         .toList(),
                   ),
                 ),
+              /*
+                The D-265 field groups, rendered for the first time on this client.
+                They have been on the wire since D-265 and were mapped by nothing, so an event could
+                carry an 18+ rule, a registration deadline and a binding consent statement that the
+                person deciding whether to register never saw. Each returns an empty sliver list when
+                the organiser set nothing, so a simple event stays a short page.
+              */
+              ..._participationSlivers(context, page.detail),
+              ..._rulesSlivers(page.detail),
               _Section(
                 title: 'Tickets',
                 child: page.ticketTypes.isEmpty
@@ -162,6 +172,8 @@ class EventDetailPage extends ConsumerWidget {
                       context.push('/events/${page.detail.id}/reviews'),
                 ),
               ),
+              ..._gettingThereSlivers(page.detail),
+              ..._termsSlivers(page.detail),
               if (page.related.isNotEmpty)
                 _Section(
                   title: 'You might also like',
@@ -407,4 +419,138 @@ class _Section extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── The D-265 field groups ────────────────────────────────────────────────────────────────────────
+//
+// Each builder returns `[]` when the organiser set nothing in that group, so the page grows only for an
+// event that genuinely has more to say. Mirrors `web/components/events/event-detail-sections.tsx`
+// section for section — an attendee comparing the two surfaces must not find a rule on one and not the
+// other.
+//
+// Deliberately absent: `capacity` (the ticket tiles already carry "N left" from the authoritative
+// pool), `meeting_password` (confirmed registrants only), and the commerce group (organiser accounting).
+
+String _when(DateTime? d) =>
+    d == null ? '' : DateFormat('EEE d MMM yyyy, h:mm a').format(d.toLocal());
+
+Widget _fact(BuildContext context, String label, String value) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 2),
+          Text(value, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
+    );
+
+/// Who may register, and by when.
+List<Widget> _participationSlivers(BuildContext context, EventDetail e) {
+  final facts = <Widget>[
+    if (e.ageRule != null) _fact(context, 'Age', e.ageRule!),
+    if (e.genderRestriction != null) _fact(context, 'Open to', e.genderRestriction!),
+    if (e.maxTeams != null) _fact(context, 'Maximum teams', '${e.maxTeams}'),
+    if (e.registrationOpensAt != null)
+      _fact(context, 'Registration opens', _when(e.registrationOpensAt)),
+    if (e.registrationClosesAt != null)
+      _fact(context, 'Registration closes', _when(e.registrationClosesAt)),
+  ];
+  if (facts.isEmpty) return const [];
+  return [
+    _Section(
+      title: 'Who can join',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: facts),
+    ),
+  ];
+}
+
+/// The organiser's own rules — distinct from the platform's terms.
+List<Widget> _rulesSlivers(EventDetail e) {
+  final parts = <Widget>[
+    if (e.rules != null && e.rules!.isNotEmpty)
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(e.rules!)),
+    if (e.codeOfConduct != null && e.codeOfConduct!.isNotEmpty)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Code of conduct', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(e.codeOfConduct!),
+          ],
+        ),
+      ),
+  ];
+  if (parts.isEmpty) return const [];
+  return [
+    _Section(
+      title: 'Rules',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: parts),
+    ),
+  ];
+}
+
+/// Where inside the venue, and the check-in window — what a ticket holder needs on the day.
+List<Widget> _gettingThereSlivers(EventDetail e) {
+  return [
+    Builder(builder: (context) {
+      final facts = <Widget>[
+        if (e.placeInVenue != null) _fact(context, 'Where inside', e.placeInVenue!),
+        if (e.meetingPlatform != null && e.meetingPlatform!.isNotEmpty)
+          _fact(context, 'Platform', e.meetingPlatform!),
+        if (e.checkinOpensAt != null) _fact(context, 'Check-in opens', _when(e.checkinOpensAt)),
+        if (e.checkinClosesAt != null) _fact(context, 'Check-in closes', _when(e.checkinClosesAt)),
+      ];
+      if (facts.isEmpty) return const SizedBox.shrink();
+      return _Section(
+        title: 'Getting there',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: facts),
+      );
+    }),
+  ];
+}
+
+/// What you are agreeing to. The consent statement is the exact wording each acceptance is recorded
+/// against, so it has to be legible before the checkbox, not at it.
+List<Widget> _termsSlivers(EventDetail e) {
+  return [
+    Builder(builder: (context) {
+      final parts = <Widget>[
+        if (e.consentText != null && e.consentText!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('You will be asked to accept',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(e.consentText!),
+              ],
+            ),
+          ),
+        if (e.refundPolicy != null && e.refundPolicy!.isNotEmpty)
+          _fact(context, 'Refunds', e.refundPolicy!),
+        if (e.cancellationPolicy != null && e.cancellationPolicy!.isNotEmpty)
+          _fact(context, 'Cancellation', e.cancellationPolicy!),
+        if (e.termsUrl != null && e.termsUrl!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: TextButton(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+              onPressed: () => launchUrlString(e.termsUrl!, mode: LaunchMode.externalApplication),
+              child: const Text('Full terms for this event'),
+            ),
+          ),
+      ];
+      if (parts.isEmpty) return const SizedBox.shrink();
+      return _Section(
+        title: 'Terms',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: parts),
+      );
+    }),
+  ];
 }

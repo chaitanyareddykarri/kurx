@@ -23,6 +23,9 @@ _$TicketTypeDtoImpl _$$TicketTypeDtoImplFromJson(Map<String, dynamic> json) =>
       registrationMode: json['registration_mode'] as String?,
       groupMin: (json['group_min'] as num?)?.toInt(),
       groupMax: (json['group_max'] as num?)?.toInt(),
+      priceTiers: (json['price_tiers'] as List<dynamic>?)
+          ?.map((e) => TicketPriceTierDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
       saleStarts: json['sale_starts'] == null
           ? null
           : DateTime.parse(json['sale_starts'] as String),
@@ -45,7 +48,24 @@ Map<String, dynamic> _$$TicketTypeDtoImplToJson(_$TicketTypeDtoImpl instance) =>
       'registration_mode': instance.registrationMode,
       'group_min': instance.groupMin,
       'group_max': instance.groupMax,
+      'price_tiers': instance.priceTiers,
       'sale_starts': instance.saleStarts?.toIso8601String(),
       'per_user_limit': instance.perUserLimit,
       'is_competition': instance.isCompetition,
     };
+
+_$TicketPriceTierDtoImpl _$$TicketPriceTierDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$TicketPriceTierDtoImpl(
+  minSize: (json['min_size'] as num?)?.toInt() ?? 0,
+  maxSize: (json['max_size'] as num?)?.toInt() ?? 0,
+  pricePaise: (json['price_paise'] as num?)?.toInt() ?? 0,
+);
+
+Map<String, dynamic> _$$TicketPriceTierDtoImplToJson(
+  _$TicketPriceTierDtoImpl instance,
+) => <String, dynamic>{
+  'min_size': instance.minSize,
+  'max_size': instance.maxSize,
+  'price_paise': instance.pricePaise,
+};

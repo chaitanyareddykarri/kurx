@@ -131,7 +131,18 @@ export type CreateEventValues = {
 export async function createEventWizardAction(
   representingOrgId: string | null,
   values: CreateEventValues,
-  ticket: { name: string; pricePaise: number; quantity: number }
+  /// D-357 — the registration option created with the event, and the UNIT its price is charged in.
+  /// `pricingUnit`/`registrationMode`/`groupMin`/`groupMax` were hardcoded here; they are the wizard's
+  /// answer now, and `TicketType` has carried all four since D-020.
+  ticket: {
+    name: string; pricePaise: number; quantity: number;
+    pricingUnit: "PerTicket" | "PerGroup";
+    registrationMode: "Individual" | "Group";
+    groupMin?: number; groupMax?: number;
+    /// D-366 — team-size price bands. Absent for every ticket priced by one amount, which keeps the
+    /// created request identical to what it was for an unbanded ticket.
+    priceTiers?: { minSize: number; maxSize: number; pricePaise: number }[];
+  }
 ) {
   const session = await requireSession();
   try {
@@ -168,8 +179,15 @@ export async function createEventWizardAction(
       await createTicketType(session.accessToken, event.representing_org_id, event.id, {
         name: ticket.name.trim() || "General Admission",
         pricePaise: ticket.pricePaise,
-        pricingUnit: "PerTicket",
-        registrationMode: "Individual",
+        // D-357 — from the Registration step, not a literal. `PerGroup` is what tells the money path to
+        // charge once per team and take one inventory unit for it.
+        pricingUnit: ticket.pricingUnit,
+        registrationMode: ticket.registrationMode,
+        groupMin: ticket.groupMin,
+        groupMax: ticket.groupMax,
+        // D-366 — when present the server derives the headline price from the cheapest band, so
+        // `pricePaise` above is only load-bearing for an unbanded ticket.
+        priceTiers: ticket.priceTiers,
         quantity: ticket.quantity,
         saleStarts: new Date().toISOString(),
         saleEnds: values.endsAt,
@@ -270,8 +288,18 @@ export async function transitionEventAction(orgId: string, eventId: string, acti
 
 export async function deleteDraftEventAction(orgId: string, eventId: string) {
   const session = await requireSession();
-  await deleteOrgEvent(session.accessToken, orgId, eventId);
+  // The refusal is the interesting outcome and it was being thrown away: a server action that throws
+  // reaches the client as an opaque digest in production, so the caller could only print "That draft
+  // could not be deleted." D-363's whole point is that `event_has_history` names what to do instead —
+  // cancel or close — and that sentence never arrived. `not_draft` likewise.
+  try {
+    await deleteOrgEvent(session.accessToken, orgId, eventId);
+  } catch (err) {
+    return { error: apiErrorMessage(err) };
+  }
   revalidatePath("/workspace");
+  // OUTSIDE the try on purpose: `redirect` signals by throwing, so inside it the catch above would
+  // treat every successful delete as a failure.
   redirect("/workspace");
 }
 

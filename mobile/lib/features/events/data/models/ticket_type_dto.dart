@@ -32,6 +32,9 @@ class TicketTypeDto with _$TicketTypeDto {
     @JsonKey(name: 'registration_mode') String? registrationMode,
     @JsonKey(name: 'group_min') int? groupMin,
     @JsonKey(name: 'group_max') int? groupMax,
+    /// D-366 — team-size price bands. Absent (not `[]`) on a ticket priced by one amount, which is
+    /// every ticket that predates the decision.
+    @JsonKey(name: 'price_tiers') List<TicketPriceTierDto>? priceTiers,
     @JsonKey(name: 'sale_starts') DateTime? saleStarts,
     @JsonKey(name: 'per_user_limit') int? perUserLimit,
     @JsonKey(name: 'is_competition') @Default(false) bool isCompetition,
@@ -48,5 +51,29 @@ class TicketTypeDto with _$TicketTypeDto {
         quantity: quantity,
         saleEnds: saleEnds,
         isAllAccess: isAllAccess,
+        // D-357 — the DTO carried these four all along and the entity dropped them, so the app could
+        // only ever show an amount with no unit.
+        pricingUnit: pricingUnit,
+        registrationMode: registrationMode,
+        groupMin: groupMin,
+        groupMax: groupMax,
+        priceTiers: priceTiers
+                ?.map((t) => TicketPriceTier(
+                      minSize: t.minSize, maxSize: t.maxSize, pricePaise: t.pricePaise))
+                .toList() ??
+            const [],
       );
+}
+
+/// D-366 — one band on the wire.
+@freezed
+abstract class TicketPriceTierDto with _$TicketPriceTierDto {
+  const factory TicketPriceTierDto({
+    @JsonKey(name: 'min_size') @Default(0) int minSize,
+    @JsonKey(name: 'max_size') @Default(0) int maxSize,
+    @JsonKey(name: 'price_paise') @Default(0) int pricePaise,
+  }) = _TicketPriceTierDto;
+
+  factory TicketPriceTierDto.fromJson(Map<String, dynamic> json) =>
+      _$TicketPriceTierDtoFromJson(json);
 }

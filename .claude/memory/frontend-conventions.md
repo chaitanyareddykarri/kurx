@@ -46,6 +46,19 @@ delegates to `problemMessage`.
 no copy, and compares `PROBLEM_COPY` against Flutter's `ApiError._messages` so the two platforms cannot
 drift. Match on values that are *returned* — a bare `password_*` grep also picks up audit action names.
 
+**A STATUS is words too, and the same table rule applies.** The API serialises `EventStatus` as the
+lowercased enum name, so `pendingreview` reaches the UI unless something maps it: web's
+`web/lib/event-status.ts`, mobile's `core/utils/event_status.dart` (Dart cannot import the TS module).
+Mobile had no such map for a long time and printed the raw enum in three places — including the literal
+`Opens after approval · pendingreview` that web's file was created to fix. The same test now pins both
+maps against the backend `EventStatus` enum, so a status added there fails a test rather than reaching a
+user as `CHANGESREQUESTED`.
+
+**A code no backend file emits is dead copy, and it hides a live gap.** Mobile mapped `approval_required`
+and `no_ticket_types`, neither of which exists in the backend, while `approval_pending` and `no_pass` —
+the codes actually returned — fell through to the generic sentence. Before adding copy, grep the code
+string in `backend/`; if it has zero hits you are writing for a refusal that never happens.
+
 ## A signed-in surface carries a way out (D-316)
 
 `/login` redirects an authenticated caller on `needs_onboarding`, so an account with unfinished setup
@@ -103,6 +116,27 @@ four-input step is what makes a disabled button useless. Where the server alread
 (`EndsAt > StartsAt`, the two window pairs), the client surfaces it rather than inventing a second one;
 where one client already has it (Flutter's `_basicsValid` carried the date ordering before web did),
 copy that rule rather than writing a third.
+
+**One per-step validation table, never a per-step boolean clause (D-354).** D-327 fixed the *symptom* —
+`step >= 4` — by writing a clause per step, and the shape it left behind reproduced the bug three more
+times: Content, Location and Eligibility ended up as a bare `step === 6 || step === 7 || step === 9`
+(an unconditional pass), Details checked 3 of the 9 fields it renders, and Windows checked only pair
+ordering. A disjunction of independently-written clauses cannot tell "this step has no rules" from
+"nobody wrote this step's rule". The table can: **every step maps to a validator returning
+`field → message`, and a step with no required field returns `{}` as a statement.** Continue is
+`Object.keys(currentErrors).length === 0`, derived on every render — never memoised (that freezes the
+clock on a past-date rule) and never stored (that is how a step stays valid after its data stops being).
+Four consumers read the one result: the button, the spoken reason, the click guard, and the submit
+backstop. **Disable *and* guard**: `disabled` is presentation, so the Continue handler re-validates
+before advancing. The rules themselves live in `web/lib/event-wizard.ts` and
+`mobile/.../domain/event_wizard_payload.dart` — pure, DOM-free, and tested there; the component only
+renders them. Web and Flutter carry the same messages verbatim so the two clients cannot drift.
+
+**A step may be stricter than the API; it must never be looser (D-354).** The Details step requires all
+nine fields it asks for while `CreateEventBodyValidator` takes six as optional — deliberate, because a
+step that asks for a field and then waves it through is asking for nothing. Every *other* rule in the
+wizard mirrors an existing server refusal (`online_url_required`, `invalid_age_range`,
+`consent_text_required`, `invalid_registration_window`) rather than inventing one.
 
 **Hide an input the product cannot use; never disable the submit for it (D-327).** Private events show
 no team cap, results date, certificate release or age bounds. Two distinct justifications sit behind

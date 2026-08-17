@@ -24,6 +24,7 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
     private static readonly object ResetLock = new();
     private static bool _reset;
     private static Guid _categoryId;
+    private static Guid _privateTypeId;
 
     public EventAuthorizationTests(KurxApiFactory factory)
     {
@@ -38,6 +39,22 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
             db.EventCategories.Add(cat);
             db.SaveChanges();
             _categoryId = cat.Id;
+            /*
+             * A PRIVATE type under it, for the one case that has to be self-represented.
+             *
+             * D-353 refuses a self-represented PUBLIC event at creation, and a null TypeId resolves to
+             * Public by the documented fallback — so the creator-owns-their-event case (D-268) could no
+             * longer create its subject at all. Private is the shape self-representation still has, and
+             * the authority rule under test is indifferent to the product.
+             */
+            var privateType = new EventCategory
+            {
+                Level = CategoryLevel.Type, Name = "Auth Private Type", Slug = "auth-private-type",
+                ParentId = cat.Id, ProductClass = EventProduct.Private,
+            };
+            db.EventCategories.Add(privateType);
+            db.SaveChanges();
+            _privateTypeId = privateType.Id;
             _reset = true;
         }
     }
@@ -123,9 +140,19 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
     [Fact]
     public async Task Creator_manages_every_surface_of_their_own_event_with_no_membership()
     {
-        // Personal representation: no organization seat exists anywhere for this person (D-268).
+        // Personal representation: no organization seat exists anywhere for this person (D-268). Private,
+        // because D-353 made self-representation a Private-only affordance — the authority rule under
+        // test is indifferent to the product, so the fixture moved rather than the assertions.
         var (owner, _) = await UserAsync("9970000001");
-        var created = await Json(await owner.PostAsJsonAsync("/v1/events", EventBody("Owned Outright")));
+        var created = await Json(await owner.PostAsJsonAsync("/v1/events",
+            new
+            {
+                title = "Owned Outright",
+                description = "An event with plenty of detail for validation.",
+                categoryId = _categoryId, typeId = _privateTypeId,
+                venueName = "Main Hall", city = "Vizag",
+                startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
+            }));
         var eventId = created.GetProperty("id").GetGuid();
         var orgId = created.GetProperty("org_id").GetGuid();
 

@@ -1,3 +1,4 @@
+using Kurx.Application.Abstractions;
 using Kurx.Domain.Enums;
 
 namespace Kurx.Infrastructure.Events;
@@ -32,8 +33,10 @@ public static class EventStatusWorkflow
             ["close"] = [(EventStatus.Published, EventStatus.Closed)],
             // D-101 (M7): Cancelled is terminal and distinct from Closed ("the event happened"). There is
             // deliberately no path back to Published — a cancelled event is never resurrected; clone it.
+            // D-363 §2: `Approved` was absent, so an organiser who had been approved and then decided not
+            // to run the event had no way to say so — the only exits were forward.
             ["cancel"] = [(EventStatus.Draft, EventStatus.Cancelled), (EventStatus.PendingReview, EventStatus.Cancelled),
-                          (EventStatus.UnderReview, EventStatus.Cancelled),
+                          (EventStatus.UnderReview, EventStatus.Cancelled), (EventStatus.Approved, EventStatus.Cancelled),
                           (EventStatus.Published, EventStatus.Cancelled), (EventStatus.Scheduled, EventStatus.Cancelled),
                           (EventStatus.Live, EventStatus.Cancelled)],
             ["archive"] = [(EventStatus.Draft, EventStatus.Archived), (EventStatus.Closed, EventStatus.Archived),
@@ -56,7 +59,14 @@ public static class EventStatusWorkflow
                                      (EventStatus.Rejected, EventStatus.PendingReview)],
             // Organiser pulls it back out of the queue. Only before a reviewer has claimed it — once
             // someone is working on it, withdrawing would discard their in-flight review.
-            ["withdraw"] = [(EventStatus.PendingReview, EventStatus.Draft)],
+            //
+            // D-363 §1: also from `Approved`. An approved event has never been public, so it can hold no
+            // orders and nothing is lost by returning it to `Draft` — which is where its creator can edit
+            // and resubmit. Without this, deciding to rework an approved event was a dead end. It is the
+            // same word for the same act (take it back out of the review process), so it is the same
+            // action rather than a second one meaning the same thing.
+            ["withdraw"] = [(EventStatus.PendingReview, EventStatus.Draft),
+                            (EventStatus.Approved, EventStatus.Draft)],
             // Reviewer claims the item. This is the transition the legacy single InReview state could
             // not express, and the reason the split exists.
             ["claim_review"] = [(EventStatus.PendingReview, EventStatus.UnderReview)],
@@ -75,6 +85,43 @@ public static class EventStatusWorkflow
     /// what they read.</summary>
     public static bool IsEditLocked(EventStatus status) =>
         status is EventStatus.PendingReview or EventStatus.UnderReview;
+
+    /*
+     * D-363 §4 — approval binds to what was reviewed.
+     *
+     * `IsEditLocked` covered the review states only, so an APPROVED event was fully editable with no
+     * re-review: a creator could be approved, then change the title, the dates, the venue and the
+     * eligibility rules, and publish something no reviewer ever saw. The approval was real; what it
+     * applied to was not.
+     *
+     * The split is between edits that change WHAT WAS ASSESSED and edits that dress it. A reviewer
+     * reads the title, when and where it runs, who may attend, what it costs and what it commits the
+     * platform to. They do not read the promo video. So the tagline, banner, FAQ, rules text, contact
+     * details and registration windows stay free — forcing a fresh review to fix a typo in the FAQ
+     * would make re-review something organisers route around rather than respect.
+     *
+     * Two things are LOCKED after approval rather than re-reviewed, and both are locked by absence
+     * rather than by a check here: `EventProduct` (Public/Private) and the representing organization
+     * are not fields on `UpdateEventInput` at all. Changing either invalidates the eligibility gate the
+     * event was created under (D-323), which is a different act from editing it. `TypeId` IS here and
+     * derives Product (D-266 M1), which is why it counts as material below.
+     */
+    public static bool RequiresFreshReview(UpdateEventInput i) =>
+        // What it is, and who is on the hook for it.
+        i.Title is not null || i.CategoryId is not null || i.TypeId is not null
+        || i.AudienceLevelId is not null || i.TemplateId is not null
+        // When and where it runs. Timezone counts: it moves the effective times without touching them.
+        || i.StartsAt is not null || i.EndsAt is not null || i.Timezone is not null
+        || i.VenueId is not null || i.VenueName is not null || i.VenueAddress is not null
+        || i.City is not null || i.EventMode is not null || i.OnlineUrl is not null
+        || i.Location is not null
+        // How many, who may come, and what it commits us to.
+        || i.Capacity is not null || i.Visibility is not null
+        || i.Eligibility is not null || i.Legal is not null || i.Commerce is not null;
+
+    // Free by construction — anything not named above: subtitle, description prose, tags, banner, all of
+    // `Content` (tagline, short description, logo, thumbnail, promo video, rules, FAQ), contact details,
+    // website, socials, `Schedule` (registration/check-in windows), language, standalone listing.
 
     /// <summary>Actions only a reviewer may invoke. Authorization itself is D-269's
     /// <c>IEventAuthority</c>; this only says which actions are reviewer-scoped, so the two never

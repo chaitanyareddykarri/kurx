@@ -81,3 +81,30 @@ final assignmentsProvider =
     FutureProvider.autoDispose.family<List<AssignmentDto>, _OrgEvent>(
         (ref, p) =>
             ref.watch(eventManageSourceProvider).assignments(p.orgId, p.eventId));
+
+/*
+ * D-357/D-366 — does this archetype permit TEAM entry?
+ *
+ * Asked of the capability engine (`GET /v1/archetypes/{slug}/capabilities`), never inferred from a
+ * type's name. The matrix is data an admin can change, so a second copy of it in this app would
+ * silently disagree with the server the day someone edits it — which is precisely what D-357 forbids.
+ *
+ * Fails CLOSED: an unreadable capability set, or a Type with no archetype at all, yields false, so the
+ * Registration step offers individual entry only rather than a team option the server may refuse.
+ * `family` on the slug because a wizard visits one archetype at a time and the answer is cacheable.
+ */
+final archetypeSupportsTeamsProvider =
+    FutureProvider.autoDispose.family<bool, String?>((ref, slug) async {
+  if (slug == null || slug.isEmpty) return false;
+  try {
+    final res = await ref.watch(dioProvider).get('/v1/archetypes/$slug/capabilities');
+    final caps = (res.data as List).cast<Map<String, dynamic>>();
+    final teams = caps.where((c) => c['slug'] == 'teams').firstOrNull;
+    if (teams == null) return false;
+    final state = (teams['state'] as String? ?? '').toLowerCase();
+    // The engine's own words: only these two mean "this event cannot have teams" (D-266 M2).
+    return state != 'unsupported' && state != 'locked';
+  } catch (_) {
+    return false;
+  }
+});

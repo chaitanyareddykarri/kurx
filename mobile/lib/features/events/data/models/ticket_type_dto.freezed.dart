@@ -46,6 +46,12 @@ mixin _$TicketTypeDto {
   int? get groupMin => throw _privateConstructorUsedError;
   @JsonKey(name: 'group_max')
   int? get groupMax => throw _privateConstructorUsedError;
+
+  /// D-366 — team-size price bands. Absent (not `[]`) on a ticket priced by one amount, which is
+  /// every ticket that predates the decision.
+  @JsonKey(name: 'price_tiers')
+  List<TicketPriceTierDto>? get priceTiers =>
+      throw _privateConstructorUsedError;
   @JsonKey(name: 'sale_starts')
   DateTime? get saleStarts => throw _privateConstructorUsedError;
   @JsonKey(name: 'per_user_limit')
@@ -84,6 +90,7 @@ abstract class $TicketTypeDtoCopyWith<$Res> {
     @JsonKey(name: 'registration_mode') String? registrationMode,
     @JsonKey(name: 'group_min') int? groupMin,
     @JsonKey(name: 'group_max') int? groupMax,
+    @JsonKey(name: 'price_tiers') List<TicketPriceTierDto>? priceTiers,
     @JsonKey(name: 'sale_starts') DateTime? saleStarts,
     @JsonKey(name: 'per_user_limit') int? perUserLimit,
     @JsonKey(name: 'is_competition') bool isCompetition,
@@ -118,6 +125,7 @@ class _$TicketTypeDtoCopyWithImpl<$Res, $Val extends TicketTypeDto>
     Object? registrationMode = freezed,
     Object? groupMin = freezed,
     Object? groupMax = freezed,
+    Object? priceTiers = freezed,
     Object? saleStarts = freezed,
     Object? perUserLimit = freezed,
     Object? isCompetition = null,
@@ -176,6 +184,10 @@ class _$TicketTypeDtoCopyWithImpl<$Res, $Val extends TicketTypeDto>
                 ? _value.groupMax
                 : groupMax // ignore: cast_nullable_to_non_nullable
                       as int?,
+            priceTiers: freezed == priceTiers
+                ? _value.priceTiers
+                : priceTiers // ignore: cast_nullable_to_non_nullable
+                      as List<TicketPriceTierDto>?,
             saleStarts: freezed == saleStarts
                 ? _value.saleStarts
                 : saleStarts // ignore: cast_nullable_to_non_nullable
@@ -217,6 +229,7 @@ abstract class _$$TicketTypeDtoImplCopyWith<$Res>
     @JsonKey(name: 'registration_mode') String? registrationMode,
     @JsonKey(name: 'group_min') int? groupMin,
     @JsonKey(name: 'group_max') int? groupMax,
+    @JsonKey(name: 'price_tiers') List<TicketPriceTierDto>? priceTiers,
     @JsonKey(name: 'sale_starts') DateTime? saleStarts,
     @JsonKey(name: 'per_user_limit') int? perUserLimit,
     @JsonKey(name: 'is_competition') bool isCompetition,
@@ -250,6 +263,7 @@ class __$$TicketTypeDtoImplCopyWithImpl<$Res>
     Object? registrationMode = freezed,
     Object? groupMin = freezed,
     Object? groupMax = freezed,
+    Object? priceTiers = freezed,
     Object? saleStarts = freezed,
     Object? perUserLimit = freezed,
     Object? isCompetition = null,
@@ -308,6 +322,10 @@ class __$$TicketTypeDtoImplCopyWithImpl<$Res>
             ? _value.groupMax
             : groupMax // ignore: cast_nullable_to_non_nullable
                   as int?,
+        priceTiers: freezed == priceTiers
+            ? _value._priceTiers
+            : priceTiers // ignore: cast_nullable_to_non_nullable
+                  as List<TicketPriceTierDto>?,
         saleStarts: freezed == saleStarts
             ? _value.saleStarts
             : saleStarts // ignore: cast_nullable_to_non_nullable
@@ -342,10 +360,12 @@ class _$TicketTypeDtoImpl extends _TicketTypeDto {
     @JsonKey(name: 'registration_mode') this.registrationMode,
     @JsonKey(name: 'group_min') this.groupMin,
     @JsonKey(name: 'group_max') this.groupMax,
+    @JsonKey(name: 'price_tiers') final List<TicketPriceTierDto>? priceTiers,
     @JsonKey(name: 'sale_starts') this.saleStarts,
     @JsonKey(name: 'per_user_limit') this.perUserLimit,
     @JsonKey(name: 'is_competition') this.isCompetition = false,
-  }) : super._();
+  }) : _priceTiers = priceTiers,
+       super._();
 
   factory _$TicketTypeDtoImpl.fromJson(Map<String, dynamic> json) =>
       _$$TicketTypeDtoImplFromJson(json);
@@ -392,6 +412,23 @@ class _$TicketTypeDtoImpl extends _TicketTypeDto {
   @override
   @JsonKey(name: 'group_max')
   final int? groupMax;
+
+  /// D-366 — team-size price bands. Absent (not `[]`) on a ticket priced by one amount, which is
+  /// every ticket that predates the decision.
+  final List<TicketPriceTierDto>? _priceTiers;
+
+  /// D-366 — team-size price bands. Absent (not `[]`) on a ticket priced by one amount, which is
+  /// every ticket that predates the decision.
+  @override
+  @JsonKey(name: 'price_tiers')
+  List<TicketPriceTierDto>? get priceTiers {
+    final value = _priceTiers;
+    if (value == null) return null;
+    if (_priceTiers is EqualUnmodifiableListView) return _priceTiers;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(value);
+  }
+
   @override
   @JsonKey(name: 'sale_starts')
   final DateTime? saleStarts;
@@ -404,7 +441,7 @@ class _$TicketTypeDtoImpl extends _TicketTypeDto {
 
   @override
   String toString() {
-    return 'TicketTypeDto(id: $id, name: $name, pricePaise: $pricePaise, quantity: $quantity, sold: $sold, available: $available, saleEnds: $saleEnds, isAllAccess: $isAllAccess, eventId: $eventId, pricingUnit: $pricingUnit, registrationMode: $registrationMode, groupMin: $groupMin, groupMax: $groupMax, saleStarts: $saleStarts, perUserLimit: $perUserLimit, isCompetition: $isCompetition)';
+    return 'TicketTypeDto(id: $id, name: $name, pricePaise: $pricePaise, quantity: $quantity, sold: $sold, available: $available, saleEnds: $saleEnds, isAllAccess: $isAllAccess, eventId: $eventId, pricingUnit: $pricingUnit, registrationMode: $registrationMode, groupMin: $groupMin, groupMax: $groupMax, priceTiers: $priceTiers, saleStarts: $saleStarts, perUserLimit: $perUserLimit, isCompetition: $isCompetition)';
   }
 
   @override
@@ -434,6 +471,10 @@ class _$TicketTypeDtoImpl extends _TicketTypeDto {
                 other.groupMin == groupMin) &&
             (identical(other.groupMax, groupMax) ||
                 other.groupMax == groupMax) &&
+            const DeepCollectionEquality().equals(
+              other._priceTiers,
+              _priceTiers,
+            ) &&
             (identical(other.saleStarts, saleStarts) ||
                 other.saleStarts == saleStarts) &&
             (identical(other.perUserLimit, perUserLimit) ||
@@ -459,6 +500,7 @@ class _$TicketTypeDtoImpl extends _TicketTypeDto {
     registrationMode,
     groupMin,
     groupMax,
+    const DeepCollectionEquality().hash(_priceTiers),
     saleStarts,
     perUserLimit,
     isCompetition,
@@ -493,6 +535,7 @@ abstract class _TicketTypeDto extends TicketTypeDto {
     @JsonKey(name: 'registration_mode') final String? registrationMode,
     @JsonKey(name: 'group_min') final int? groupMin,
     @JsonKey(name: 'group_max') final int? groupMax,
+    @JsonKey(name: 'price_tiers') final List<TicketPriceTierDto>? priceTiers,
     @JsonKey(name: 'sale_starts') final DateTime? saleStarts,
     @JsonKey(name: 'per_user_limit') final int? perUserLimit,
     @JsonKey(name: 'is_competition') final bool isCompetition,
@@ -540,6 +583,12 @@ abstract class _TicketTypeDto extends TicketTypeDto {
   @override
   @JsonKey(name: 'group_max')
   int? get groupMax;
+
+  /// D-366 — team-size price bands. Absent (not `[]`) on a ticket priced by one amount, which is
+  /// every ticket that predates the decision.
+  @override
+  @JsonKey(name: 'price_tiers')
+  List<TicketPriceTierDto>? get priceTiers;
   @override
   @JsonKey(name: 'sale_starts')
   DateTime? get saleStarts;
@@ -555,5 +604,221 @@ abstract class _TicketTypeDto extends TicketTypeDto {
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$TicketTypeDtoImplCopyWith<_$TicketTypeDtoImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+TicketPriceTierDto _$TicketPriceTierDtoFromJson(Map<String, dynamic> json) {
+  return _TicketPriceTierDto.fromJson(json);
+}
+
+/// @nodoc
+mixin _$TicketPriceTierDto {
+  @JsonKey(name: 'min_size')
+  int get minSize => throw _privateConstructorUsedError;
+  @JsonKey(name: 'max_size')
+  int get maxSize => throw _privateConstructorUsedError;
+  @JsonKey(name: 'price_paise')
+  int get pricePaise => throw _privateConstructorUsedError;
+
+  /// Serializes this TicketPriceTierDto to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of TicketPriceTierDto
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $TicketPriceTierDtoCopyWith<TicketPriceTierDto> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $TicketPriceTierDtoCopyWith<$Res> {
+  factory $TicketPriceTierDtoCopyWith(
+    TicketPriceTierDto value,
+    $Res Function(TicketPriceTierDto) then,
+  ) = _$TicketPriceTierDtoCopyWithImpl<$Res, TicketPriceTierDto>;
+  @useResult
+  $Res call({
+    @JsonKey(name: 'min_size') int minSize,
+    @JsonKey(name: 'max_size') int maxSize,
+    @JsonKey(name: 'price_paise') int pricePaise,
+  });
+}
+
+/// @nodoc
+class _$TicketPriceTierDtoCopyWithImpl<$Res, $Val extends TicketPriceTierDto>
+    implements $TicketPriceTierDtoCopyWith<$Res> {
+  _$TicketPriceTierDtoCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of TicketPriceTierDto
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? minSize = null,
+    Object? maxSize = null,
+    Object? pricePaise = null,
+  }) {
+    return _then(
+      _value.copyWith(
+            minSize: null == minSize
+                ? _value.minSize
+                : minSize // ignore: cast_nullable_to_non_nullable
+                      as int,
+            maxSize: null == maxSize
+                ? _value.maxSize
+                : maxSize // ignore: cast_nullable_to_non_nullable
+                      as int,
+            pricePaise: null == pricePaise
+                ? _value.pricePaise
+                : pricePaise // ignore: cast_nullable_to_non_nullable
+                      as int,
+          )
+          as $Val,
+    );
+  }
+}
+
+/// @nodoc
+abstract class _$$TicketPriceTierDtoImplCopyWith<$Res>
+    implements $TicketPriceTierDtoCopyWith<$Res> {
+  factory _$$TicketPriceTierDtoImplCopyWith(
+    _$TicketPriceTierDtoImpl value,
+    $Res Function(_$TicketPriceTierDtoImpl) then,
+  ) = __$$TicketPriceTierDtoImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({
+    @JsonKey(name: 'min_size') int minSize,
+    @JsonKey(name: 'max_size') int maxSize,
+    @JsonKey(name: 'price_paise') int pricePaise,
+  });
+}
+
+/// @nodoc
+class __$$TicketPriceTierDtoImplCopyWithImpl<$Res>
+    extends _$TicketPriceTierDtoCopyWithImpl<$Res, _$TicketPriceTierDtoImpl>
+    implements _$$TicketPriceTierDtoImplCopyWith<$Res> {
+  __$$TicketPriceTierDtoImplCopyWithImpl(
+    _$TicketPriceTierDtoImpl _value,
+    $Res Function(_$TicketPriceTierDtoImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of TicketPriceTierDto
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? minSize = null,
+    Object? maxSize = null,
+    Object? pricePaise = null,
+  }) {
+    return _then(
+      _$TicketPriceTierDtoImpl(
+        minSize: null == minSize
+            ? _value.minSize
+            : minSize // ignore: cast_nullable_to_non_nullable
+                  as int,
+        maxSize: null == maxSize
+            ? _value.maxSize
+            : maxSize // ignore: cast_nullable_to_non_nullable
+                  as int,
+        pricePaise: null == pricePaise
+            ? _value.pricePaise
+            : pricePaise // ignore: cast_nullable_to_non_nullable
+                  as int,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$TicketPriceTierDtoImpl implements _TicketPriceTierDto {
+  const _$TicketPriceTierDtoImpl({
+    @JsonKey(name: 'min_size') this.minSize = 0,
+    @JsonKey(name: 'max_size') this.maxSize = 0,
+    @JsonKey(name: 'price_paise') this.pricePaise = 0,
+  });
+
+  factory _$TicketPriceTierDtoImpl.fromJson(Map<String, dynamic> json) =>
+      _$$TicketPriceTierDtoImplFromJson(json);
+
+  @override
+  @JsonKey(name: 'min_size')
+  final int minSize;
+  @override
+  @JsonKey(name: 'max_size')
+  final int maxSize;
+  @override
+  @JsonKey(name: 'price_paise')
+  final int pricePaise;
+
+  @override
+  String toString() {
+    return 'TicketPriceTierDto(minSize: $minSize, maxSize: $maxSize, pricePaise: $pricePaise)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$TicketPriceTierDtoImpl &&
+            (identical(other.minSize, minSize) || other.minSize == minSize) &&
+            (identical(other.maxSize, maxSize) || other.maxSize == maxSize) &&
+            (identical(other.pricePaise, pricePaise) ||
+                other.pricePaise == pricePaise));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, minSize, maxSize, pricePaise);
+
+  /// Create a copy of TicketPriceTierDto
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$TicketPriceTierDtoImplCopyWith<_$TicketPriceTierDtoImpl> get copyWith =>
+      __$$TicketPriceTierDtoImplCopyWithImpl<_$TicketPriceTierDtoImpl>(
+        this,
+        _$identity,
+      );
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$TicketPriceTierDtoImplToJson(this);
+  }
+}
+
+abstract class _TicketPriceTierDto implements TicketPriceTierDto {
+  const factory _TicketPriceTierDto({
+    @JsonKey(name: 'min_size') final int minSize,
+    @JsonKey(name: 'max_size') final int maxSize,
+    @JsonKey(name: 'price_paise') final int pricePaise,
+  }) = _$TicketPriceTierDtoImpl;
+
+  factory _TicketPriceTierDto.fromJson(Map<String, dynamic> json) =
+      _$TicketPriceTierDtoImpl.fromJson;
+
+  @override
+  @JsonKey(name: 'min_size')
+  int get minSize;
+  @override
+  @JsonKey(name: 'max_size')
+  int get maxSize;
+  @override
+  @JsonKey(name: 'price_paise')
+  int get pricePaise;
+
+  /// Create a copy of TicketPriceTierDto
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$TicketPriceTierDtoImplCopyWith<_$TicketPriceTierDtoImpl> get copyWith =>
       throw _privateConstructorUsedError;
 }

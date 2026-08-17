@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { PROBLEM_COPY, looksLikeCode, problemMessage } from "@kurx/ui";
 
+import { eventStatusOf } from "@/lib/event-status";
+
 /**
  * Phase 43 — an error message has to be words.
  *
@@ -135,5 +137,59 @@ describe("the two error vocabularies stay one vocabulary", () => {
       if (mobile && mobile !== web) drift.push(`${code}: web "${web}" vs mobile "${mobile}"`);
     }
     expect(drift).toEqual([]);
+  });
+});
+
+/**
+ * The same argument one level up: a STATUS is also words a user reads.
+ *
+ * Web learned this once — `event-status.ts` exists because `/workspace` printed "Opens after approval ·
+ * pendingreview" — and mobile kept printing the raw enum in three places for as long as nobody compared
+ * them. Pinned against the backend enum rather than against each other, so a status added there fails
+ * here instead of reaching a user as `CHANGESREQUESTED`.
+ */
+describe("every event status is words on both surfaces", () => {
+  const backendStatuses = (() => {
+    const cs = readFileSync(
+      resolve(__dirname, "..", "..", "backend/Kurx.Domain/Enums/Enums.cs"),
+      "utf8"
+    );
+    const start = cs.indexOf("public enum EventStatus");
+    const body = cs.slice(cs.indexOf("{", start) + 1, cs.indexOf("}", start));
+    return body
+      .replace(/\/\/\/?[^\n]*/g, "")          // line and doc comments
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^[A-Za-z]+$/.test(s))
+      .map((s) => s.toLowerCase());
+  })();
+
+  it("finds the backend's whole status vocabulary", () => {
+    // The parse is the load-bearing part: a regex that silently matched nothing would make every
+    // assertion below vacuously true, which is the failure mode this kind of test dies of.
+    expect(backendStatuses).toContain("changesrequested");
+    expect(backendStatuses.length).toBeGreaterThanOrEqual(13);
+  });
+
+  it("web has a label for every one", () => {
+    const raw = backendStatuses.filter((s) => eventStatusOf(s).label === s);
+    expect(raw).toEqual([]);
+  });
+
+  it("mobile has the same label for every one", () => {
+    const dart = readFileSync(
+      resolve(__dirname, "..", "..", "mobile/lib/core/utils/event_status.dart"),
+      "utf8"
+    );
+    const labels = new Map<string, string>();
+    const block = dart.slice(dart.indexOf("_labels = {"));
+    for (const m of block.matchAll(/'([a-z]+)':\s*'([^']*)'/g)) labels.set(m[1], m[2]);
+    expect(labels.size).toBeGreaterThan(10);
+
+    const missing = backendStatuses.filter((s) => !labels.has(s));
+    const drift = backendStatuses
+      .filter((s) => labels.has(s) && labels.get(s) !== eventStatusOf(s).label)
+      .map((s) => `${s}: web "${eventStatusOf(s).label}" vs mobile "${labels.get(s)}"`);
+    expect({ missing, drift }).toEqual({ missing: [], drift: [] });
   });
 });

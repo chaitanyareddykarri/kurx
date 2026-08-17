@@ -3,25 +3,35 @@
 Companion to `docs/AUTHENTICATION_HANDOVER.md`. That document covers the authentication workstream;
 this one covers the **external providers and cloud services** a production deployment needs.
 
-Every claim below was checked against the code on 2026-07-19. Where the repository disagrees with the
-intended plan, the repository wins and the gap is called out.
+Claims below were checked against the code on 2026-07-19 and the **provider reality section was
+re-verified on 2026-08-15**. Where the repository disagrees with the intended plan, the repository wins
+and the gap is called out.
 
-> ## ⚠ Read this first: four provider integrations do not exist
+> ## ⚠ Read this first: five provider integrations do not exist
 >
-> Only **two** real provider adapters are implemented: `SnsSmsProvider` (SMS) and `FirebasePushSender`
-> (push). Email, payments, S3 storage and KYC have **dev-only implementations**.
+> **Six** real provider adapters are implemented, all dormant until credentialed: `SesEmailSender`
+> (email, D-284), `SnsSmsProvider` (SMS), `FirebasePushSender` (push), `ClamAvFileScanner` (D-298),
+> `KmsSigningKeyProtector` (D-102a) and `AwsSecretsManagerProvider` (D-101a). **Payments, payouts,
+> S3 storage, KYC and outbound WhatsApp** have dev-only implementations.
 >
-> This is not a "configure it at deploy time" gap. `DependencyInjection.AddProvider` **throws at
-> startup** when a flag names anything other than the dev value:
+> *(This box said "four do not exist — only two real adapters, SMS and push", and listed email among
+> the missing. That was true on 2026-07-19 and wrong from D-284 onward; the table below already
+> contradicted it by marking ClamAV ✅. Corrected 2026-08-15.)*
+>
+> For the boundaries that are still dev-only, this is not a "configure it at deploy time" gap.
+> `DependencyInjection.AddProvider` **throws at startup** when a flag names anything other than the
+> dev value:
 >
 > ```csharp
 > if (value != devValue)
 >     throw new NotSupportedException($"{flag}={value} is not implemented yet; only '{devValue}' is available.");
 > ```
 >
-> So setting `EMAIL_PROVIDER=ses`, `PAYMENT_PROVIDER=razorpay-sandbox` or `STORAGE_PROVIDER=s3` in
-> production **fails the deploy at boot**. It fails closed, which is the right behaviour — but it
-> means these are *development* tasks, not configuration tasks, and they are not scheduled.
+> So setting `PAYMENT_PROVIDER=razorpay-sandbox` or `STORAGE_PROVIDER=s3` in production **fails the
+> deploy at boot**. It fails closed, which is the right behaviour — but it means these are
+> *development* tasks, not configuration tasks, and they are not scheduled. Boundaries with a real
+> adapter (email, SMS, push, scanning, KMS, secrets) are selected by an explicit `switch` instead and
+> are genuine configuration tasks.
 
 ---
 
@@ -31,17 +41,21 @@ intended plan, the repository wins and the gap is called out.
 |---|---|---|---|
 | **SMS** | `SMS_PROVIDER=sns` | ✅ `SnsSmsProvider` | Ready. Blocked only on SNS production access + India DLT. |
 | **Push** | `PUSH_PROVIDER=firebase` | ✅ `FirebasePushSender` | Ready. Needs the service-account JSON. |
-| **Email** | `EMAIL_PROVIDER` | ❌ `ConsoleEmailSender` only | **No email is ever delivered.** Setting `ses` throws at startup. |
+| **Email** | `EMAIL_PROVIDER=ses` | ✅ `SesEmailSender` (D-284) | Ready. Needs a verified SES identity + `SES_FROM_ADDRESS`, IAM credentials and SES production access. Left at the `console` default, **no email is delivered**. *(This row said `ses` throws at startup — untrue since D-284.)* |
 | **Payments** | `PAYMENT_PROVIDER` | ❌ `MockPaymentGateway` only | No real payment can be taken. Setting `razorpay-sandbox` throws. |
 | **Storage** | `STORAGE_PROVIDER` | ❌ `LocalDiskStorage` only | See §3 — this is a data-loss risk on Fargate. |
 | **KYC** | `KYC_PROVIDER` | ❌ `MockKycProvider` only | Verification decisions are simulated. Because they are, `IDENTITY_VERIFICATION_BYPASS` exists (D-323) — see the row below. |
 | **Identity gate** | `IDENTITY_VERIFICATION_BYPASS` | n/a — a switch, not a provider | `true` skips the govt-ID/PAN/bank proofs behind publishing a public event, organizing paid, and receiving a payout. **Production refuses to start with it set**, so this cannot reach production by accident; it is listed here so a reviewer knows the switch exists and that it must be unset in every non-dev environment. Blacklist/risk checks are unaffected. Delete it when a real KYC provider lands. |
 | **WhatsApp** | `WHATSAPP_PROVIDER` | ❌ `ConsoleWhatsAppSender` only | Setting `cloudapi` throws. |
-| **File scanner** | `FILE_SCANNER=clamav` | ✅ `ClamAvFileScanner` (D-298) | Ready. Needs a reachable clamd (`CLAMAV_HOST`/`CLAMAV_PORT`). **Fails closed** — if clamd is down, uploads are rejected, not accepted unscanned. Left at the `none` default, nothing is scanned. |
+| **File scanner** | `FILE_SCANNER=clamav` | ✅ `ClamAvFileScanner` (D-298) | Ready. Needs a reachable clamd (`CLAMAV_HOST`/`CLAMAV_PORT`). **Fails closed** — if clamd is down, uploads are rejected, not accepted unscanned. Left at the `none` default, nothing is scanned. **Required in Production since D-338** — `none` is no longer legal there. |
+| **Signing-key protection** | `SIGNING_KEY_PROTECTION=kms` | ✅ `KmsSigningKeyProtector` (D-102a) | **Required in Production** — the API refuses to start with `none`. Needs a KMS key + IAM permission to wrap/unwrap. |
+| **Secrets** | `SECRETS_PROVIDER=aws` | ✅ `AwsSecretsManagerProvider` (D-101a) | Ready. Every secret resolves through `ISecretProvider`; `configuration` is the dev default. Missing rows for this and KMS were why the box above could claim "only two adapters". |
 
-**Impact on authentication specifically:** auth depends on SMS and push, both of which are real. The
-missing email adapter means the OTP *email channel* and any email-based security alert silently print
-to the console instead of sending. Phone-based auth is unaffected.
+**Impact on authentication specifically:** auth depends on SMS, push and email — **all three now have
+real adapters**, so this is a credentialing task, not a development one. Left at the `console`
+defaults, the OTP email channel and email-based security alerts print to the console instead of
+sending; phone-based auth is unaffected either way. *(This paragraph said "the missing email adapter";
+it landed at D-284.)*
 
 ---
 

@@ -1,4 +1,4 @@
-import { Button, Card, LinkButton } from "@kurx/ui";
+import { Alert, Button, Card, LinkButton } from "@kurx/ui";
 import { requireEventOrg } from "@/lib/event-org";
 import { can } from "@/lib/capabilities";
 import { listOrgTicketTypes, listTicketTypeFields } from "@/lib/api";
@@ -20,7 +20,7 @@ export default async function EventTicketsPage({
   params: { id: string };
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const { session, orgId, caps } = await requireEventOrg(params.id);
+  const { session, orgId, caps, event } = await requireEventOrg(params.id);
   const eventId = params.id;
   // From the capability matrix, not from `role`. `role` is the caller's authority over the event's
   // *representation*, and D-268 is explicit that this is a grant on top of ownership and never its
@@ -38,6 +38,20 @@ export default async function EventTicketsPage({
 
   return (
     <div className="space-y-6">
+      {/* D-363 §4 — price is a field the reviewer assessed, so any change here (including adding a type)
+          sends an approved event back to the queue, and a reviewer holding it refuses the change
+          outright. Both are better learned before the form than from a rejected save. */}
+      {event.status === "approved" ? (
+        <Alert tone="warning" title="This event is approved">
+          Changing a price, a quantity or the list of ticket types returns it to review — that is what a
+          reviewer signed off on.
+        </Alert>
+      ) : null}
+      {event.status === "pendingreview" || event.status === "underreview" ? (
+        <Alert tone="info" title="This event is with a reviewer">
+          Ticket types can&apos;t be changed until it comes back.
+        </Alert>
+      ) : null}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-text">Ticket types</h2>
         {ticketTypes.length === 0 ? (
@@ -53,8 +67,29 @@ export default async function EventTicketsPage({
                       {t.registration_mode}{t.is_competition ? " · competition" : ""}{t.is_all_access ? " · all-access" : ""}
                     </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-text">{t.price_paise > 0 ? formatCurrency(t.price_paise) : "Free"}</span>
+                  {/* D-366 — a banded ticket has no single price, so the headline says "from" and the
+                      table below carries the rest. Printing `price_paise` bare would show the cheapest
+                      band as if it were the price, on the one screen where the organiser edits it. */}
+                  <span className="shrink-0 text-sm font-semibold text-text">
+                    {t.price_tiers?.length
+                      ? `from ${formatCurrency(Math.min(...t.price_tiers.map((b) => b.price_paise)))}`
+                      : t.price_paise > 0 ? formatCurrency(t.price_paise) : "Free"}
+                  </span>
                 </div>
+                {/* The bands themselves. The edit form below cannot yet change them — it PATCHes the
+                    row without them, which the server now reads as "leave them alone" — so this is the
+                    only place an organiser can see what a team of each size actually pays. */}
+                {t.price_tiers?.length ? (
+                  <ul className="mt-3 space-y-0.5 text-xs text-muted">
+                    {[...t.price_tiers].sort((a, b) => a.min_size - b.min_size).map((b) => (
+                      <li key={`${b.min_size}-${b.max_size}`}>
+                        {b.min_size === b.max_size ? `${b.min_size} members` : `${b.min_size}–${b.max_size} members`}
+                        {" — "}
+                        <span className="text-text">{formatCurrency(b.price_paise)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className="mt-4 flex items-center justify-between text-xs text-muted">
                   <span>Sold {t.sold} / {t.quantity}</span>
                   <span className={t.available > 0 ? "text-success" : "text-muted"}>{t.available > 0 ? `${t.available} available` : "Sold out"}</span>

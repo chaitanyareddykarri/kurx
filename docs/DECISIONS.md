@@ -7,6 +7,23 @@ Every entry: **what was ambiguous / blocked → what we chose → why (simplest 
 > explicit ⚠️ **SUPERSEDED / partly superseded** marker naming its replacement — never assume the highest
 > D-number on a topic is the only one that matters, and never assume an old entry is still in force.
 >
+> **Three numbers name two unrelated decisions each — always read both.** Concurrent sessions writing
+> this log collided on `D-105`, `D-114` and `D-299`, and the log is append-only so they are not
+> renumbered (100+ citations across code and docs point at them). A `grep` for one of these returns two
+> different decisions; neither supersedes the other.
+>
+> | Number | First entry | Second entry |
+> |---|---|---|
+> | **D-105** | Local toolchain standardised — one Flutter SDK, one Android SDK | Event Chat Phase 2A — lifecycle correctness wiring |
+> | **D-114** | Authentication workstream frozen with three open defects (AM0–AM10 handover) | Phase 5 — Presence, typing and read receipts: backend |
+> | **D-299** | Two gates that had drifted: the category filter, and the online event that could never publish | Production-readiness audit fixes |
+>
+> Repeats of `D-101`–`D-104` are **not** collisions: those are lettered sub-decisions (`D-101a`,
+> `D-102a`, …) and a plain digit match catches them. `D-266` legitimately carries 11 milestone
+> headings (M1–M8 plus addenda). Before claiming a new number, take the highest that exists
+> (`grep -oE '^## D-[0-9]+' docs/DECISIONS.md | sort -t- -k2 -n | tail -1`) rather than the last line
+> in the file — and re-check it immediately after writing, because another session may have taken it.
+>
 > **Dated entries below cite documents that no longer exist** — `docs/history/**`, `REMAINING_WORK.md`,
 > `BACKEND_ARCHITECTURE_COMPLETION.md`, `PLATFORM_AUDIT_M8.md`, `EVENT_CREATION_V2.md` and others were
 > deleted on 2026-08-08 once the code they described had shipped or been replaced. Those citations are
@@ -13699,3 +13716,1055 @@ leaving every other public archetype publishable with no institution behind it.
 points at the self-representation row D-268 recorded as debt. Making it nullable is now *provably* safe
 — a Private event never reaches the org-keyed money spine, which was the reason nullability was rejected
 twice — but it is ~140 non-test call sites plus a migration, and belongs in its own entry.
+
+---
+
+## D-354 · A step's Continue button means "this step is valid", not "the user typed something" (2026-08-15)
+
+**Status: ACCEPTED.** Fixes the create-event wizard on web and Flutter; adds one backend rule.
+
+**The defect.** The web wizard's `canNext` was a hand-written boolean disjunction with one clause per
+step, each written independently as its step was built. Three steps had **no clause at all** — Content,
+Location and Eligibility appeared as a bare `step === 6 || step === 7 || step === 9`, an unconditional
+pass. Details checked 3 of the 9 fields it renders. Windows checked pair ordering and nothing else.
+Flutter was worse: two getters (`_basicsValid` on Details, `_representingValid` on
+Representing/Pricing) gated two step positions, with a comment stating that every other step was
+ungated on purpose.
+
+That comment was right about optional steps and wrong about the steps that are not. The expensive case
+is Location: `ValidateMode` refuses an Online or Hybrid event with no join link
+(`online_url_required`), so an organiser chose Online, left the link blank, walked four more steps and
+lost the lot to a refusal at submit. Eligibility could send an inverted age range (`invalid_age_range`);
+Pricing could send an unnamed ticket; a `maxTeams` of 0 was silently **discarded** by
+`ApplyFieldGroups` (`MaxTeams <= 0 ? null`), so capping teams at zero meant no cap and no warning.
+
+**The rule.** Every step derives Continue from one per-step validation result — `currentStep → the
+step's rules → errors → enabled/disabled` — computed from current state on every render. A step with
+genuinely no required field returns an empty result: an explicit statement that it is all-optional,
+which is what the old unconditional pass was reaching for and could not distinguish from an omission.
+
+**Continue is also guarded, not merely disabled.** `disabled` is presentation; a programmatic click or
+a stale render still reaches the handler. `goNext` re-reads the same result before advancing.
+
+**Step completeness is not the server contract, and does not pretend to be.** The Details step now
+requires all nine fields it asks for — title, subtitle, description, start, end, venue name, city,
+venue address, capacity — while `CreateEventBodyValidator` still takes six of them as optional. That is
+deliberate and one-directional: a step that asks for a field and then waves it through is asking for
+nothing, and the wizard may be stricter than the API it feeds. It must never be looser, which is what
+every other rule here mirrors from an existing server refusal.
+
+**Two clocks for the past-date rule, on purpose.**
+
+| Layer | Floor | Why |
+|---|---|---|
+| Picker `min` + `validateDetails` | the current **instant** | §4's rule: today at 16:00 is invalid at 16:20. The organiser is watching the field. |
+| `CreateEventBodyValidator` | start of the current **UTC day** | A start typed at 16:35 and submitted six steps later at 16:41 is an honest organiser, not an attack, and must not take a 400. |
+
+Day granularity still refuses every genuinely past date, and a future instant can never fall below it —
+so the backend rule has **no false refusals**. UTC rather than the body's `Timezone`: resolving an
+arbitrary IANA id inside a validator would put a third clock into a flow that already reconciles two
+(D-289). The rule is on **create only**: `UpdateEventBodyValidator` must not carry it or an organiser
+could never correct a typo on an event that has already run, and `CloneAsync` copies a finished event's
+dates by design.
+
+**Fallout, fixed rather than tolerated.** D-353 landed without updating two test fixtures that create
+Public events on the Personal path; both now 409 `representation_required`. Twelve cases got a verified
+org; `A_self_represented_event_needs_no_authorization` moved to a Private type (the only shape
+self-representation still has); and `An_archetype_that_requires_representation_refuses_a_self_represented_event`
+now asserts the **create** refusal, because D-353 moved that rule from publish to create and widened it
+past the archetype that used to own it.
+
+---
+
+## D-355 · What Create Event collects, a reviewer and an attendee must be able to read (2026-08-15)
+
+**Status: ACCEPTED.** No API change — three client mappings that were never written.
+
+**The defect.** D-265's six field groups — content, legal, schedule windows, location detail,
+eligibility, commerce — are validated by the wizard, stored on `events`, and returned by
+`GET /v1/events/{id}`. **No client read them.** Verified live: the wire body carries 44 top-level fields
+and all six groups; the public web page rendered none of them, and Flutter's `EventDetailDto` mapped
+none of them.
+
+So an organiser could set an 18+ rule, a registration deadline, a refund policy and a consent statement
+that `RegistrationConsent` records each acceptance against — and the person deciding whether to register
+saw none of it. The rules a registration is subject to were only ever legible *after* it.
+
+**The admin half is worse.** The review queue's row (`AdminEventView`) carries 29 fields and **not one
+is the description**. A reviewer deciding whether a public event may carry Kurx's name into discovery
+saw a title, a category, a city, a venue name, a capacity and a date. The queue card deep-linked to the
+event workspace "for the rest" — but that workspace's Overview tab renders the same list row, so the
+description and every field group appeared on **neither** screen.
+
+**Fixed at the client boundary, because that is where the mapping stopped.** `GET /v1/events/{id}`
+already returns everything and `CanViewAsync` already admits `kurx_admin` **and** `VerificationReviewer`
+to an event in any status (D-191). The console simply never called it. No new endpoint, no new
+server-side DTO, no widening of what the API exposes.
+
+**What is deliberately still not shown.**
+
+| Field | Withheld from | Why |
+|---|---|---|
+| `meeting_password` | reviewer **and** attendee | Confirmed registrants only. It is already absent from `EventLocationDetailView`, and no review decision depends on it. |
+| `commerce` (platform fee, tax) | attendee | Organiser accounting. |
+| `capacity` | attendee | A raw ceiling is not a scarcity signal; ticket tiles already answer "N left" from the authoritative inventory pool. |
+| `result_date`, `certificate_release_at` | attendee | Meaningful only to a participant, and the archetype may not support them at all (D-327). |
+
+**"Any" is not a rule.** `GenderRestriction` defaults to `Any` server-side; every surface maps it to
+absent so it cannot render as a restriction the organiser never set. Likewise a consent statement is
+dropped unless `requires_consent` is true, so wording left behind by a since-disabled switch cannot
+appear binding.
+
+**Verified against the live stack**, not only against types: an event was created through the API with
+every group populated, submitted, reviewed, approved, published, and read back — anonymous callers got
+404 on it as a draft (never 403, D-018) and 200 once published, and the public body carried no review,
+risk, fraud or moderation field.
+
+---
+
+## D-357 · A price needs a unit, and Kurx already had one — nothing consumed it (2026-08-15)
+
+**Status: ACCEPTED.** Phase 0 of a four-phase change. Records what exists before any of it moves.
+
+**The report was "the Pricing step assumes 1 ticket = 1 person".** The step does. The *domain* does not.
+
+**What already exists — do not re-invent any of it.**
+
+| Concept | Where it already lives |
+|---|---|
+| Pricing unit | `TicketType.PricingUnit` — `PerTicket \| PerGroup` |
+| Registration unit | `TicketType.RegistrationMode` — `Individual \| Group \| Both` |
+| Team size | `TicketType.GroupMin` / `GroupMax` |
+| Competition semantics | `TicketType.IsCompetition` (account required, invite-only joins — D-036) |
+| Team subsystem | `Team`, `TeamMembership`, `TeamInvite`, `TeamJoinRequest`, `TeamPolicy` + full API (Phase 10) |
+| Which events support teams | the `teams` capability, per archetype (D-266 M2) |
+| Write contract | `TicketTypeBody` accepts pricing unit, mode and both group bounds |
+| Read contract | `TicketTypeView` returns them — **including on the anonymous `GET /v1/events/{id}/ticket-types`** |
+
+So there is no missing abstraction. `PricingUnit` **is** the "per participant / per team" concept, it is on the
+wire in both directions, and a second one would be the duplication this entry exists to prevent.
+
+**What is actually broken.**
+
+1. **The wizard hardcodes the unit.** `createEventWizardAction` sends a literal
+   `pricingUnit: "PerTicket", registrationMode: "Individual"` on every event it creates. Two lines that
+   make a capable API uni-modal.
+2. **Paid group registration is refused outright.** `OrderService.CreateOrderAsync` answers
+   `paid_group_not_supported_yet` for any non-Individual mode on the paid path. Exposing "₹2,000 per team"
+   today would produce an event nobody can pay for — which is why the UI is fixed *last*, not first.
+3. **`PricingUnit` is stored, transmitted, and read by nothing.** No branch in the money path consults it.
+   Declared-but-unconsumed — the D-018 pattern at the pricing layer.
+4. **Capacity counts participants, not registrations.** A group order consumes 1 pool unit and *each*
+   `AddMemberToGroupAsync` consumes 1 more. A team of 4 therefore costs 4 units, so `Quantity = 50` with a
+   team size of 3–5 admits 10–16 teams, not 50. Nothing says so anywhere.
+5. **Three numbers claim to bound teams.** `TicketType.GroupMin/GroupMax`, `TeamPolicy.MinSize/MaxSize`
+   (Phase 10, per ticket type) and `Event.MaxTeams` (D-265 eligibility). Only the first is enforced at
+   registration; `Event.MaxTeams` owns no inventory and gates nothing.
+
+**The rule this change establishes.** `PricingUnit` is authoritative for **both** the amount charged and the
+number of inventory units taken:
+
+| PricingUnit | Mode | Charged | Units at order | Units per join |
+|---|---|---|---|---|
+| `PerTicket` | `Individual` | `price × 1` | 1 | — |
+| `PerTicket` | `Group` | `price × groupSize` | 1 | 1 |
+| `PerGroup` | `Group` | **`price × 1`** | **1** | **0** |
+
+The `PerGroup` row is the whole change: one charge and one seat for the team, and joining it consumes
+nothing further, because the team slot was already bought.
+
+**Back-compatible by construction, not by migration.** Every existing row is `PerTicket`/`Individual` — the
+entity defaults, and the only two writers (the wizard's literal and the ticket-type API) have never produced
+anything else; confirmed against the database. The new behaviour is reachable only through `PerGroup`, so no
+existing event's capacity or price is reinterpreted and no backfill is required.
+
+**Why the wizard order does not change.** Pricing sits at step 3 because D-343 uses the free/paid answer to
+select the verification tier the *gate* clears before the form opens. Moving it would break that dependency.
+Instead the step keeps only the monetization question, and the registration **unit** is configured after
+Type — where the archetype, and therefore the `teams` capability, is finally known.
+
+**Deliberately out of scope.** Team formation, rosters, invites and substitution already shipped in Phase 10.
+This entry adds no team management; where a paid purchase needs a team to exist it uses the existing
+subsystem. The V3 roadmap named this same gap — "team-slot inventory + the team-registration purchase flow
+(§6.5) are deferred to the competitive-purchase phase" — and this is that phase, scoped to purchase only.
+
+---
+
+## D-358 · Who owns team size, who owns the team cap, and who owns nothing (2026-08-15)
+
+**Status: ACCEPTED.** Phase 2 of D-357. Resolves three overlapping numbers without adding a fourth.
+
+**The overlap.** Three fields looked like they bounded teams:
+
+| Field | Owns | Enforced where |
+|---|---|---|
+| `TicketType.GroupMin` / `GroupMax` | **team size at purchase** — the bound people are charged against | `CreateOrderAsync` → `invalid_group_size` |
+| `TeamPolicy.MinSize` / `MaxSize` | **team size during formation** — lock, incomplete-team policy, substitution (Phase 10 §6.3) | `TeamService` |
+| `Event.MaxTeams` | **nothing** | nowhere |
+
+**The resolution is upstream/downstream, not a merge.** `SyncPolicyAsync` already seeds `TeamPolicy` from
+the ticket type's bounds and re-syncs on change — the ticket type was *already* the upstream owner, and the
+two subsystems are about different moments (buying a team slot vs running the team that occupies it), so
+collapsing them would lose the formation rules Phase 10 shipped.
+
+**The hole that is closed.** `SetPolicyAsync` accepted any `MinSize`/`MaxSize`, so a policy could be widened
+back out of step: an organiser selling a 2–4 team entry could set the policy to 2–10, and the sixth member
+would join a team whose registration bought room for four. The policy may now **narrow** within the sold
+bounds and may not exceed them — `size_below_ticket_type` / `size_above_ticket_type`.
+
+**Registration-unit capacity has one owner and it is unchanged**: `TicketType.Quantity` → `InventoryPool.Total`.
+What D-357 changed is only what a *unit* means — a seat under `PerTicket`, a team under `PerGroup`.
+
+**`Event.MaxTeams` is advisory and stays advisory.** It is a D-265 eligibility field: written, echoed on the
+eligibility view, and enforced by nothing. Wiring it to inventory would give the platform a second capacity
+authority competing with the pool that V3 §17.1 made authoritative — the exact mistake §17.1 exists to
+prevent. For a `PerGroup` ticket the real answer to "how many teams" is `TicketType.Quantity`, and that is
+what the organiser sets and every surface now reads. `Event.MaxTeams` is left as the display-level hint it
+already was; a follow-up may retire it, which is a taxonomy decision rather than a money one.
+
+**No migration.** Phase 1's two nullable `orders` columns are the only schema change in this program.
+
+---
+
+## D-359 · The team a purchase creates is the real one, and a correct refusal says why (2026-08-15)
+
+**Status: ACCEPTED.** Closes the two follow-ups D-357 named, and corrects one thing D-357 reported wrongly.
+
+### The Team a competition purchase produces
+
+Phase 10 shipped `Team`/`TeamMembership`/`TeamPolicy` as the authoritative model and left the purchase
+`Group` as its legacy mirror — with the §6.5 team-slot purchase flow deferred. `Team.RegistrationId`
+carries the note *"Null this phase — the field exists so the later competitive-purchase phase can link
+without a migration."* **This is that phase**, and the field is now filled.
+
+A group registration on a **competition** ticket type materialises the Team beside the Group:
+`ITeamService.MaterialiseForGroupAsync`, called from all three money-path sites (free create, paid
+capture, member join), inside the same transaction as the Group it mirrors.
+
+**Not routed through `CreateTeamAsync`**, deliberately. That is the user-facing formation entry point and
+enforces things a completed purchase has already settled — formation mode, `MaxTeamsPerPersonInEvent`, a
+required name. Sending a paid registration through it would let a policy refuse a team someone has been
+charged for. This is the projection side; the purchase *is* the authorisation. Same entities, same policy,
+same slug rule — **no second team subsystem**, which the request forbade and which Phase 10 already built.
+
+Idempotent in three directions — no competition ticket type, team already made, member already on the
+roster — so a re-delivered webhook or a re-run projection cannot fork a team or double a roster. The slug
+is derived from the group number, which `groups (EventId, GroupNumber)` already makes unique.
+
+**Teams still exist only where competition does** (V3 §6): a plain group purchase produces a Group and no
+Team, exactly as before.
+
+### A refusal that names itself
+
+D-357's report flagged a `403 forbidden` when an organiser published an approved paid event, and guessed
+at an authority defect. **That guess was wrong.** The rule is D-047 working as designed —
+`if (isPaid) { … if (!isReviewer) return Fail("forbidden"); }` — a paid event's final publish belongs to a
+reviewer.
+
+What was defective is the *code*. Every sibling refusal on that path names itself —
+`paid_event_requires_review`, `pending_org_verification`, `representation_vacant`,
+`organizer_not_verified_for_paid` — and this one said only "forbidden". An organiser who had cleared
+review, verification and readiness was told "no" with nothing to act on, which is precisely why it was
+first read as a bug. It now answers **`reviewer_required`**: the same 403, the same rule, and a code that
+already exists three lines above for the identical "you may manage this event, but this decision is not
+yours" case.
+
+---
+
+## D-360 · There is one number for how many teams may enter, and it is the pool's (2026-08-15)
+
+**Status: ACCEPTED. Supersedes D-358's "leave it advisory".**
+
+D-358 recorded `Event.MaxTeams` as an advisory field enforcing nothing and left it there. That was half an
+answer: a field that is *shown as fact* and *means nothing* is still a competing source of truth. An
+organiser could type 50 while the team ticket sold 20 slots, and both numbers appeared, on different
+screens, as the answer to the same question.
+
+**`EventEligibilityView.MaxTeams` is now derived**: the sum of `Quantity` across the event's `PerGroup`
+ticket types — the registration unit's own inventory, which is what the pool draws against (V3 §17.1) —
+falling back to the stored column only for an event with **no** team ticket, where there is nothing to
+contradict and the figure is just the organiser's note.
+
+**Derived, not enforced.** Wiring the stored column *into* inventory would give the platform a second
+capacity authority competing with the pool, which is the mistake §17.1 exists to prevent. Deriving on read
+leaves exactly one number a client can see, needs no migration, and reinterprets no stored row.
+
+**One trap worth naming.** The first implementation used `SUM` in SQL, which answers **0** over an empty
+set rather than null — reporting "0 teams may enter" for every event with no team ticket at all, exactly
+inverting the fallback. The quantities are listed and summed in memory instead; an event has a handful of
+ticket types, so the list costs nothing and cannot lie.
+
+## D-361 · A measured number in a doc carries its derivation, or it is not written down (2026-08-15)
+
+**Status: ACCEPTED and applied.** No code behaviour changes; this is a documentation convention with a
+one-line enforcement habit.
+
+**What was ambiguous.** A documentation-accuracy audit read every file in `docs/` against the running
+system. The findings were not spread evenly across kinds of claim — they clustered almost perfectly on
+one kind. Rules, vocabulary and architectural statements had survived months intact; **counts had
+rotted almost without exception**:
+
+| Claim | Doc said | Reality (2026-08-15) |
+|---|---|---|
+| `KurxDbContext` DbSets | 70 | **162** (asserted stale in *two* files) |
+| EF migrations | 19 | **91** (same, two files) |
+| Recurring Hangfire jobs | 15 | **18** — contradicted 100 lines above in the same file |
+| Endpoint files | 70 | **72** |
+| Domain entity files | 14 listed | **42** |
+| Web routes | 88 / 91 | **93** (four files, three different wrong values) |
+| Flutter pages | 91 | **95** |
+| Operations declaring a response schema | "only 15 of ~424" | **496 of 535** — that project had shipped |
+| Real provider adapters | "only two" | **six** — while the same table marked a third ✅ |
+
+The pattern is mechanical. A number is true on the day it is written and false the moment the code
+moves, and nothing in a Markdown file fails when that happens. Two figures (`DECISIONS.md` entry count,
+the backend test baseline) moved **during the audit that was correcting them** — D-353 → D-360 and
+1825 → 1831 in a single afternoon.
+
+**What we chose.** A measured number appears in a doc only in one of three forms:
+
+1. **With its derivation inline** — `162 DbSets (grep -c 'public DbSet<' …/KurxDbContext.cs, 2026-08-15)`.
+   The reader can refute it in one command, and the next writer knows how it was obtained.
+2. **As a deferral to the single live authority** — the backend test baseline lives in `.claude/CLAUDE.md`
+   §9 and `.claude/memory/testing-standards.md`, updated per measured run. Every other file points at
+   those instead of restating them. Restating is what produced "three numbers, three dates, one suite".
+3. **As a dated historical measurement, explicitly labelled** — audit findings against a named commit
+   are legitimate history and stay.
+
+A count with none of the three is drift waiting to happen: prefer expressing the thing by **scope**
+("every route not covered by T1") over a headcount that will be wrong next month.
+
+**Why this and not a linter.** A gate that greps docs for integers and re-derives them was considered
+and refused: the same digit means a dozen different things across these files, most counts have no
+mechanical source, and the failure mode of a wrong gate here is worse than the drift — it teaches people
+to bypass it. The two counts that *do* have a mechanical source are already gated, and that is why they
+were correct when everything around them was not: `docs/api/openapi.json` is regenerated and CI fails on
+any diff (D-259), and `scripts/openapi-response-check.mjs` ratchets response coverage (D-246/D-313).
+**Where a cheap gate exists, it worked perfectly. This decision covers only the remainder**, which is
+prose, and prose is governed by a habit rather than a build step.
+
+**Applied in this pass.** `architecture/overview.md` (7 counts), `roadmap/README.md` (3 stale blocks),
+`EXTERNAL_SERVICES_AND_PROVIDERS.md` (email + push sections, DbSets/migrations),
+`deployment/PRODUCTION_PROVIDERS_CHECKLIST.md` (provider reality), `PROJECT_HANDBOOK.md` (banner),
+`ui-ux/inventory-{web,mobile}.md` (rebuilt from the filesystem and verified 93=93 / 95=95),
+`ui-ux/regression-criteria.md`, `auth/AUTHENTICATION_TESTING.md`, `architecture/PLATFORM_FLOW_MAP.md`,
+`architecture/diagrams.md` (the event-lifecycle state diagram was missing 4 states and 5 transitions
+added by Phase 14), `mobile/README.md`, and the stale provider comment in
+`Kurx.Infrastructure/DependencyInjection.cs`.
+
+**One consequence worth naming.** `inventory-web.md` had listed its own 88 pages twice — once as the
+inventory and once under *"Non-visual route handlers (no UI — excluded from redesign scope)"* — so every
+web page was simultaneously in scope and excluded from it. A duplicated list is the same failure as a
+stale count: two copies of a fact, one of which stops being true. One source per fact, always.
+
+**Refused.** Deleting the discharged root trackers (`UI_REDESIGN_PROGRESS.*`, `UI_WORKFLOW_REPORT.md`)
+was proposed and **refused on inspection** — they still hold the only written record of open work
+(phases 46/47/51, 13 deferred items, findings F5–F27). They were reframed as historical records
+instead. "Superseded" is a claim to verify by reading, not to infer from a date.
+
+
+---
+
+## D-362 — Approval grants permission to publish; it never publishes
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Supersedes nothing; corrects the enforcement of D-266 M4**
+
+### Decision
+
+`Approved` is a **real intermediate state**: reviewed, permitted to go live, and **not public**. Approval
+transfers the decision back to the creator; it does not perform it.
+
+| Status | Creator may publish | Reviewer/Admin may act | Publicly visible |
+|---|---|---|---|
+| `Draft` | yes if free (D-047); **no if paid** | — | no |
+| `PendingReview` / `UnderReview` | **no** — `reviewer_required` | review, decide | no |
+| `ChangesRequested` / `Rejected` | no (resubmit) | — | no |
+| `Approved` | **yes**, free or paid | may also publish | **no** |
+| `Scheduled` | yes (`open_registration`) | — | no |
+| `Published` | — | — | **yes** |
+
+Publication is the only route to public visibility. No other status reaches a public surface.
+
+### Why
+
+An audit of the lifecycle found the reviewer gate on `publish` nested inside `if (isPaid)`. That single
+placement was wrong in both directions:
+
+- **A free public event could bypass review entirely.** Reproduced over HTTP as the creator:
+  `submit_for_review` → `200 pending_review`, then `publish` → `200 published`. Live, unapproved, and
+  pulled out from under a reviewer who may have been holding it. `EventStatusWorkflow` declares
+  `PendingReview → Published` and `UnderReview → Published` legal, and `ManageLifecycle` belongs to the
+  creator (D-268), so nothing else stopped it.
+- **A paid event could not act on its own approval.** The same gate demanded a *reviewer* press publish
+  even from `Approved`, so approval granted the creator nothing they could use.
+
+Both are one defect: the code had no concept of *approval as permission*, only of *approval as
+publication*.
+
+Separately, `EventExposure` — the file whose own docstring calls it *"the one rule for public
+exposure"* — tested Product + Visibility + not-deleted and said nothing about status. Nothing leaked,
+because its single public-surface consumer (`SearchIndexService`) wrote its own status check beside the
+call. But a rule every caller must silently complete is two sources of truth wearing one name, and the
+next caller to forget is the leak.
+
+### What changed
+
+- **One gate, keyed on the target state, not the action.** `PendingReview`/`UnderReview` → creator
+  refused with `reviewer_required`. `Approved` → creator allowed. It sits on `target == Published`, so
+  both doors (`publish` and `publish_approved`) pass through it.
+- **The paid rule is stated as "not from `Draft`"** rather than as a list of reviewed states. The list
+  was wrong: it omitted `Scheduled`, so a paid event routed `Approved → schedule → open_registration`
+  (D-319 / V3 §14.1) was refused `paid_event_requires_review` *after* being approved — a dead end.
+  `Draft` is the only status reaching `Published` that has not been through review, so it is the only
+  one to name. D-047 is unchanged.
+- **`EventExposure.PubliclyVisible` and `IsPubliclyVisible` now require `Status == Published`.**
+  `IsExternallyExposed` is the named opt-out for `ApprovalService`'s `IfExternal` condition, which must
+  ask "will this face an external audience once live" *while the event is still in review*.
+- **The clients were telling the creator the opposite of the rule.** `OPEN_HOST_STATES` (web) and
+  `_openHostStates` (Flutter) both omitted `approved`, contradicting the flow written in the comment
+  directly above each — "Admin Review → Approved → Host Workspace Opens". An approved event drew an
+  hourglass reading *"Opens after approval"*, and the one action its host now had, Publish, lived behind
+  a link the page would not offer. Flutter's progress rail had no `Approved` step at all and drew an
+  approved event as still "Submitted for review"; it now has one, reading *"Cleared review — publish
+  when you are ready"*. Mobile's error map gained `reviewer_required`, mirroring `PROBLEM_COPY`.
+
+### Verification
+
+`LifecycleVisibilityTests` (13) walks every pre-publication state over HTTP as an **anonymous** stranger
+— `Draft`, `PendingReview`, `UnderReview`, `ChangesRequested`, `Rejected`, `Approved` — against the slug
+route and all six discovery feeds, plus the bypass itself, the creator-publishes-their-own-approved-paid
+case, and the two legitimate paths that must survive (free `Draft` self-publish; paid `Draft` refused).
+`EventExposureTests` gained the lifecycle axis as a `[Theory]` over all nine non-published states, and
+one case pinning that `IsExternallyExposed` ignores status *on purpose*.
+
+Asserting on a service predicate would have passed throughout the window in which this shipped. Every
+case is a real request.
+
+---
+
+## D-363 — Leaving `Approved`: withdrawal, cancellation, and what may change after approval
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Implemented in full (§3 first, then §1/§2/§4)**
+
+### The problem
+
+`Approved` has no exit but forward. `EventStatusWorkflow` offers it `publish_approved`
+(→ `Published`/`Scheduled`) and `schedule` (→ `Scheduled`) — and nothing else. It is absent from
+`withdraw` (`PendingReview → Draft` only), from `cancel` (Draft, PendingReview, UnderReview, Published,
+Scheduled, Live), and from `archive` (Draft, Closed, Cancelled, Completed).
+
+So a creator who is approved and then decides not to run the event is stuck holding it, and a reviewer
+who approves in error cannot take it back. D-362 makes this sharper, not softer: `Approved` is now a
+state an event can genuinely *sit* in, rather than a moment it passed through on the way to live.
+
+### Decision
+
+**1. `Approved → Draft` is the withdrawal path, and only while the event is financially inert.**
+An approved event has no orders — it was never public, so nothing could be sold. Returning it to `Draft`
+therefore destroys no financial history, and `Draft` is where its creator can edit and resubmit.
+Implemented as an extension of the existing `withdraw` action, which already means exactly this.
+
+**2. Cancellation is for events that cannot be undone, and stays terminal.** `Approved → Cancelled` is
+added for the creator who is abandoning the event outright rather than reworking it. D-101 is unchanged:
+`Cancelled` is terminal, never resurrected, cloned instead.
+
+**3. An event that has carried commerce or attendance is never deleted. IMPLEMENTED.**
+
+This was not a future risk. The route was already open, through a different door than the one this
+decision was written about:
+
+```
+Published (with orders) → unpublish → Draft → delete
+```
+
+`DeleteDraftAsync` checked only `Status == Draft`; `unpublish` returns a Published event to Draft; and
+delete was at the time a **hard** `db.Events.Remove`. **46 tables cascade from `events`** — orders,
+tickets, registrations, certificates, passes, credentials, admissions — so that sequence destroyed the
+financial and attendance record silently and unrecoverably. Found live: the dev database held a Draft
+event with an order already sitting on it.
+
+*(The delete itself is now soft — **D-364**. These guards stand regardless: they are what stops the
+attempt, and D-364 is what stops the attempt from destroying anything if a future path reaches it.)*
+
+Both ends are now guarded, against one shared predicate
+(`HasCommerceOrAttendanceAsync` — any order, ticket or registration):
+
+| Door | Rule | Error |
+|---|---|---|
+| `unpublish` | refused once the event has commerce or attendance | `event_has_history` |
+| `DeleteDraftAsync` | refused likewise, regardless of how Draft was reached | `event_has_history` |
+| `TicketTypeService.DeleteAsync` | refused if any `order_item` references the type | `tickets_already_sold` |
+
+The entrance alone was not enough. A guard on the one path you thought of holds only until someone adds
+a second path, so the exit is checked too — the delete refuses even if something else puts the event
+back in Draft.
+
+The ticket-type case is the same bug one level down: `order_items` cascades from `ticket_types`, and the
+existing guard asked `sold > 0` — what is held *right now*, not what ever happened. A type whose every
+order was refunded read zero, deleted, and took its order lines with it, leaving orders whose total
+reconciled against nothing. That is not a corrected record; it is a falsified one.
+
+**Order items only.** `passes` cascades from `ticket_types` as well and was briefly guarded on too. That
+was wrong: a `Pass` is the 1:1 *product mirror* of a ticket type — `SyncPassAsync` creates one for every
+type at creation, not at purchase — so its existence is not evidence of a sale, and deleting it with its
+type is correct. Guarding on it blocked deleting any ticket type at all. The full suite caught it
+(`TicketTypeTests.Owner_can_delete_unsold_ticket_type`), which is the argument for running the whole
+thing rather than the tests you wrote.
+
+An event with history ends at `Cancelled` (with refunds, D-101) or `Archived`. Never at deletion.
+
+**Swept, and found already safe:** organizations cascade to events but have no DELETE endpoint; users
+cascade to events but account deletion *anonymizes* rather than deletes (D-263), so the row survives and
+the cascade never fires; `event_categories` cascades to events but `CategoryService.DeleteAsync` already
+refuses with `category_in_use`. There is no admin force-delete for events.
+
+**4. Approval binds to what was reviewed.** `EventStatusWorkflow.IsEditLocked` covers `PendingReview`
+and `UnderReview` only, so an `Approved` event is today **fully editable with no re-review** — a creator
+can be approved, change the price, the venue, the dates and the description, and publish something no
+reviewer ever saw. Fields split three ways:
+
+| | Fields | Rule |
+|---|---|---|
+| **Free to change** | cover image, description prose, agenda/schedule detail, FAQ, contact | edit freely |
+| **Requires re-review** | title, category/archetype, ticket price, capacity, dates, venue/online URL, representation, eligibility, legal/authorization | editing returns the event to `PendingReview` |
+| **Locked** | product (Public/Private), representing organization | not editable after approval — changing either invalidates the eligibility gate the event was created under (D-323) |
+
+### Why not the alternatives
+
+- **A distinct `Withdrawn` state** was rejected: it would be a `Draft` that cannot be edited, which is
+  strictly less useful, and every list, filter and badge across four surfaces would have to learn it.
+  `Draft` already means "mine, not public, editable".
+- **Deleting the event** was rejected outright. It is unnecessary here (nothing was sold) and dangerous
+  as a precedent: the moment `Approved → Draft → Delete` exists as a generic escape route, it exists for
+  events that *do* carry financial history. §3 is what keeps that shut.
+
+### What is and is not built
+
+**Built and tested:** §3 in full — both event guards, the ticket-type guard, the shared predicate, and
+`event_has_history` copy in `PROBLEM_COPY` and the Flutter status screen.
+`LifecycleDeletionGuardTests` (7) covers each door, the full `unpublish → delete` route end to end, the
+refunded-ticket-type case, and — as importantly — that an untouched draft and an unsold ticket type
+still delete, so the guard does not swallow the case the endpoint exists for.
+
+**§1, §2 and §4, built after §3 and tested the same way.** `withdraw` gains `Approved → Draft` and
+`cancel` gains `Approved → Cancelled` in `EventStatusWorkflow`'s tables, so both are ordinary
+transitions and inherit the authority check, the SQL claim and the audit row that every other one has.
+
+§4 is a predicate rather than a lock: `EventStatusWorkflow.RequiresFreshReview(UpdateEventInput)` names
+the material fields, and `EventService.UpdateAsync` sends an `Approved` event back to `PendingReview`
+when one of them is present, clearing `ReviewClaimedBy`/`ReviewClaimedAt` and writing
+`event.review.reopened_by_edit`. **It returns the event to the queue rather than refusing the edit** —
+refusing would mean an approved event can never be corrected and its organiser's only route is to cancel
+and start over. Cosmetic fields (banner, tagline, description prose, FAQ, rules, contact,
+registration/check-in windows) stay free, because a re-review to fix a typo is a rule people route
+around rather than respect.
+
+The predicate asks *is this field present in the payload*, not *did its value change* — so a client that
+posts the whole record on every save (web's `EditEventForm` does) re-reviews on any save from that form.
+That is the safe direction to be wrong in, and the form now says so before you press Save rather than
+leaving you to notice the status badge afterwards.
+
+**The reviewed substance of an event is not all on the event row, and §4 was written as if it were.**
+Three of the fields the table names live behind other endpoints, with their own services, which the
+trigger in `EventService.UpdateAsync` could not see:
+
+| Named in §4 | Actually lives in | Endpoint |
+|---|---|---|
+| ticket price | `ticket_types` | `/v1/orgs/{orgId}/events/{eventId}/ticket-types` |
+| eligibility (who may attend) | `audience_rules` | `/v1/orgs/{orgId}/events/{eventId}/audience` |
+| legal / authorization | `event_authorizations` | `POST /v1/events/{eventId}/authorization` |
+
+So an organiser approved on a free event could raise the ticket to ₹5,000, close the audience down to a
+different set of people, or swap the authorization letter, and publish it themselves — the rule was real
+and the doors beside it were open. This is §3's lesson one level down, and it is why the reopen is now
+**one shared definition** (`EventReviewReopen.IfApprovedAsync`) called from all four services rather than
+four spellings that can drift apart. The authorization case is the sharpest: resubmitting already cleared
+the *authorization's* own verdict, precisely so a swapped letter could not ride an old approval — and the
+*event's* verdict, the one that actually gates publication, was left standing.
+
+Adding a ticket type counts as much as changing one: a free approved event must not be able to acquire
+its whole price list the moment it clears review.
+
+**The same rule at the earlier moment.** `IsEditLocked` froze the event's own fields while a reviewer held
+it, but its prices, quantities, sale windows and audience rule stayed editable — so a reviewer could
+approve a price that had already been replaced underneath them. Those services now refuse with
+`event_under_review` (409, the same code and status the event's own PATCH returns) in `PendingReview` and
+`UnderReview`. `EventAuthorizationService` already did, which is where the rule was borrowed from.
+
+**Left alone deliberately:** the inventory PATCH (`.../inventory`) sets oversell allowance, no-show policy
+and waitlist config — operations, not the capacity §4 names, which is the ticket type's `Quantity`. Media,
+sessions/agenda, speakers and sponsors are the fields §4 explicitly calls free.
+
+`ApprovedEventLifecycleTests` (12 methods, 17 cases) covers the withdrawal, the cancellation, each
+material field individually, a cosmetic edit leaving the approval standing, the loss of the right to
+publish that follows a material edit, the audit row, a price change, a ticket type added after approval,
+an audience-rule change, a replaced authorization letter, the under-review price freeze, and — the case
+that keeps the predicate honest — that editing a `Draft` is unaffected.
+
+---
+
+## D-364 — Events are soft-deleted, as D-025 always said
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Implements D-025 for `events`; extends D-363 §3**
+
+### The gap
+
+D-025 ratified soft deletes via a nullable `DeletedAt` for `events`, `organizations`, `venues`,
+`speakers`, `sponsors` and `ticket_types`, with partial indexes `WHERE "DeletedAt" IS NULL`.
+`organizations` and `event_series` got theirs. **`events` never did.**
+
+The column existed. `EventExposure` filtered on it. Nothing in the codebase ever wrote it — zero
+soft-deleted rows in the database — while `DeleteDraftAsync` did a hard `db.Events.Remove` that cascaded
+through **46 tables**. Textbook D-018 scaffolding: present, plumbed, consumed by nothing.
+
+It surfaced from the other end. The admin console's delete dialog read *"Soft delete — removed from
+every list but not purged"* — the decision's own words, attached to a button doing the opposite. The
+copy was not wrong about the design; the code was wrong about the copy.
+
+### Decision
+
+**`DeleteDraftAsync` sets `DeletedAt`. It never removes the row.** Nothing cascades, so D-363's history
+guard and this are two independent reasons the record cannot be destroyed.
+
+**Invisibility is a global query filter, not 169 hand-written clauses.**
+
+```csharp
+b.Entity<Event>().HasQueryFilter(x => x.DeletedAt == null);
+```
+
+There are 169 `db.Events` query sites across Infrastructure. That count is the argument: a soft delete
+enforced per-caller is a soft delete until the first caller forgets, and then the deleted event
+reappears on exactly one surface with no pattern to it. The filter is the same reasoning as
+`EventExposure` — one rule, one place, and anything that needs the other behaviour says
+`IgnoreQueryFilters()` out loud.
+
+**The unique indexes on `Slug` and `ShortCode` became partial.** A soft-deleted row keeps its slug;
+without the filter, deleting an event and recreating it under the same title collides on a row nobody
+can see — a unique-violation 500 with no visible cause. Migration `EventSoftDeleteFilter`, index-only,
+no data change.
+
+### Why not patch the read paths individually
+
+It was considered and refused. Auditing 169 call sites is not the expensive part — keeping them audited
+is. The filter makes the correct behaviour the default for code not yet written, which is the only
+version of this that stays true.
+
+### Blast radius
+
+None on existing data: nothing had ever set `DeletedAt`, so there were no rows for the new filter to
+hide. Every prior query returns exactly what it returned before.
+
+### Verification
+
+`LifecycleDeletionGuardTests` (9). The soft-delete case asserts through the **API**, not the column —
+"the column got set" is not the claim, "nobody can reach it any more" is. After deleting a draft: 404 on
+the org route, 404 on the public slug, absent from `/v1/me/events`, invisible to the default EF query,
+and still present under `IgnoreQueryFilters()` with `DeletedAt` stamped. Deliberately including the
+**owner's** own read: a delete the deleter can still see is not a delete. A second test proves the slug
+is released and reusable.
+
+### Consequence worth naming
+
+The admin dialog's description is now true rather than aspirational, and was rewritten anyway — "soft
+delete, not purged" understated it. It now says the event and everything on it is erased from every
+surface, and that the action is refused outright once anyone has registered (D-363).
+
+---
+
+## D-365 — Free/Paid is asked once, at the gate, and the wizard cannot change it
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Supersedes D-357's step ordering; D-343 unchanged**
+
+### The problem
+
+The organiser was asked whether their event is free or paid **twice**: once by the create-event gate,
+and again at step 3 of the wizard it opens.
+
+The gate asks for a reason — D-343 selects the verification tier from the product+pricing *pair*, and
+the caller must clear that tier before the form opens at all. The wizard then re-asked the same
+question, and D-357 deliberately pinned the step at index 2 to keep it near that dependency. What
+neither noticed is that a second control does not merely repeat a question — **it can change the
+answer after the decision has been made on it.**
+
+And the two guards were never the same guard:
+
+| | requires `canHostPaid` | requires a verified representation |
+|---|---|---|
+| the gate (`create-event-gate.tsx`) | yes | **yes** (`canRepresentVerified`) |
+| the wizard step (`canChoosePaid`) | yes | **no** |
+
+So a host the gate had refused could re-select Paid inside the form and spend eleven steps on an event
+the server rejects at submit (`organizer_not_verified_for_paid`). Not a money leak — `PaidOrganizerGateAsync`
+holds — but the client contradicted its own gate.
+
+### Decision
+
+**One decision, asked once, read everywhere after.**
+
+1. **The Pricing step is deleted from the wizard.** Web goes from 12 steps to 11 (12 with Authorization).
+2. **`pricing` becomes a read-only value** carried from the gate — a `const` on web, written only in
+   `initState` on mobile. There is no setter, so the form *cannot* change it; this is structural, not a
+   convention someone has to remember.
+3. **Registration states the mode rather than asking it** — "Paid event — chosen during setup" — because
+   the step where the price field appears (or doesn't) is where the organiser needs to know which of the
+   two they are in.
+4. **The two paid-eligibility checks move to Registration**, the first step where money is typed. They
+   still run in the form because Representing is chosen *inside* it, and a paid event under a personal
+   name is refused at submit.
+
+**There is still no pricing-mode field anywhere.** `EventService.IsPaidEventAsync` derives it —
+`AnyAsync(t => t.PricePaise > 0)` — so the ticket price remains the single source of truth and this
+change adds no state to keep in sync. Changing free↔paid after creation is changing a ticket's price,
+which is exactly what D-363 §4 now sends back for re-review.
+
+### Why not keep the step as a read-only confirmation
+
+Considered, and rejected on both surfaces: a step whose only content is a sentence is a click the
+organiser must make for nothing. The sentence belongs where its consequence appears, which is
+Registration. Mobile's step survived one iteration longer than web's, because its ticket fields still
+lived there; they have since moved into a Registration step of its own (D-366), and the step is gone
+there too. **Neither client now has a Pricing step at all.**
+
+### What this does not change
+
+D-343's tier selection, `PaidOrganizerGateAsync`, `private_product_cannot_take_payment`, and the gate's
+own copy are all untouched. D-357's substance — the registration UNIT is asked after Type, because the
+archetype's `teams` capability decides whether team entry exists — stands; only its claim that "Pricing
+does not move" is superseded.
+
+---
+
+## D-366 — A team's price depends on its size, so price is a set of rules, not a number
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Extends D-357; new table `ticket_price_tiers`**
+
+### The problem
+
+D-357 settled what a team price *means*: `PerGroup` charges once for the whole team, whatever its size,
+and one team consumes one inventory unit. What it could not express is the case organisers actually
+have:
+
+```
+2 members → ₹250     3 members → ₹300     4 members → ₹350     5 members → ₹400
+```
+
+A `TicketType` carries **one** `PricePaise` and a `GroupMin..GroupMax` range, so every size in that
+range costs the same. A min/max range describes *eligibility*; it cannot describe a price curve, and
+overloading it to mean one would be a lie in the schema.
+
+### Decision
+
+**A new child table, `ticket_price_tiers`,** one row per size band on a ticket type:
+
+```
+TicketPriceTier { Id, TicketTypeId → ticket_types (cascade), MinSize, MaxSize, PricePaise }
+```
+
+`2–2 → ₹250`, `3–3 → ₹300`, `4–5 → ₹400`. Bands, not single sizes, because a range is the general form
+and equal ends express the specific one.
+
+**One ticket type, one inventory pool.** This is the whole reason a child table wins over the obvious
+alternative of one ticket type per size: `Quantity` stays "how many teams may enter" for the event as a
+whole. Four ticket types would be four independent pools, and "maximum 100 teams" would have no place to
+live.
+
+**Resolution happens in exactly one function.** `OrderService.AmountFor` is already the single authority
+on what a registration costs (D-357); the tier lookup goes there and nowhere else. A team of 3 resolves
+the band containing 3 and pays that band's price — never `price × 3`, which is the bug D-357 exists to
+prevent and which tiers must not reintroduce.
+
+**Refusals, not guesses:**
+
+| Situation | Result |
+|---|---|
+| no band contains the team size | `no_price_for_team_size` — the registration is refused |
+| two bands contain it | `ambiguous_price_rule` — a configuration error, never "pick the first" |
+
+The second is unreachable in a correct database, because overlap is prevented **by the database**, not
+only by service code:
+
+```sql
+EXCLUDE USING gist (ticket_type_id WITH =, int4range(min_size, max_size, '[]') WITH &&)
+```
+
+The code still checks it. A constraint that has never fired and a code path that cannot be reached are
+the two things you want when the alternative is silently charging the wrong price.
+
+**Coverage is validated on write**: the bands must cover `GroupMin..GroupMax` exactly — no gap, no
+overlap — so an organiser cannot save a configuration that would refuse a team size they advertise as
+allowed.
+
+### Backward compatibility, by construction
+
+**No tiers → `PricePaise`, exactly as today.** Every existing ticket type has no tiers, so every existing
+event, order, refund and reconciliation behaves identically. There is no data migration, nothing to
+backfill, and no reinterpretation of an existing paid event — the new path is only taken by a ticket type
+whose organiser has explicitly written bands.
+
+Tiers are refused on anything but `RegistrationMode.Group` (`price_tiers_require_group`): per-participant
+pricing already scales with the roster, and a size band on top of it would be two answers to one question.
+
+### Why not the alternatives
+
+- **One `TicketType` per team size** — no schema change, and it fragments capacity into four pools, turns
+  one registration option into four in every list, and leaves `MaxTeams` meaningless. Rejected.
+- **A jsonb column on `ticket_types`** — cheapest, and there is precedent (`SuggestedAmountsJson`). But
+  this is money resolved at checkout: jsonb gives no exclusion constraint, no foreign key, and no
+  queryable shape for the public price table. Rejected for the same reason money is `bigint` paise rather
+  than a decimal string.
+- **Reusing `GroupMin`/`GroupMax` with a price multiplier** — explicitly rejected: a range is eligibility,
+  a curve is a rule set, and pretending otherwise is what this decision exists to stop.
+
+### Free events
+
+A free event has no tiers and no price. It is not modelled as `₹0` bands: zero-priced rules would make
+"is this event paid?" (`AnyAsync(t => t.PricePaise > 0)`) depend on rows that mean nothing.
+
+---
+
+## D-367 — `teams` is the one capability the domain enforces, not only describes
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Narrows D-266 M2; enforced in `TicketTypeService` and `EventService`**
+
+### The problem
+
+D-266 M2 drew a hard line: the **Capability Engine describes what an event supports; it never decides who
+may act**. That line held because capabilities are a *description* — of the ~45 of them, enabling one the
+archetype does not support produces a screen that is empty rather than a state that is wrong.
+
+`teams` is not like the others. A `RegistrationMode.Group` ticket type creates a `TeamPolicy`, a roster, a
+join code, a `PerGroup` inventory unit and — since D-366 — a price band set. On an archetype whose `teams`
+capability is `Unsupported`, all of that is real, persisted, chargeable state describing something the
+event cannot run.
+
+Both clients already refuse to offer it: web reverts `participation` to individual in an effect, Flutter
+does the same on rebuild, and both fail closed when the capability cannot be read. **That is three
+implementations of one rule, none of which is the one that matters.** `POST .../ticket-types` with
+`registrationMode: "Group"` was accepted by the API whatever the archetype said, so the invariant held
+only for as long as every client kept its half of the bargain.
+
+### Decision
+
+**A `Group` registration requires the event's `teams` capability to be anything other than `Locked`.**
+Enforced on the server, at two boundaries, both reading the **existing** engine — there is no second
+capability system, no new table, and no new resolution path:
+
+| Boundary | Rule | Refusal |
+|---|---|---|
+| `TicketTypeService.CreateAsync` | a ticket may not be created as `Group` | `teams_not_supported` |
+| `TicketTypeService.UpdateAsync` | a ticket may not *become* `Group` | `teams_not_supported` |
+| `EventService.ApplyUpdateAsync` | the Type may not change to a non-team archetype while a `Group` ticket exists | `type_conflicts_with_team_ticket` |
+
+The state is read through `ICapabilityService.GetForEventAsync`, which resolves the event's snapshotted
+`ArchetypeSlug` against the persisted `archetype_capability_defaults` matrix the admin console owns
+(D-188). `Locked` is how the resolver reports `Unsupported` — so an admin who marks `teams` supported for
+an archetype makes team events legal there with no code change, which is the point of the matrix.
+
+### The two decisions inside this that are not obvious
+
+**1. An event with no archetype cannot CREATE a team ticket.** `CapabilityResolver.StateOf` returns
+`Unsupported` for a null archetype — deliberately, and its comment says so: *"that is the honest answer,
+not a reason to fall back to the old Kind defaults."* Enforcement inherits that, so an event created
+without a Type cannot have a team registration. This is the case the old rule of thumb ("enforcing would
+break archetype-less events") was protecting, and it is being accepted rather than worked around: an
+event that has not said what kind of thing it is has not said it can have teams, and both clients already
+behave this way.
+
+**2. An existing team ticket stays editable.** `UpdateAsync` enforces only when the ticket is *becoming*
+`Group` — a ticket already stored as `Group` may be renamed, repriced and rebanded even if its event's
+archetype would refuse it today. Enforcing on every update would strand rows that were legal when
+written: the organiser could neither fix nor price them, and the only route out would be deleting a
+ticket that may already have sold. **The invariant to protect is "no NEW invalid state", not "punish old
+state".**
+
+### Why the Type change is refused rather than converted
+
+Requirement, and the alternative was live: a Type change that silently converted a `Group` ticket to
+`Individual` would delete a `TeamPolicy`, its roster rules and its D-366 price bands — data the organiser
+entered and never asked to lose, removed as a side effect of a dropdown. This repo refuses in exactly
+these situations (`event_has_history`, `tickets_already_sold`, `ambiguous_price_rule`) rather than
+mutating on the user's behalf. So the type change is refused and names the ticket, and the organiser
+decides what happens to their team configuration.
+
+### What this does NOT do
+
+It does not make the Capability Engine an authorization system. **`IEventAuthority` still decides who may
+act (D-269), and this decides nothing about permission** — it is a domain invariant about what an event
+can coherently *be*, checked where the state is written. The other ~44 capabilities remain descriptive;
+this is a single named exception with a reason, not a new general rule. Adding a second one requires its
+own decision entry and the same justification: that the capability, if ignored, leaves persisted state
+describing something the event cannot do.
+
+---
+
+## D-368 — An organization count means real organizations, and `IsPersonal` rows are not organizations
+
+**Status:** Accepted · **Date:** 2026-08-16 · **Completes D-353; no schema change, no migration, no data change**
+
+### The problem
+
+The admin console reported **three organizations** on its dashboard while its Organizations page listed
+**one**, with every filter set to "any". Both numbers were correct for the query behind them:
+
+| Surface | Predicate | Result |
+|---|---|---|
+| `GET /v1/admin/dashboard/summary` → `total_orgs` | `DeletedAt == null` | **3** |
+| `GET /v1/admin/analytics` → `total_orgs` | `DeletedAt == null` | **3** |
+| `GET /v1/admin/orgs` → `total` | `DeletedAt == null && !IsPersonal` | **1** |
+
+The two extra rows were **self-representation rows** — `IsPersonal = true`, slug `self-<hash>`, minted by
+`EventService.ResolveSelfRepresentationAsync` purely to satisfy the non-null `events."OrgId"` FK for an
+event a person hosts under their own name (D-268, debt tracked as D-273b).
+
+**This was a near-miss of D-353, not a new question.** That entry excluded the self-representation row
+from every organization *list* — the admin registry, `/v1/me/representations`, registry search, the public
+profile — and gave the reason plainly: *"the self-representation row is not an organization"*. Its
+implementation (`3ce8f2f`) touched `OrgService.cs` and nothing else. The two aggregate COUNTs live in
+`Kurx.Api/Endpoints` and were last edited in the initial commit; they never learned the rule.
+
+### Decision
+
+**An organization count counts real organizations: not soft-deleted, and not a self-representation row.**
+
+The predicate is `OrganizationScope.Real` (`Kurx.Domain/Entities/Orgs.cs`), and it is now the only place
+the pair is written. `AdminDashboardEndpoints`, `AdminAnalyticsEndpoints` and both `OrgService` list
+queries compose it.
+
+This follows `EventExposure` (D-266 M3), which exists for the identical reason: a rule spelled once per
+call site is a rule until the next call site, and the drift is invisible because nothing compares the
+copies. Two spellings of one boolean is how the console came to contradict itself.
+
+### Why not the other reading
+
+**Rejected: relabel the tile "all organization records" and leave 3.** A count nobody can reconcile
+against the page beneath it is not a fixed count, it is a documented one. The domain is unambiguous —
+`docs/architecture/TERMINOLOGY.md` states Kurx has no personal organizations, and D-268 calls the row
+"persistence, never domain". A dashboard that counts persistence rows is reporting on the schema, not the
+platform.
+
+**Rejected: add a "Pending verification: 2" tile.** The suggestion is intuitive and the data refuses it:
+the two rows are `Unverified`, not `PendingReview`. They are not pending anything and no reviewer action
+exists for them, so the tile would be a second wrong number. Kurx already counts pending verification
+correctly — `pending_org_verifications` shares its predicate with `OrgVerificationService.ListPendingAsync`,
+so the tile and the queue it links to cannot disagree.
+
+**A self-representation row is never presented as a pending organization.** It has no verification
+lifecycle: it is created `Unverified` and nothing submits it. `OrgVerificationService.SubmitAsync` carries
+no `IsPersonal` guard and the row does hold an `Owner` membership, so a route reaching it is *reachable in
+principle* — no shipped client offers one. Left as-is and named here rather than guarded silently; closing
+it is its own decision, because it turns on whether a personal row should be submittable at all.
+
+### A third surface, found by the sweep
+
+The rule was missing from one more **enumeration**, and it was not a count: `GamificationService`
+built the public organization leaderboard by grouping published events on `RepresentingOrgId` with no
+scope filter, so a self-representation row could appear on
+`GET /v1/gamification/leaderboards/organizations` — named after a person, presented as an institution —
+and consume one of the 100 ranked slots. Fixed at the writer, not the reader: a personal row must not be
+ranked at all, and the rebuild `TRUNCATE`s so no stale row survives a refresh. The surface had **no test
+at all**, which is how it survived D-353.
+
+### Where the rule deliberately does not apply
+
+`OrganizationScope.Real` governs surfaces that **enumerate or count** organizations. It is deliberately
+absent from the ~18 single-row lookups (`o.Id == orgId && o.DeletedAt == null`) and the domain-uniqueness
+checks: those *fetch a known organization*, and adding `!IsPersonal` to them would break the support path
+D-353 explicitly preserved. Two further sites keep a bare `!IsPersonal` on purpose —
+`EventPolicyService.RepresentsInstitution` and the "name the organization" display projections
+(`EventService.MyEventRow`, `EventAssignmentService`, `PublicProfileService`) — because they ask *"is
+there a third party to name or to require consent from?"*, a question whose answer must not change when a
+row is soft-deleted. Adding the deleted check to the policy gate would silently *weaken* a publish
+requirement; that is its own decision, not this one.
+
+### What this does not change
+
+Verification status, org RBAC (D-015), the `IsPersonal` flag, `Event.CreatedBy` ownership (D-268), the
+self-representation mechanism, and the admin **detail** read — `GET /v1/admin/orgs/{id}` still resolves a
+personal row by id so support stays debuggable, exactly as D-353 left it.
+
+**Event counts are untouched and were never wrong.** `total_events = 3` against a visible organization
+showing `Events = 2` is a platform total beside a per-organization column: the third event belongs to a
+personal row the registry does not list. `2 + 1 = 3`.
+
+### No data change
+
+Read-side predicates only. **No migration, no `UPDATE`, no `DELETE`, no seed change.** The database still
+holds three rows; two of them stop being called organizations.
+
+## D-369 — A team ticket is not sellable through a channel that never learns the team's size
+
+**Status:** Accepted · **Date:** 2026-08-17 · **Closes a D-366 regression in two services; no schema change, no migration, no data change**
+
+### The problem
+
+D-366 made `TicketType.PricePaise` a **derived** value: when a team ticket carries size bands, the column
+holds the *cheapest* band, so "from ₹250" and the paid/free discovery filter keep working without
+learning what a band is. Every price the platform actually charges resolves through
+`OrderService.AmountFor`, which asks `TierPriceAsync` which band fits the team.
+
+Two services never went through `AmountFor`. Both build an `OrderItem` straight from the column:
+
+| Service | Line | What it charged for a banded team ticket |
+|---|---|---|
+| `WalkInService.CreateAsync` | `tt.PricePaise` | the cheapest band, at the gate, for any team size |
+| `SeatBlockService.CreateAsync` | `tt.PricePaise` | the cheapest band × N, invoiced to the org under `DEFERRED` |
+
+A team whose band says ₹400 was admitted for ₹250. The shortfall is silent — the order, the ticket and
+the admission are all internally consistent, and nothing compares them to the band that should have
+applied.
+
+**This is a D-366 regression, not a pre-existing bug.** Before bands, the column *was* the price and both
+reads were correct. D-366 changed what the field means and updated `AmountFor`, `CloneAsync`, both
+clients and the admin dossier — its file list names none of these two. Changing the meaning of a field
+is only finished when every reader has been visited.
+
+### The deeper problem, which is not about money
+
+Neither channel can express a team **at all**. A walk-in mints one ticket, `Qty = 1`, with no `GroupSize`,
+no display name and no roster; a seat block mints N unassigned admissions that a delegate later binds to N
+individual people. Neither input carries a team size, because neither activity has one. Priced correctly
+or not, both were producing a "team" of nobody.
+
+So the price was the symptom. The defect is that a `Group` ticket type was reachable from two channels
+built exclusively around individuals.
+
+### Decision
+
+**A `RegistrationMode.Group` ticket type is refused by both delegated channels** —
+`group_ticket_not_supported`, checked before the pool draw, before the order, before any mutation.
+
+Refused rather than repriced, for the reason D-366 already settled when it chose `ambiguous_price_rule`
+over "take the first band": **charging an amount nobody decided is worse than refusing.** A gate that
+asks the staff member for a team size would be a team-registration flow at the desk — a real feature, and
+not one to infer from a pricing bug.
+
+### Why the guard is on `Group`, not on "has bands"
+
+Narrowing it to banded tickets would fix the arithmetic and leave the sibling case broken: an *unbanded*
+team ticket still mints a phantom team with an empty roster. One guard where both paths already converge
+is a smaller diff than two, and it is the rule the domain actually holds — the same shape D-367 chose
+when it put `teams` enforcement in the service rather than in three clients.
+
+### Blast radius: none shipped
+
+`POST /v1/events/{id}/walk-ins` and `POST /v1/events/{id}/seat-blocks` have **no caller in web, admin,
+mobile or `packages/ui`** — they are backend-only Phase 13 surfaces. No error copy is added because no
+client renders these codes, and `invalid_ticket_type` / `no_walkin_pool` have none either for the same
+reason. When a delegate console ships, its copy arrives with it.
+
+### One more reader, named rather than changed
+
+`ApprovalService`'s `IfBudgetGt` condition routes an event to an extra approval step when
+`MAX(PricePaise × Quantity)` clears a threshold. On a banded ticket that reads the cheapest band, so it
+**understates** a team event's ceiling and could skip a step the event should hit. It is left alone here:
+no seed, no workflow and no test invokes `IfBudgetGt` — it is an unexercised enum branch of the kind
+D-018 warns this repo accumulates, and giving it band-aware arithmetic would be building on scaffolding.
+Named so the next person meets it deliberately. The other readers of the column are all booleans
+(`PricePaise > 0` in `IsPaidEventAsync`, the discovery filter, `AnalyticsFactSource`, `IfPaid`) and stay
+correct, because the cheapest band of a paid ticket is still greater than zero.
+
+### What this does not change
+
+`AmountFor` and `TierPriceAsync` are untouched — they were always right. Individual ticket types behave
+exactly as before through both channels. No existing row is re-priced, and nothing already sold is
+revisited: this stops a wrong charge being created, it does not claim to find the ones that were.

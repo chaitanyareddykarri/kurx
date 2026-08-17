@@ -13,9 +13,13 @@ function isRedirectError(err: unknown): boolean {
 }
 
 const actionsByStatus: Record<string, { action: string; label: string }[]> = {
+  // `archive` from Draft is in the workflow table and was offered by no host surface — only the admin
+  // console had it. It files a draft away without destroying it, which is the softer half of the pair
+  // with the Delete button this component already renders for a draft.
   draft: [
     { action: "submit_review", label: "Submit for Review" },
-    { action: "publish", label: "Publish" }
+    { action: "publish", label: "Publish" },
+    { action: "archive", label: "Archive" }
   ],
   // D-266 M4: the host's own actions only. `publish`/`reject` used to sit on the review state here, but
   // those are reviewer transitions (IEventAuthority refuses them for a host) and the admin review console
@@ -24,7 +28,18 @@ const actionsByStatus: Record<string, { action: string; label: string }[]> = {
   underreview: [],
   changesrequested: [{ action: "submit_for_review", label: "Resubmit for Review" }],
   rejected: [{ action: "submit_for_review", label: "Resubmit for Review" }],
-  approved: [{ action: "publish_approved", label: "Publish" }],
+  // D-363 §1/§2 — `Approved` used to offer only Publish, so an organiser who had been approved and then
+  // changed their mind was stuck holding it. Withdraw returns it to Draft (it was never public, so
+  // nothing is lost); Cancel is for abandoning it outright and is terminal.
+  // `schedule` is offered here because nothing offered it anywhere: `Scheduled` is reachable ONLY
+  // through this action, both this map and mobile's render a full action list for that status, and
+  // neither could ever put an event into it. Scheduled ≠ Published — it is visible with registration
+  // still shut, and `open_registration` is what opens it (V3 §14.1).
+  approved: [
+    { action: "publish_approved", label: "Publish" },
+    { action: "schedule", label: "Schedule (registration opens later)" },
+    { action: "withdraw", label: "Withdraw to Draft" }
+  ],
   // D-319 — web offered 7 of the 11 lifecycle actions mobile has had all along, and the four it omitted
   // are the ones that carry an event through to its end: an event could be published here but never
   // opened, taken live or completed. `schedule`/`open_registration`/`go_live`/`complete` are the §14.2
@@ -51,7 +66,7 @@ const actionsByStatus: Record<string, { action: string; label: string }[]> = {
  * event is never resurrected, it is cloned — so it is the one lifecycle action that must not fire on a
  * single click. It is offered from every state the workflow table allows it from.
  */
-const CANCELLABLE = new Set(["draft", "pendingreview", "underreview", "published", "scheduled", "live"]);
+const CANCELLABLE = new Set(["draft", "pendingreview", "underreview", "approved", "published", "scheduled", "live"]);
 
 export function EventStatusActions({ orgId, eventId, status }: { orgId: string; eventId: string; status: string }) {
   const [isPending, startTransition] = useTransition();
@@ -82,7 +97,10 @@ export function EventStatusActions({ orgId, eventId, status }: { orgId: string; 
   function remove() {
     startTransition(async () => {
       try {
-        await deleteDraftEventAction(orgId, eventId);
+        // The action now RETURNS the server's refusal rather than throwing it away, so a host who
+        // cannot delete is told which door is open (`event_has_history` → cancel or close, D-363).
+        const res = await deleteDraftEventAction(orgId, eventId);
+        if (res?.error) setError(res.error);
       } catch (err) {
         // `deleteDraftEventAction` ends in `redirect("/workspace")`, and Next implements redirect by
         // THROWING. Catching indiscriminately here would swallow the success path and report a

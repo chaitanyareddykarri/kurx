@@ -230,8 +230,15 @@ public class GamificationService(
             });
         }
 
+        // D-368 — rank real organizations only. Grouping published events by `RepresentingOrgId` with no
+        // scope filter put self-representation rows on a PUBLIC leaderboard
+        // (`GET /v1/gamification/leaderboards/organizations`), named after the person who created the
+        // event, which is the concept D-268 says does not exist. Filtered at the writer rather than the
+        // reader because a personal row must not consume one of the 100 ranked slots either; the rebuild
+        // TRUNCATEs first, so no stale row survives a refresh.
+        var realOrgIds = db.Organizations.Where(OrganizationScope.Real).Select(o => o.Id);
         var orgScores = await db.Events.AsNoTracking()
-            .Where(e => e.Status == EventStatus.Published)
+            .Where(e => e.Status == EventStatus.Published && realOrgIds.Contains(e.RepresentingOrgId))
             .GroupBy(e => e.RepresentingOrgId)
             .Select(g => new { OrgId = g.Key, Points = g.Count() * 500 })
             .OrderByDescending(x => x.Points)

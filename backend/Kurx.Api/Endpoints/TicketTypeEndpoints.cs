@@ -7,6 +7,9 @@ using Kurx.Api;
 using Kurx.Api.ExceptionHandling;
 using Kurx.Api.Validation;
 
+/// <summary>D-366 — one team-size band. Both ends inclusive; the price is for the whole team.</summary>
+public record TicketPriceTierBody(int MinSize, int MaxSize, long PricePaise);
+
 public record TicketTypeBody(
     string Name,
     long PricePaise,
@@ -19,7 +22,12 @@ public record TicketTypeBody(
     DateTime SaleEnds,
     int PerUserLimit,
     bool IsAllAccess,
-    bool IsCompetition = false);
+    bool IsCompetition = false,
+    /// <summary>D-366. Optional and trailing so every existing client body still binds. Omitted or
+    /// empty means the ticket is priced by <paramref name="PricePaise"/> alone, which is the whole
+    /// existing corpus. When present it REPLACES the stored bands, and `PricePaise` is ignored — the
+    /// server derives the headline from the cheapest band.</summary>
+    IReadOnlyList<TicketPriceTierBody>? PriceTiers = null);
 
 public record FormFieldBody(
     string Key,
@@ -104,7 +112,8 @@ public static class TicketTypeEndpoints
 
     private static TicketTypeInput ToInput(TicketTypeBody b) => new(
         b.Name, b.PricePaise, b.PricingUnit, b.RegistrationMode,
-        b.GroupMin, b.GroupMax, b.Quantity, b.SaleStarts, b.SaleEnds, b.PerUserLimit, b.IsAllAccess, b.IsCompetition);
+        b.GroupMin, b.GroupMax, b.Quantity, b.SaleStarts, b.SaleEnds, b.PerUserLimit, b.IsAllAccess, b.IsCompetition,
+        b.PriceTiers?.Select(t => new TicketPriceTierInput(t.MinSize, t.MaxSize, t.PricePaise)).ToList());
 
     private static FormFieldInput ToFieldInput(FormFieldBody b) => new(
         b.Key, b.Label, b.Type, b.Scope, b.Required, b.OptionsJson, b.Sort);
@@ -120,6 +129,10 @@ public static class TicketTypeEndpoints
     {
         "forbidden" => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
+        // Same code, same status as the event's own PATCH (D-363 §4): the request is well formed and the
+        // caller is allowed — the event's state is what refuses. A 400 would read as "you sent something
+        // wrong" and send an organiser looking for a typo.
+        "event_under_review" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

@@ -22,8 +22,21 @@ MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
-**Current baseline: 1825 tests — 1824 passing, 1 skipped, 0 failing (2026-08-15, 29m23s).** Measured in the
+**Current baseline: 1912 tests — 1911 passing, 1 skipped, 0 failing (2026-08-16).** Measured in the
 SDK container with clamd up. **Zero is the standard now — a red test is a defect, not "the environment."**
+
+**Do not run two suites at once on this box.** `web/test/event-creation.test.tsx` drives an
+eleven-step wizard through `userEvent`, and 15 of its cases failed while the admin suite ran beside it —
+then passed 42/42 alone, twice. A contended host fails the timing-sensitive tests first, on both the
+backend (`TaskCanceledException`) and the front end, and it looks exactly like a regression in whatever
+you touched last.
+
+**Wall time is not a constant, and a slow run is not a hang.** Three green full runs on the same box the
+same day took **18m07s, 19m35s and 35m56s**. Class order varies between runs — the one skipped test
+printed at 2:34 into one run and 13:41 into another — so "it should have finished by now" is not evidence
+of anything. Before killing a long run, check for printed `[FAIL]` lines (xUnit prints failures as they
+happen) and whether the container is actually burning CPU (`docker stats`); an idle Postgres alongside a
+busy runner just means the current class is CPU-bound, not that it is stuck.
 
 > ⚠️ **The working tree was red when this was written, and not from the change that measured it.** A later
 > run the same day gave **1826 / 1806 pass / 19 fail** — all in `EventFirstTests` and
@@ -157,6 +170,31 @@ carrying only your own changes; that result is attributable, a shared-tree resul
   tests. A configuration-dependent test count is a bug, not a feature.
 
 CI (`.github/workflows/ci.yml`) remains the final authority.
+
+## A fixture can pass *because of* the bug
+
+When a guard is added and an unrelated test starts failing, suspect the fixture before the guard.
+
+D-362 closed a hole that let a creator publish straight out of the review queue. One test then failed —
+`AdminEventManagementTests.Content_edit_requires_a_real_org_role_not_the_admin_claim` — because its
+helper, named `PublishedEventAsync`, reached `Published` by *using* that hole: `submit_review` then
+`publish` as the owner. A fixture with "Published" in its name had been quietly exercising the bypass,
+and the failure was the fix working. It was rewritten to go through a real approval.
+
+The general shape: **a fixture that sets up state by the shortest API path will silently adopt whatever
+shortcuts exist, including the ones that are bugs.** Prefer the path a real actor takes, especially for
+states behind an authorization or review gate.
+
+Two more from the same pass:
+
+- **Your own new tests are the weakest evidence you have.** The D-363 ticket-type guard passed all nine
+  of its own tests and still broke `TicketTypeTests.Owner_can_delete_unsold_ticket_type`, because the
+  guard treated a `Pass` (the 1:1 product mirror of a ticket type) as evidence of a sale. Only the full
+  suite covers the cases you did not think of — which is what "only a full-suite run is evidence" means.
+- **Assert the consequence, not the return value.** A guard test that only checks the error code passes
+  even if the rows are destroyed anyway. `LifecycleDeletionGuardTests` asserts the orders are still
+  there; the soft-delete test asserts through the *API* (404 to owner, stranger and anonymous) rather
+  than on the `DeletedAt` column, because "the column got set" is not the claim.
 
 ## What "done" requires
 

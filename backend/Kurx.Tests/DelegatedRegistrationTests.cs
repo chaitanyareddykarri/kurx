@@ -237,6 +237,57 @@ public class DelegatedRegistrationTests : IClassFixture<KurxApiFactory>
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
+    // ── A team ticket is not sellable through either delegated channel (D-369) ────
+
+    /// <summary>D-369 — neither channel is ever told a team size, so neither can price a team.
+    ///
+    /// <para>D-366 made <c>TicketType.PricePaise</c> DERIVED — the cheapest band — so both of these read a
+    /// number that is a headline, not a price: the gate would have taken Rs.250 for a team of five whose
+    /// band says Rs.400, and a DEFERRED block would have invoiced the organisation the same shortfall.
+    /// Refusing is the fix rather than repricing, because the size that decides the price does not exist
+    /// at either call site.</para>
+    ///
+    /// <para>The mode is set in the DB, not through the API, deliberately: D-367 keeps historical `Group`
+    /// rows editable even where the capability matrix would refuse them today, so a stored team ticket is
+    /// reachable regardless of the archetype seeding — which is exactly the state this guard must hold on.</para></summary>
+    [Fact]
+    public async Task Neither_a_walk_in_nor_a_seat_block_can_sell_a_team_ticket()
+    {
+        var (owner, orgId, ownerId) = await LoginOrgAsync("9700013090", "Team Gate Org");
+        var (eventId, ttId) = await PublishFreeEventAsync(owner, orgId);
+        var (_, staffId) = await LoginAsync("9700013091");
+        var (_, delegateId) = await LoginAsync("9700013092");
+        await SeedStaffAsync(eventId, staffId);
+        await SeedWalkInPoolAsync(eventId, ttId, total: 5);
+        var unitId = await OrgUnitAsync(eventId);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var tt = await db.TicketTypes.FirstAsync(t => t.Id == ttId);
+        tt.RegistrationMode = RegistrationMode.Group;
+        tt.PricingUnit = PricingUnit.PerGroup;
+        tt.GroupMin = 2;
+        tt.GroupMax = 5;
+        tt.PricePaise = 25_000;                        // the CHEAPEST band's price, as D-366 derives it
+        db.TicketPriceTiers.AddRange(
+            new TicketPriceTier { TicketTypeId = ttId, MinSize = 2, MaxSize = 3, PricePaise = 25_000 },
+            new TicketPriceTier { TicketTypeId = ttId, MinSize = 4, MaxSize = 5, PricePaise = 40_000 });
+        await db.SaveChangesAsync();
+
+        var walkIn = await WalkIns(scope).CreateAsync(staffId, eventId, false,
+            new WalkInInput(ttId, "Rahul", "9800013090", null, Free: false, IdempotencyKey: null));
+        Assert.Equal("group_ticket_not_supported", walkIn.Error);
+
+        var block = await Blocks(scope).CreateAsync(ownerId, eventId, false, Block(ttId, unitId, delegateId, 3));
+        Assert.Equal("group_ticket_not_supported", block.Error);
+
+        // Refused BEFORE the money path: no order, no seat taken, no admission owed to anyone.
+        Assert.Equal(0, await db.Orders.CountAsync(o => o.EventId == eventId));
+        Assert.Equal(0, await db.SeatBlocks.CountAsync(b => b.EventId == eventId));
+        Assert.Equal(0, (await db.InventoryPools.AsNoTracking()
+            .FirstAsync(p => p.TicketTypeId == ttId && p.Segment == InventorySegment.WalkIn)).Consumed);
+    }
+
     private static SeatBlockInput Block(Guid ttId, Guid unitId, Guid delegateId, int qty, int reassignLimit = 0)
         => new(ttId, unitId, null, delegateId, "Free", qty, null, reassignLimit);
 

@@ -1,8 +1,12 @@
 # Kurx UI/UX Redesign — Frozen Surfaces
 
 Established in Phase 0.3. **Nothing in this file may be edited by a redesign phase.** If a redesign
-genuinely requires a change here, that is a blocker: stop, record it in the Regression Ledger of
-`UI_REDESIGN_PROGRESS.md`, open a `D-NNN` in `docs/DECISIONS.md`, and get approval first.
+genuinely requires a change here, that is a blocker: stop, open a `D-NNN` in
+[`docs/DECISIONS.md`](../DECISIONS.md), and get approval first.
+
+*(This previously also said "record it in the Regression Ledger of `UI_REDESIGN_PROGRESS.md`". That
+tracker stopped being live on 2026-08-08 — see the warning at the top of it — so `D-NNN` is now the
+only step that means anything. The freeze list itself is unaffected and still binding.)*
 
 ## 1. Backend — entirely frozen
 

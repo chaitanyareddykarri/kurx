@@ -84,7 +84,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('General Admission'), 300, scrollable: scrollable);
     expect(find.text('General Admission'), findsOneWidget);
     // 150000 paise → ₹1,500, shown in the ticket tile and/or the sticky book bar.
-    expect(find.text('₹1,500'), findsWidgets);
+    expect(find.textContaining('₹1,500'), findsWidgets);
 
     await tester.scrollUntilVisible(find.text('Indie Nights Bengaluru'), 300, scrollable: scrollable);
     expect(find.text('Indie Nights Bengaluru'), findsOneWidget);

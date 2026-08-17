@@ -399,8 +399,12 @@ public static class EventEndpoints
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
         // "event_under_review" is a 409 for the same reason as the others here: the request is well-formed,
         // the caller is entitled, and the state simply forbids it right now (D-266 M4 edit lock).
+        // D-367 `type_conflicts_with_team_ticket` joins them: the payload is valid and the caller is
+        // entitled — the event's own team registration is what forbids this Type, and the organiser
+        // resolves it by changing the registration, not the request.
         "event_archived" or "not_draft" or "invalid_transition" or "paid_event_requires_review"
-            or "event_already_started" or "event_under_review" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
+            or "event_already_started" or "event_under_review"
+            or "type_conflicts_with_team_ticket" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         // D-266 M5 publish blockers. 409, not 400: the request is well-formed and the caller is entitled —
         // the event's state simply forbids publishing right now, which is the same shape as the review
         // lock above. A 400 would tell a client to fix its payload, and there is nothing in the payload
@@ -420,7 +424,10 @@ public static class EventEndpoints
         e.Schedule,
         e.LocationDetail,
         e.Eligibility,
-        e.Commerce,
+        // D-356 — narrowed here rather than on `EventDetail`, because this method IS the public boundary
+        // (see the remarks above) and the service layer still needs the full figures. `From` is the only
+        // way the internal record reaches the wire, so a field added to it cannot leak by default.
+        PublicEventCommerceView.From(e.Commerce),
         // D-302 — the represented organization, named. Null for a self-represented event: an `IsPersonal`
         // row is persistence, not an institution (D-268), so clients show the creator alone.
         e.Representing,
@@ -490,7 +497,10 @@ public static class EventEndpoints
         e.CategoryName,
         e.PriceFromPaise,
         e.Currency,
-        e.IsFeatured);
+        e.IsFeatured,
+        // D-361 — emitted with its original capitalisation ("PerGroup"), like every other enum-ish
+        // string on the wire: SnakeCaseResponseConverter renames keys, never values.
+        e.PriceFromUnit);
 
 
 }

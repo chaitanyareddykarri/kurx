@@ -23,16 +23,45 @@ namespace Kurx.Domain.Entities;
 /// the ones that fetch a known one.</para></summary>
 public static class EventExposure
 {
+    /*
+     * D-362 — the lifecycle half of the rule, which this file did not carry.
+     *
+     * `PubliclyVisible` answered Product + Visibility + not-deleted and said nothing about STATUS, so by
+     * this predicate a PendingReview event was "publicly visible". Nothing leaked, because the one
+     * production consumer that feeds a public surface — `SearchIndexService` — wrote its own
+     * `ev.Status != EventStatus.Published` beside the call. But that is the exact shape this class exists
+     * to prevent: a rule documented as "the one rule for public exposure", which every caller must
+     * silently complete, is two sources of truth wearing one name. The next caller to forget is the leak.
+     *
+     * `Published` alone. `Approved` is NOT public — approval and publication are separate states in this
+     * lifecycle, and an approved event goes live when its organiser publishes it. `Scheduled` is not
+     * public either: it precedes `open_registration`, which is what moves an event to `Published`.
+     */
+    public static bool IsPubliclyVisibleStatus(EventStatus status) => status == EventStatus.Published;
+
     /// <summary>EF-translatable. Compose into any query that feeds a public surface:
     /// <c>db.Events.Where(EventExposure.PubliclyVisible)</c>.</summary>
     public static Expression<Func<Event, bool>> PubliclyVisible =>
-        e => e.Product == EventProduct.Public
+        e => e.Status == EventStatus.Published
+          && e.Product == EventProduct.Public
           && e.Visibility == EventVisibility.Listed
           && e.DeletedAt == null;
 
     /// <summary>In-memory form, for a materialised event. Same rule; kept beside the expression so the two
     /// cannot drift.</summary>
     public static bool IsPubliclyVisible(Event e) =>
+        e.Status == EventStatus.Published
+        && e.Product == EventProduct.Public
+        && e.Visibility == EventVisibility.Listed
+        && e.DeletedAt == null;
+
+    /// <summary>Discoverability WITHOUT the lifecycle gate — Product + Visibility only.
+    ///
+    /// <para>For the one caller that asks a different question: <c>ApprovalService</c>'s
+    /// <c>IfExternal</c> condition wants to know whether an event will face an external audience *when it
+    /// goes live*, which it must answer while the event is still in review. Named so that asking it is a
+    /// deliberate choice rather than an accidental omission of the status check.</para></summary>
+    public static bool IsExternallyExposed(Event e) =>
         e.Product == EventProduct.Public
         && e.Visibility == EventVisibility.Listed
         && e.DeletedAt == null;

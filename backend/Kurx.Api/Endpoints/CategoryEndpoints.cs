@@ -194,7 +194,10 @@ public static class CategoryEndpoints
         c.Slug,
         c.Sort,
         c.IsVisible,
-        c.ProductClass);
+        c.ProductClass,
+        // D-357 — the archetype the Type derives, so a client can ask the capability engine whether this
+        // event can have teams instead of re-deriving the mapping.
+        c.ArchetypeSlug);
 
     private static AdminCategoryResponse ToJson(AdminCategoryView c) => new(
         c.Id,

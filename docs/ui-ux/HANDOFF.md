@@ -3,15 +3,23 @@
 A self-contained brief for continuing this program in a new session or on another
 machine. **Snapshot as of Phase 50.1, `2b97f5c` (2026-08-08). Phase 46 is PARTIAL — see below.**
 
-> `UI_REDESIGN_PROGRESS.md` and `UI_REDESIGN_PROGRESS.json` are the source of
-> truth, not this file. They are regenerated from real state every phase; this is
-> a point-in-time summary. **If they disagree, the tracker wins.**
+> ⚠️ **Superseded framing (corrected 2026-08-15).** This said the root trackers
+> `UI_REDESIGN_PROGRESS.md` / `.json` are "the source of truth" and "regenerated from real state every
+> phase". Neither has been regenerated since 2026-08-08, the branch they name no longer exists, the
+> redesign was merged by [D-314](../DECISIONS.md) on 2026-08-09 — and the two mirrors now disagree with
+> each other (94.1% vs 99.9%). **Treat all three files as one historical record**, kept because they
+> are the only written trace of what is still open (phases 46/47/51, 13 deferred items).
+>
+> For *current* state: [`../roadmap/README.md`](../roadmap/README.md) is the build-status authority,
+> and [`inventory-web.md`](inventory-web.md) / [`inventory-admin.md`](inventory-admin.md) /
+> [`inventory-mobile.md`](inventory-mobile.md) were re-derived from the filesystem on 2026-08-15.
 
 ---
 
 ## Start here
 
-Repo `/Users/naralanaveen/kurx/Kurx`.
+Repo root — wherever this checkout lives; the absolute macOS path that stood here
+(`/Users/naralanaveen/kurx/Kurx`) was one machine's and never portable.
 
 Phases 0–18 are **merged into `main`** (merge commit `554fa1f`). Phases **18A, 19,
 20, 20A, 20B, 20C, 20D, 21–31, 34–40** are on the unmerged branch

@@ -15,6 +15,7 @@ _$EventCategoryDtoImpl _$$EventCategoryDtoImplFromJson(
   parentId: json['parent_id'] as String?,
   isVisible: json['is_visible'] as bool? ?? true,
   productClass: json['product_class'] as String?,
+  archetypeSlug: json['archetype_slug'] as String?,
 );
 
 Map<String, dynamic> _$$EventCategoryDtoImplToJson(
@@ -26,4 +27,5 @@ Map<String, dynamic> _$$EventCategoryDtoImplToJson(
   'parent_id': instance.parentId,
   'is_visible': instance.isVisible,
   'product_class': instance.productClass,
+  'archetype_slug': instance.archetypeSlug,
 };

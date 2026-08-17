@@ -16,7 +16,9 @@ class TicketTypeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.kurx;
-    final priceLabel = ticket.isFree ? 'Free' : Money.fromMinor(ticket.pricePaise);
+    // D-357 — the price WITH its unit. "₹2,000" alone cannot tell a registrant whether they are
+    // buying a team entry or one seat of four.
+    final priceLabel = ticket.priceLabel(Money.fromMinor);
     final tappable = onBook != null && !ticket.soldOut;
 
     return Padding(
@@ -46,11 +48,15 @@ class TicketTypeTile extends StatelessWidget {
                       Text(ticket.name, style: TextStyle(color: c.text, fontSize: 15, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 2),
                       Text(
+                        // D-357 — what `available` counts. Under PerGroup a team takes one unit, so
+                        // "12 left" means twelve TEAMS and has to say so.
                         ticket.soldOut
                             ? 'Sold out'
-                            : ticket.available <= 20
-                                ? 'Only ${ticket.available} left'
-                                : '${ticket.available} available',
+                            : ticket.isTeamEntry
+                                ? '${ticket.available} team slots left'
+                                : ticket.available <= 20
+                                    ? 'Only ${ticket.available} left'
+                                    : '${ticket.available} available',
                         style: TextStyle(
                           color: ticket.soldOut
                               ? c.danger
@@ -61,6 +67,26 @@ class TicketTypeTile extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      // The team-size requirement a registrant needs BEFORE deciding — you cannot enter
+                      // a 3–5 person competition alone, and finding that out at checkout is too late.
+                      if (ticket.teamSizeLabel != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          ticket.teamSizeLabel!,
+                          style: TextStyle(color: c.muted, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                      // D-366 — the whole table, because the headline above is a RANGE on a banded
+                      // ticket. Someone choosing between entering with three people or five is choosing
+                      // between two prices, and only one of them can be in the headline.
+                      if (ticket.isPricedByTeamSize) ...[
+                        const SizedBox(height: 4),
+                        for (final row in ticket.teamPriceRows)
+                          Text(
+                            '${row.size} — ${Money.fromMinor(row.pricePaise)}',
+                            style: TextStyle(color: c.muted, fontSize: 12),
+                          ),
+                      ],
                     ],
                   ),
                 ),

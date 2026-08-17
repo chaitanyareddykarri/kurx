@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Kurx.Application.Abstractions;
+using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Kurx.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -75,7 +76,8 @@ public static class AdminAnalyticsEndpoints
             return Results.Ok(new PlatformAnalytics(
                 window,
                 await db.Users.CountAsync(ct),
-                await db.Organizations.CountAsync(o => o.DeletedAt == null, ct),
+                // D-368: the same organization definition the dashboard tile and the admin registry use.
+                await db.Organizations.CountAsync(OrganizationScope.Real, ct),
                 await db.Events.CountAsync(e => e.DeletedAt == null, ct),
                 signups.Sum(s => s.Count),
                 signups.Select(s => new AnalyticsDayCount(s.Day.ToString("yyyy-MM-dd"), s.Count)),

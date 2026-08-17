@@ -103,8 +103,11 @@ class EventCard extends ConsumerWidget {
 
 String _priceLabel(EventSummary e) {
   if (e.priceFromPaise == null) return 'View details';
-  if (e.isFree) return 'Free entry';
-  return 'From ${Money.fromMinor(e.priceFromPaise!)}';
+  // D-361 — the unit, even on a condensed card: "From Rs 2,000" on a team event reads as a
+  // per-person minimum when it is the whole team's entry fee.
+  if (e.isFree) return e.isPricedPerTeam ? 'Free per team' : 'Free entry';
+  final unit = e.isPricedPerTeam ? ' per team' : '';
+  return 'From ${Money.fromMinor(e.priceFromPaise!)}$unit';
 }
 
 class _BookmarkButton extends ConsumerWidget {

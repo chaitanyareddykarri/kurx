@@ -1,14 +1,21 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, EyeOff, Lock, Gift, Ticket, ShieldCheck, Check } from "lucide-react";
-import { Button, FormSteps, Spinner, controlClass } from "@kurx/ui";
+import { Globe, EyeOff, Lock, Ticket, ShieldCheck, Check } from "lucide-react";
+import { Button, DateTimeField, Field, FormSteps, Input, Select, Spinner, Textarea, controlClass } from "@kurx/ui";
 import { SelectCard, SelectCardGroup } from "@/components/host/select-card-group";
 import { createEventWizardAction, CreateEventValues,
   submitAuthorizationAction, uploadAuthorizationDocumentAction } from "@/lib/event-actions";
 import type { Category, FieldPreset, Representation } from "@/lib/api";
-import { categoriesFor, cleanGroup, toIsoUtc, typesFor } from "@/lib/event-wizard";
+import {
+  AUTHORIZATION_FIELD_ORDER, categoriesFor, cleanGroup, CONTENT_FIELD_ORDER, DETAILS_FIELD_ORDER,
+  ELIGIBILITY_FIELD_ORDER, firstError, LEGAL_FIELD_ORDER, PLACE_FIELD_ORDER, TICKET_FIELD_ORDER,
+  toIsoUtc, toLocalInput, typesFor, validateAuthorization, validateContent, validateDetails,
+  validateEligibility, validateLegal, validatePlace, validateTicket, validateWindows,
+  archetypeSupportsTeams, WINDOW_FIELD_ORDER, tiersToPayload
+} from "@/lib/event-wizard";
+import type { TicketValues } from "@/lib/event-wizard";
 
 const inputClass = controlClass;
 const textareaClass = controlClass;
@@ -36,10 +43,43 @@ const VISIBILITY = [
 // preview, submit, finance) configure an event that must already exist, and each already has its own
 // workspace tab — duplicating them here would be a second implementation of each. This wizard's job
 // is to produce a Draft complete enough to publish; the workspace finishes it.
+/*
+ * There is ONE free/paid decision, and this form is not where it is made.
+ *
+ * The gate asks it (`create-event-gate.tsx`) because D-343 uses the product+pricing PAIR to select the
+ * verification tier the caller must clear before this form opens at all. This wizard used to ask it a
+ * second time at step 2 — the same question, with a control that could change the answer, after the
+ * eligibility decision had already been made on it. Two problems, one cause:
+ *
+ *   · the organiser was asked something they had just answered, and
+ *   · the two guards were not the same guard. The gate refuses Paid unless the caller is BOTH
+ *     `canHostPaid` AND representing a verified organization; this step's `canChoosePaid` checked only
+ *     the first. So someone the gate had refused could re-select Paid here and spend eleven steps on an
+ *     event the server would reject at submit.
+ *
+ * The step is gone and `pricing` is now a read-only value carried from the gate. Changing free↔paid is
+ * a decision with verification consequences, so it belongs where those consequences are evaluated.
+ */
 const STEPS = [
-  "Representing", "Visibility", "Pricing", "Category", "Type", "Details",
+  "Representing", "Visibility", "Category", "Type", "Registration", "Details",
   "Content", "Location", "Windows", "Eligibility", "Legal"
 ];
+
+/*
+ * Names for the step indices, because inserting "Registration" shifted six of them.
+ *
+ * The whole file addressed steps as bare numbers, so adding one meant renumbering seven `step === N`
+ * guards and an entry in two index-ordered tables — a rename with seven chances to silently point a
+ * panel at the wrong step. `STEP.details` cannot be off by one; `step === 6` can. Removing Pricing just
+ * proved the point: it shifted nine of these, and not one `step === N` had to be found by eye.
+ */
+const STEP = {
+  representing: 0, visibility: 1, category: 2, type: 3, registration: 4,
+  details: 5, content: 6, location: 7, windows: 8, eligibility: 9, legal: 10,
+  /// Appended only when the event represents an institution (D-351), so it is the last index of
+  /// `steps`, not of `STEPS`.
+  authorization: 11
+} as const;
 
 const GENDERS = ["Any", "Male", "Female", "NonBinary"] as const;
 
@@ -72,7 +112,8 @@ export function CreateEventWizard({
   product,
   initialPricing = "free",
   requiresRepresentation,
-  representativeRoles
+  representativeRoles,
+  teamCapableArchetypes
 }: {
   /// Institutions the caller may represent. Empty is normal and fully functional — Personal is always
   /// available, which is what makes Create Event reachable without registering anything (D-267).
@@ -95,6 +136,9 @@ export function CreateEventWizard({
   /// what the server will accept.
   requiresRepresentation: boolean;
   representativeRoles: string[];
+  /// D-357 — archetype slugs whose `teams` capability is not Unsupported, resolved server-side from the
+  /// capability engine. Empty means no Type on offer permits team entry, which is the closed default.
+  teamCapableArchetypes: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -115,15 +159,48 @@ export function CreateEventWizard({
   // Unlisted is the only sane default for Private — Listed is forbidden and InviteOnly is a stronger
   // claim than the organiser has made yet.
   const [visibility, setVisibility] = useState<string>(product === "Private" ? "Unlisted" : "Listed");
-  const [pricing, setPricing] = useState<"free" | "paid">(initialPricing);
-  /// A Private product cannot take payment (`private_product_cannot_take_payment`), so Paid is not
-  /// offered at all — and the price field with it.
-  const canChoosePaid = product === "Public" && canHostPaid;
+  /// Read-only, and a `const` rather than state on purpose: the gate owns this decision (D-343 selects
+  /// the verification tier from it), so a setter here is the bug — the form would be able to move an
+  /// event to Paid after the eligibility for Paid had been decided against it.
+  const pricing = initialPricing;
   /// The one ticket created with the event. Without it the event is unbookable — see the Pricing step.
   /// Rupees on the way in, paise on the wire (D-004).
-  const [ticket, setTicket] = useState({ name: "General Admission", priceRupees: "", quantity: "100" });
+  /// D-357 — `participation` is the registration UNIT, and it is what gives the price its meaning.
+  /// It maps to `RegistrationMode` and `PricingUnit` together: team ⇒ Group + PerGroup (one charge and
+  /// one inventory unit per team), individual ⇒ Individual + PerTicket. Defaults to individual, which is
+  /// what every event created before this step existed already was.
+  const [ticket, setTicket] = useState<TicketValues>({
+    name: "General Admission", priceRupees: "", quantity: "100",
+    participation: "individual", teamMin: "2", teamMax: "4",
+    // D-366 — empty is the default and means one price for every team size, exactly as before.
+    tiers: []
+  });
+
   const [categoryId, setCategoryId] = useState<string>("");
   const [typeId, setTypeId] = useState<string>("");
+
+  /*
+   * Whether the chosen Type's archetype supports teams — the capability engine's answer, resolved on
+   * the server and passed in.
+   *
+   * `archetype_slug` is on the Type node (D-357 exposed it; the column was always there and D-266 M1
+   * snapshots it onto the event). The page asks `GET /v1/archetypes/{slug}/capabilities` for each
+   * archetype it offers and hands down the set that permits `teams`, so this component performs no
+   * fetch, has no loading state, and — importantly — pulls in no server-only module.
+   *
+   * A hardcoded list of "team-ish" type names here would be a second copy of a matrix an admin can
+   * edit, and would disagree with the server the first time they did.
+   */
+  const selectedArchetype = subcategories.find((s) => s.id === typeId)?.archetype_slug ?? null;
+  const teamsSupported = selectedArchetype !== null && teamCapableArchetypes.includes(selectedArchetype);
+
+  /// Reconciled, never left invalid (§14): if the Type stops supporting teams, the answer reverts to
+  /// individual on the same render rather than travelling to a submission the server would refuse.
+  useEffect(() => {
+    if (!teamsSupported && ticket.participation === "team") {
+      setTicket((t) => ({ ...t, participation: "individual" }));
+    }
+  }, [teamsSupported, ticket.participation]);
   const [details, setDetails] = useState({
     title: "",
     subtitle: "",
@@ -205,46 +282,47 @@ export function CreateEventWizard({
     return p ? presetFields(p) : [];
   }, [presets, selectedType]);
 
-  // Mirrors the server's `consent_text_required`: asking people to accept an empty string would
-  // record a consent that evidences nothing.
-  const consentOk = !legal.requiresConsent || legal.consentText.trim().length > 0;
-  /// A paid event must carry a real price: creating one at zero would silently publish a paid event
-  /// that charges nothing, which is worse than refusing to submit.
-  const ticketOk =
-    ticket.name.trim().length > 0 &&
-    Number(ticket.quantity) > 0 &&
-    (pricing === "free" || Number(ticket.priceRupees) > 0);
+  /*
+   * Every field the Details step ASKS for, checked on the step that asks for it.
+   *
+   * This used to be `title.trim().length >= 2 && datesOrdered` — `CreateEventBodyValidator`'s minimum,
+   * not the step's. Six inputs the step renders (subtitle, description, venue name, city, venue
+   * address, capacity) were therefore never checked at all, so Continue lit up on a step that was
+   * mostly blank: the button meant "the server would accept this", not "this step is complete".
+   *
+   * Deliberately NOT memoised. `validateDetails` defaults `now` to the current instant, and a
+   * `useMemo` keyed on `details` would freeze that clock — a start time typed at 16:35 would still
+   * read as valid at 18:00. Re-deriving on each render is what makes §2's "validate continuously"
+   * true for the *passage of time* as well as for edits, and it is a nine-field object comparison.
+   */
+  const detailsErrors = validateDetails(details);
+  const detailsValid = Object.keys(detailsErrors).length === 0;
 
   /*
-   * The three fields the server actually requires, checked on the step that ASKS for them.
+   * The picker's own floor, so the past is unreachable rather than merely refused (§3/§5).
    *
-   * `endsAt > startsAt` is the server's own rule (`CreateEventBodyValidator`), and Flutter's
-   * `_basicsValid` already carried it — web checked only that both were present, so the one ordering
-   * an event cannot get wrong was left to a 400 at the very end.
-   */
-  const datesOrdered =
-    !!details.startsAt && !!details.endsAt && new Date(details.endsAt) > new Date(details.startsAt);
-  const detailsValid = details.title.trim().length >= 2 && datesOrdered;
-
-  /// Both are refused by `EventService` (`invalid_registration_window` / `invalid_checkin_window`), so
-  /// this surfaces the existing server rule on the step that sets it instead of at submit. Each pair is
-  /// only checked when BOTH ends are given — one end alone is a legitimate open-ended window.
-  const windowPairsOrdered =
-    (!windows.registrationOpensAt || !windows.registrationClosesAt
-      || new Date(windows.registrationClosesAt) > new Date(windows.registrationOpensAt)) &&
-    (!windows.checkinOpensAt || !windows.checkinClosesAt
-      || new Date(windows.checkinClosesAt) > new Date(windows.checkinOpensAt));
-
-  /*
-   * Each step gates its OWN fields.
+   * `toLocalInput` renders an instant as a `datetime-local` value in the browser's zone — the same
+   * conversion the payload leg uses, so the control, the validator and the wire agree on one clock.
+   * Recomputed each render for the same reason `detailsErrors` is.
    *
-   * This was `step >= 4`, an unconditional pass for Type, Details, Content, Location, Windows,
-   * Eligibility and Legal — so the three required fields (title, start, end) all sat behind a step
-   * that could not refuse, and the wizard only objected on step 11 of 11. That is the exact failure
-   * D-305 was written to end ("asked every eligibility question at publish, after eleven steps of
-   * work"), reproduced inside the form D-305 created. Steps 6, 7 and 9 are genuinely all-optional and
-   * say so by returning true; that is a statement, not an omission.
+   * A `min` is a floor the browser enforces on the picker UI, never a guarantee: it is trivially
+   * removed in devtools and absent entirely from a hand-rolled request. It is layer 1 of four
+   * (picker → `validateDetails` → `submit` → `CreateEventBodyValidator`), not the defence.
    */
+  const nowLocal = toLocalInput(new Date().toISOString());
+  // The End floor tracks Start, so choosing a later Start narrows what End will offer. When Start is
+  // unset or unparseable the floor falls back to now — never to nothing.
+  const endsAtMin = details.startsAt && !Number.isNaN(new Date(details.startsAt).getTime())
+    ? details.startsAt
+    : nowLocal;
+
+  const contentErrors = validateContent(content);
+  const placeErrors = validatePlace(place);
+  const windowErrors = validateWindows(windows);
+  const eligibilityErrors = validateEligibility(eligibility);
+  const legalErrors = validateLegal(legal);
+  const ticketErrors = validateTicket(ticket, pricing);
+
   /*
    * D-353 — a PUBLIC event must represent a real, verified organization. Self-hosting is a Private-only
    * affordance.
@@ -279,25 +357,93 @@ export function CreateEventWizard({
   const steps = needsAuthorization ? [...STEPS, "Authorization"] : STEPS;
   const authStep = steps.length - 1;
 
-  const canNext =
-    (step === 0 && representingValid) ||
-    (step === 1 && !!visibility) ||
-    // `representingValid` is re-checked here, not only on step 0: someone can pass Representing as
-    // themselves while Free, then switch to Paid on this step, and the stale Personal answer would
-    // otherwise sail through to a submission the server refuses (D-350).
-    (step === 2 && (pricing === "free" || canHostPaid) && representingValid && ticketOk) ||
-    (step === 3 && !!categoryId) ||
-    // Type is required only when the category HAS types — the step itself says "This category has no
-    // subcategories. Continue to details." for the empty case, and the server takes TypeId as optional.
-    (step === 4 && (subs.length === 0 || !!typeId)) ||
-    (step === 5 && detailsValid) ||
-    (step === 8 && windowPairsOrdered) ||
-    step === 6 || step === 7 || step === 9 ||
-    // Legal (10) had NO clause because it used to be the terminal step, where Continue is never
-    // rendered. D-351's Authorization step made it non-terminal and its Continue was disabled forever.
-    // All-optional except the consent text, which `consentOk` gates at submit — the same rule the last
-    // step already applies.
-    (step === 10 && consentOk);
+  /*
+   * ── The wizard's one validation mechanism ────────────────────────────────────────────────────────
+   *
+   * `currentStep → the step's rules → errors → Continue enabled/disabled`, for EVERY step, from ONE
+   * table. This replaces a hand-written boolean disjunction whose per-step clauses were written
+   * independently, which is the systemic defect:
+   *
+   *   · steps 6 (Content), 7 (Location) and 9 (Eligibility) had NO clause at all — they appeared as a
+   *     bare `step === 6 || step === 7 || step === 9`, an unconditional pass. Location was the
+   *     expensive one: `ValidateMode` refuses an Online/Hybrid event with no join link
+   *     (`online_url_required`), so an organiser chose Online, left the link blank, walked four more
+   *     steps and lost the lot to a refusal at submit.
+   *   · step 5 (Details) checked 3 of the 9 fields it renders — `CreateEventBodyValidator`'s minimum
+   *     rather than the step's, which is why Continue lit up on a nearly-blank step.
+   *   · step 8 (Windows) checked pair ordering but nothing else.
+   *
+   * Every entry returns field → message, so one derivation feeds four consumers: the button, the
+   * spoken reason, the click guard, and the submit backstop. A step with no rules returns `{}` — an
+   * explicit statement that it is all-optional, not an omission that looks like one.
+   *
+   * Nothing here is memoised. Every value is derived from current state on every render, which is what
+   * makes §15 (no stale validity) and §16 (navigating back recomputes) true by construction rather
+   * than by remembering to invalidate something.
+   */
+  const stepErrors: Record<string, string>[] = [
+    // 0 · Representing — D-353: a Public event must name a verified organization; Private asks nothing.
+    representingValid
+      ? {}
+      : {
+          representingOrgId: selectableReps.length > 0
+            ? "Choose the organization you are hosting this event on behalf of"
+            : "A public event has to represent an organization Kurx has verified. Request representation to continue"
+        },
+    // 1 · Visibility — one of a server-filtered list, always preselected, so this can only fail if the
+    // value was tampered with.
+    visibilityFor(product).some((v) => v.value === visibility) ? {} : { visibility: "Choose who can find this event" },
+    // 2 · Category.
+    categoryId ? {} : { categoryId: "Choose a category to continue" },
+    // 4 · Type — required only when the category HAS types. The step says so on screen for the empty
+    // case, and the server takes TypeId as optional.
+    subs.length === 0 || typeId ? {} : { typeId: "Choose a type to continue" },
+    // 4 · Registration — the unit, the price in that unit, and the team bounds when there are teams.
+    //
+    // The two paid-event eligibility checks moved here from the deleted Pricing step. They still have to
+    // run inside the form — the gate cleared them before it opened, but Representing is chosen HERE, and
+    // a paid event hosted under a personal name is refused at submit — and this is the first step where
+    // money is actually typed, so it is where saying "you cannot charge" belongs.
+    {
+      ...ticketErrors,
+      ...(pricing === "free" || canHostPaid
+        ? {}
+        : { priceRupees: "Paid events need identity, PAN and a verified bank account — verify first" }),
+      ...(pricing === "free" || representingValid
+        ? {}
+        : { name: "Go back to Representing and choose a verified organization — a paid event can't be hosted under your own name" }),
+    },
+    // 5 · Details.
+    detailsErrors,
+    // 6 · Content — all optional (every field on `EventContentInput` is nullable); only the two length
+    // ceilings apply.
+    contentErrors,
+    // 7 · Location — all optional EXCEPT the join link, which Online/Hybrid makes required.
+    placeErrors,
+    // 8 · Windows — all optional; each pair is ordered only when both ends are given.
+    windowErrors,
+    // 9 · Eligibility — all optional; the values, once given, have ranges.
+    eligibilityErrors,
+    // 10 · Legal — all optional except the consent text, which requiring consent makes required.
+    legalErrors,
+    // 11 · Authorization (present only when the event represents an institution) — D-351.
+    needsAuthorization ? validateAuthorization(authorization, letterFile !== null) : {}
+  ];
+
+  /// On-screen order per step, so the spoken reason is always the topmost unmet requirement.
+  /// Index-aligned with `stepErrors` and with `STEPS`. Registration sits at `STEP.registration`.
+  const stepFieldOrder: readonly string[][] = [
+    ["representingOrgId"], ["visibility"],
+    ["categoryId"], ["typeId"], [...TICKET_FIELD_ORDER], [...DETAILS_FIELD_ORDER],
+    [...CONTENT_FIELD_ORDER], [...PLACE_FIELD_ORDER], [...WINDOW_FIELD_ORDER],
+    [...ELIGIBILITY_FIELD_ORDER], [...LEGAL_FIELD_ORDER], [...AUTHORIZATION_FIELD_ORDER]
+  ];
+
+  const currentErrors = stepErrors[step] ?? {};
+  const canNext = Object.keys(currentErrors).length === 0;
+  /// The Authorization step's own result, for rendering. Read from `stepErrors` rather than recomputed,
+  /// so the fields and the button can never disagree.
+  const authErrors: Record<string, string> = stepErrors[STEP.authorization] ?? {};
 
   /*
    * Why the button is disabled, in words.
@@ -307,82 +453,50 @@ export function CreateEventWizard({
    * skipped by some screen-reader navigation entirely, so the reason has to live outside the button.
    *
    * Named per missing field rather than per step: "Make a choice to continue." on a step with four
-   * inputs is a shrug, and the whole point of blocking earlier is to say what is wrong while the
-   * field that is wrong is still on screen.
+   * inputs is a shrug, and the whole point of blocking earlier is to say what is wrong while the field
+   * that is wrong is still on screen. Read from the same result the fields render — one rule, one
+   * message, no second copy to drift.
    */
-  const blockedReason = (() => {
-    if (canNext) return null;
-    if (step === 0) {
-      return selectableReps.length > 0
-        ? "Choose the organization you are hosting this event on behalf of."
-        : "A public event has to represent an organization Kurx has verified. Request representation to continue.";
-    }
-    if (step === 2) {
-      if (!(pricing === "free" || canHostPaid)) return "Paid events need identity, PAN and a verified bank account. Choose Free, or verify first.";
-      if (!representingValid) return "Go back to Representing and choose a verified organization — a paid event can't be hosted under your own name.";
-      if (ticket.name.trim().length === 0) return "Name the ticket people will book.";
-      if (!(Number(ticket.quantity) > 0)) return "Set how many tickets are available (at least 1).";
-      return "Set a price above zero, or choose Free.";
-    }
-    // D-351 made Legal non-terminal, so it needs its own named reason like every other step (D-327):
-    // falling through to the generic "Make a choice to continue." on a step whose only rule is the
-    // consent text is exactly the shrug that rule was written to remove.
-    if (step === 10) return "Write the statement registrants must accept, or turn consent off.";
-    if (step === 3) return "Choose a category to continue.";
-    if (step === 4) return "Choose a type to continue.";
-    if (step === 5) {
-      if (details.title.trim().length < 2) return "Add a title of at least 2 characters.";
-      if (!details.startsAt) return "Set when the event starts.";
-      if (!details.endsAt) return "Set when the event ends.";
-      return "The end time must be after the start time.";
-    }
-    if (step === 8) {
-      return windows.registrationOpensAt && windows.registrationClosesAt
-        && !(new Date(windows.registrationClosesAt) > new Date(windows.registrationOpensAt))
-        ? "Registration must close after it opens."
-        : "Check-in must close after it opens.";
-    }
-    return "Make a choice to continue.";
-  })();
+  const blockedReason = canNext
+    ? null
+    : (firstError(currentErrors, stepFieldOrder[step] ?? []) ?? "Make a choice to continue.") + ".";
 
-  const submitBlockedReason =
-    canSubmitReady() ? null : missingForSubmit().join(" ");
-
-  function canSubmitReady() {
-    return missingForSubmit().length === 0;
+  /*
+   * §6 — the guard behind the disabled button.
+   *
+   * `disabled` is a rendering state, not an authorization: a programmatic click, a stale render or a
+   * devtools edit all reach `onClick` regardless. Advancing re-reads the same per-step result the
+   * button did, so an invalid step stays put and says why instead of moving on.
+   */
+  function goNext() {
+    if (Object.keys(stepErrors[step] ?? {}).length > 0) {
+      setError(blockedReason);
+      return;
+    }
+    setError(null);
+    setStep((s) => Math.min(s + 1, steps.length - 1));
   }
 
   /** The specific things still missing, so the last step never just refuses. */
   function missingForSubmit(): string[] {
-    const missing: string[] = [];
-    if (details.title.trim().length < 2) missing.push("Add a title of at least 2 characters (Details step).");
-    if (!details.startsAt) missing.push("Set a start time (Details step).");
-    if (!details.endsAt) missing.push("Set an end time (Details step).");
-    if (!categoryId) missing.push("Choose a category (Category step).");
-    if (legal.requiresConsent && legal.consentText.trim().length === 0) {
-      missing.push("Write the statement registrants must accept (Legal step).");
-    }
     /*
-     * D-351 — named per field rather than as one "authorization incomplete", because the server's own
-     * refusals are `authorization_fields_required`, `letterhead_required`, `official_phone_invalid` and
-     * `representative_role_other_required`. Mirroring them here means the wizard refuses for the same
-     * reasons the API would, while the field is still on screen.
+     * The backstop, and now genuinely complete: EVERY step's rules, not the four the old list
+     * remembered. It walked title/start/end, category, consent and authorization — so the six other
+     * Details fields, the Online join link, both window orderings and the age range could all reach
+     * the final POST with the button lit.
      */
-    if (needsAuthorization) {
-      if (!authorization.headName.trim()) missing.push("Name the signatory who authorises this event (Authorization step).");
-      if (!authorization.headDesignation.trim()) missing.push("Give the signatory's designation (Authorization step).");
-      if (!authorization.officialEmail.trim()) missing.push("Give the organization's official email (Authorization step).");
-      if (!authorization.officialPhone.trim()) missing.push("Give the organization's official phone (Authorization step).");
-      if (!authorization.representativeRole) missing.push("Choose your role in the organization (Authorization step).");
-      if (authorization.representativeRole === "Other" && !authorization.representativeRoleOther.trim()) {
-        missing.push("Describe your role, since you chose Other (Authorization step).");
+    const missing: string[] = [];
+    for (const [index, errors] of stepErrors.entries()) {
+      if (index >= steps.length) break;   // the Authorization step is absent unless it is rendered
+      for (const field of stepFieldOrder[index] ?? []) {
+        if (errors[field]) missing.push(`${errors[field]} (${steps[index]} step).`);
       }
-      if (!letterFile) missing.push("Attach the authorization letter (Authorization step).");
     }
     return missing;
   }
 
-  const canSubmit = missingForSubmit().length === 0 && consentOk && ticketOk;
+  const submitBlockedReason = missingForSubmit().length === 0 ? null : missingForSubmit().join(" ");
+  const canSubmit = missingForSubmit().length === 0;
 
   function submit() {
     setError(null);
@@ -391,6 +505,17 @@ export function CreateEventWizard({
     // organiser's whole offset — 5h30m in India (D-289). Converted before the payload rather than
     // inline because the contract requires both: refusing here beats sending a time we know is
     // unparseable, which the server would store as something else entirely.
+    /*
+     * Layer 3 of four. Every step re-validated at the moment of submission rather than trusted from
+     * when it was left, because up to eleven steps may have passed since — and "now" moves. A start
+     * time that was twenty minutes out when it was typed can be in the past by the time the organiser
+     * reaches the last step, and the step that checked it is long gone from the screen.
+     */
+    const stillMissing = missingForSubmit();
+    if (stillMissing.length > 0) {
+      setError(stillMissing[0]);
+      return;
+    }
     const startsAt = toIsoUtc(details.startsAt);
     const endsAt = toIsoUtc(details.endsAt);
     if (!startsAt || !endsAt) {
@@ -451,11 +576,30 @@ export function CreateEventWizard({
       })
     };
     startTransition(async () => {
+      const isTeam = ticket.participation === "team";
       const res = await createEventWizardAction(representingOrgId, values, {
         name: ticket.name,
         // Rupees in, paise on the wire (D-004). A free event is genuinely 0, not absent.
-        pricePaise: pricing === "paid" ? Math.round(Number(ticket.priceRupees) * 100) : 0,
-        quantity: Number(ticket.quantity) || 100
+        // With bands the server derives the headline from the cheapest one, so this is only the
+        // single-price case (D-366).
+        pricePaise: pricing === "paid" && ticket.tiers.length === 0
+          ? Math.round(Number(ticket.priceRupees) * 100)
+          : 0,
+        quantity: Number(ticket.quantity) || 100,
+        /*
+         * D-357 — the unit, no longer a literal.
+         *
+         * These two lines read `pricingUnit: "PerTicket", registrationMode: "Individual"` and made a
+         * capable API uni-modal: `TicketType` has carried both fields since D-020 and the wizard could
+         * only ever say one thing. `PerGroup` is what makes the backend charge once per team and take
+         * one inventory unit for it.
+         */
+        pricingUnit: isTeam ? "PerGroup" : "PerTicket",
+        registrationMode: isTeam ? "Group" : "Individual",
+        groupMin: isTeam ? Number(ticket.teamMin) : undefined,
+        groupMax: isTeam ? Number(ticket.teamMax) : undefined,
+        // D-366 — undefined for an unbanded ticket, so the request is byte-identical to before.
+        priceTiers: isTeam && pricing === "paid" ? tiersToPayload(ticket.tiers) : undefined
       });
       if ("id" in res) {
         /*
@@ -536,7 +680,7 @@ export function CreateEventWizard({
         person and the organization question is not asked at all — and crucially it is NOT presented as
         an "organization" of any kind, because self-representation is not a concept in this model.
       */}
-      {step === 0 ? (
+      {step === STEP.representing ? (
         <div className="space-y-3">
           {product === "Private" ? (
             <div className="rounded-lg border border-border bg-surface p-4">
@@ -633,7 +777,7 @@ export function CreateEventWizard({
       {/* Step 2 — Visibility.
           visibilityFor, not VISIBILITY: a Private event can never be Listed (D-305), and the option
           has to be absent here rather than refused eleven steps later at publish. */}
-      {step === 1 ? (
+      {step === STEP.visibility ? (
         <SelectCardGroup legend="Who can find this event?" name="visibility" className="grid gap-3 sm:grid-cols-3">
           {visibilityFor(product).map((v) => {
             const Icon = v.icon;
@@ -653,113 +797,10 @@ export function CreateEventWizard({
         </SelectCardGroup>
       ) : null}
 
-      {/* Step 2 — Pricing */}
-      {step === 2 ? (
-        <div className="space-y-3">
-          <SelectCardGroup legend="Is this event free or paid?" name="pricing" className="grid gap-3 sm:grid-cols-2">
-            <SelectCard
-              name="pricing"
-              value="free"
-              checked={pricing === "free"}
-              onSelect={() => setPricing("free")}
-              icon={<Gift size={18} aria-hidden className="text-accent-text" />}
-              title="Free"
-              description="No ticket charges. Anyone can register."
-            />
-            {/* canChoosePaid, not canHostPaid: a Private event can never take payment (D-305), so
-                trust alone is not enough to offer this. The copy says "below" because the wizard now
-                creates the first ticket here rather than deferring it to a tab. */}
-            <SelectCard
-              name="pricing"
-              value="paid"
-              checked={pricing === "paid"}
-              onSelect={() => canChoosePaid && setPricing("paid")}
-              disabled={!canChoosePaid}
-              icon={<Ticket size={18} aria-hidden className="text-accent-text" />}
-              title="Paid"
-              description="Sell tickets. Set the price below."
-            />
-          </SelectCardGroup>
-          {product === "Private" ? (
-            <p className="flex items-center gap-2 text-xs text-muted">
-              <ShieldCheck size={14} aria-hidden />
-              Private events are always free — they can&apos;t sell tickets.
-            </p>
-          ) : !canHostPaid ? (
-            <p className="flex items-center gap-2 text-xs text-muted">
-              <ShieldCheck size={14} aria-hidden />
-              Paid events require a verified organization.{" "}
-              <a href="/host/verification" className="text-accent-text hover:underline">Verify now</a>.
-            </p>
-          ) : null}
-
-          {/*
-            The ticket itself, created with the event.
-
-            This used to say "prices are set in the Tickets tab after creation" and create nothing — so
-            every event the wizard produced had **no ticket type**, and an event with no ticket type
-            cannot be registered for at all: the booking form answers "The host has not published any
-            ticket types for this event yet." The host completed eleven steps and got an event nobody
-            could join, with nothing saying so.
-
-            One ticket is created here, free or paid. More tiers, sale windows and per-tier limits stay
-            in Workspace ▸ Tickets — this is the minimum that makes an event bookable, not a second
-            ticket editor.
-          */}
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="text-label text-text">
-              {pricing === "paid" ? "Your ticket" : "Your free ticket"}
-            </p>
-            <p className="mt-1 text-caption text-muted">
-              Every event needs at least one ticket before anyone can register. You can add more tiers later.
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <div className={pricing === "paid" ? "" : "sm:col-span-2"}>
-                <label className="text-sm font-medium" htmlFor="ticketName">Ticket name</label>
-                <input
-                  id="ticketName"
-                  className={`mt-1 ${inputClass}`}
-                  maxLength={80}
-                  value={ticket.name}
-                  onChange={(e) => setTicket({ ...ticket, name: e.target.value })}
-                />
-              </div>
-              {pricing === "paid" ? (
-                <div>
-                  <label className="text-sm font-medium" htmlFor="ticketPrice">Price (₹)</label>
-                  <input
-                    id="ticketPrice"
-                    type="number"
-                    min={1}
-                    className={`mt-1 ${inputClass}`}
-                    value={ticket.priceRupees}
-                    onChange={(e) => setTicket({ ...ticket, priceRupees: e.target.value })}
-                  />
-                  {/* Money is stored as paise (D-004); rupees are only the input unit. */}
-                  <p className="mt-1 text-xs text-muted">Per ticket, in rupees.</p>
-                </div>
-              ) : null}
-              <div>
-                <label className="text-sm font-medium" htmlFor="ticketQuantity">How many</label>
-                <input
-                  id="ticketQuantity"
-                  type="number"
-                  min={1}
-                  className={`mt-1 ${inputClass}`}
-                  value={ticket.quantity}
-                  onChange={(e) => setTicket({ ...ticket, quantity: e.target.value })}
-                />
-                <p className="mt-1 text-xs text-muted">Total available.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Step 3 — Category.
+      {/* Step 2 — Category.
           shownCategories, not categories: the product gate filters the catalogue (D-305) so a Private
           host is never offered a category with no Private type behind it. */}
-      {step === 3 ? (
+      {step === STEP.category ? (
         shownCategories.length === 0 ? (
           <p className="text-sm text-muted">
             {categories.length === 0
@@ -783,7 +824,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Step 4 — Subcategory (Type) + metadata preview */}
-      {step === 4 ? (
+      {step === STEP.type ? (
         <div className="space-y-4">
           {subs.length === 0 ? (
             <p className="text-sm text-muted">This category has no subcategories. Continue to details.</p>
@@ -815,58 +856,266 @@ export function CreateEventWizard({
         </div>
       ) : null}
 
-      {/* Step 5 — Details */}
-      {step === 5 ? (
+      {/*
+        Step 6 — Registration (D-357).
+
+        The step that gives the price a unit. It runs after Type because the Type derives the archetype
+        and the archetype's `teams` capability is the only authority on whether team entry exists for
+        this event — asked of the engine, never inferred from a type name.
+      */}
+      {step === STEP.registration ? (
         <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium" htmlFor="title">Title</label>
-            <input id="title" className={`mt-1 ${inputClass}`} value={details.title}
-              onChange={(e) => setDetails({ ...details, title: e.target.value })} minLength={2} maxLength={200} />
+          {/*
+            States the pricing mode; does not ask it. It was decided at the gate, where the verification
+            tier hangs off it (D-343), and this is the step where its consequence appears — a price field
+            or the absence of one. Shown rather than silent, because an organiser who chose Paid a minute
+            ago and is now looking at a form with no price needs to know which of the two they are in.
+          */}
+          <p className="text-caption text-muted">
+            {pricing === "paid"
+              ? "Paid event — chosen during setup. Set what people pay below."
+              : "Free event — chosen during setup. No one will be charged to register."}
+          </p>
+          <Field label="What people are booking" required error={ticketErrors.name}>
+            <Input id="ticketName" value={ticket.name} maxLength={80}
+              onChange={(e) => setTicket({ ...ticket, name: e.target.value })} />
+          </Field>
+
+          {/*
+            Individual vs team. Shown as a choice only where the archetype allows it: a conference or a
+            wedding marks `teams` Unsupported, so offering it would let the organiser configure something
+            the event can never run.
+          */}
+          {teamsSupported ? (
+            <SelectCardGroup legend="How do people take part?" name="participation" className="grid gap-3 sm:grid-cols-2">
+              <SelectCard
+                name="participation" value="individual"
+                checked={ticket.participation === "individual"}
+                onSelect={() => setTicket({ ...ticket, participation: "individual" })}
+                icon={<Ticket size={18} aria-hidden className="text-accent-text" />}
+                title="Individually"
+                description="Each person registers for themselves."
+              />
+              <SelectCard
+                name="participation" value="team"
+                checked={ticket.participation === "team"}
+                onSelect={() => setTicket({ ...ticket, participation: "team" })}
+                icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
+                title="As a team"
+                description="One person registers the team and the rest join it."
+              />
+            </SelectCardGroup>
+          ) : (
+            <p className="flex items-center gap-2 text-xs text-muted">
+              <ShieldCheck size={14} aria-hidden />
+              {selectedArchetype
+                ? "This kind of event doesn't support team entry, so people register individually."
+                : "People register individually."}
+            </p>
+          )}
+
+          {ticket.participation === "team" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* GroupMin/GroupMax — enforced at purchase as `invalid_group_size`, and the ceiling any
+                  later TeamPolicy may narrow within but never exceed (D-358). */}
+              <Field label="Smallest team" required error={ticketErrors.teamMin}>
+                <Input id="teamMin" type="number" min={1} step={1} value={ticket.teamMin}
+                  onChange={(e) => setTicket({ ...ticket, teamMin: e.target.value })} />
+              </Field>
+              <Field label="Largest team" required error={ticketErrors.teamMax}>
+                <Input id="teamMax" type="number" min={1} step={1} value={ticket.teamMax}
+                  onChange={(e) => setTicket({ ...ticket, teamMax: e.target.value })} />
+              </Field>
+            </div>
+          ) : null}
+
+          {/*
+            D-366 — price by team size.
+
+            Offered only for a PAID TEAM ticket, because that is the only shape where the question has
+            an answer: an individual price already scales with the roster, and a free event has no
+            prices to band. Empty means one price for every size, which is D-357 unchanged and stays the
+            default — an organiser who does not need bands never sees a table.
+          */}
+          {pricing === "paid" && ticket.participation === "team" ? (
+            <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-text">Price by team size</p>
+                {ticket.tiers.length === 0 ? (
+                  <Button type="button" variant="secondary"
+                    onClick={() => setTicket({
+                      ...ticket,
+                      // Seeded across the whole allowed range so the first thing shown is already a
+                      // valid set: an editor that opens in an invalid state teaches people to ignore it.
+                      tiers: [{ minSize: ticket.teamMin || "2", maxSize: ticket.teamMax || "5", priceRupees: ticket.priceRupees || "" }]
+                    })}>
+                    Set different prices per size
+                  </Button>
+                ) : (
+                  <Button type="button" variant="ghost"
+                    onClick={() => setTicket({ ...ticket, tiers: [] })}>
+                    Use one price for all sizes
+                  </Button>
+                )}
+              </div>
+
+              {ticket.tiers.length === 0 ? (
+                <p className="text-caption text-muted">
+                  Every team pays the same, whatever its size. Add rules to charge a team of 2 differently
+                  from a team of 5.
+                </p>
+              ) : (
+                <>
+                  {ticket.tiers.map((tier, i) => (
+                    <div key={i} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                      <Field label="From (members)">
+                        <Input id={`tierMin${i}`} type="number" min={1} step={1} value={tier.minSize}
+                          onChange={(e) => setTicket({
+                            ...ticket,
+                            tiers: ticket.tiers.map((t, j) => j === i ? { ...t, minSize: e.target.value } : t)
+                          })} />
+                      </Field>
+                      <Field label="To (members)">
+                        <Input id={`tierMax${i}`} type="number" min={1} step={1} value={tier.maxSize}
+                          onChange={(e) => setTicket({
+                            ...ticket,
+                            tiers: ticket.tiers.map((t, j) => j === i ? { ...t, maxSize: e.target.value } : t)
+                          })} />
+                      </Field>
+                      <Field label="Price per team (₹)">
+                        <Input id={`tierPrice${i}`} type="number" min={1} value={tier.priceRupees}
+                          onChange={(e) => setTicket({
+                            ...ticket,
+                            tiers: ticket.tiers.map((t, j) => j === i ? { ...t, priceRupees: e.target.value } : t)
+                          })} />
+                      </Field>
+                      <Button type="button" variant="ghost"
+                        onClick={() => setTicket({ ...ticket, tiers: ticket.tiers.filter((_, j) => j !== i) })}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="secondary"
+                    onClick={() => {
+                      // The next rule starts where the last one ended, because a set built by hand is
+                      // where gaps come from and the common case is contiguous bands.
+                      const last = ticket.tiers[ticket.tiers.length - 1];
+                      const next = String(Number(last?.maxSize || ticket.teamMin || 2) + 1);
+                      setTicket({ ...ticket, tiers: [...ticket.tiers, { minSize: next, maxSize: next, priceRupees: "" }] });
+                    }}>
+                    + Add price rule
+                  </Button>
+                  {ticketErrors.tiers ? (
+                    <p role="alert" className="text-caption text-danger">{ticketErrors.tiers}</p>
+                  ) : (
+                    <p className="text-caption text-muted">
+                      Each rule is the price for the WHOLE team, not per member. Every size from{" "}
+                      {ticket.teamMin || "—"} to {ticket.teamMax || "—"} needs exactly one rule.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {pricing === "paid" && ticket.tiers.length === 0 ? (
+              // The unit is stated on the control, not left to the organiser to infer. ₹2,000 alone is
+              // the ambiguity this whole change exists to remove. Hidden once bands exist: the bands ARE
+              // the price then, and two price inputs is the duplicate-question mistake again (D-365).
+              <Field label={ticket.participation === "team" ? "Price per team (₹)" : "Price per participant (₹)"}
+                required error={ticketErrors.priceRupees}
+                helper={ticketErrors.priceRupees ? undefined
+                  : ticket.participation === "team"
+                    ? "Charged once for the whole team, whatever its size."
+                    : "Charged once per person."}>
+                <Input id="ticketPrice" type="number" min={1} value={ticket.priceRupees}
+                  onChange={(e) => setTicket({ ...ticket, priceRupees: e.target.value })} />
+              </Field>
+            ) : null}
+            {/* Under PerGroup one team takes exactly one unit, so this really is a count of teams. */}
+            <Field label={ticket.participation === "team" ? "How many teams" : "How many places"}
+              required error={ticketErrors.quantity}
+              helper={ticketErrors.quantity ? undefined
+                : ticket.participation === "team"
+                  ? "Team slots available. A team takes one, however many people are on it."
+                  : "Total places available."}>
+              <Input id="ticketQuantity" type="number" min={1} step={1} value={ticket.quantity}
+                onChange={(e) => setTicket({ ...ticket, quantity: e.target.value })} />
+            </Field>
           </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="subtitle">Subtitle</label>
-            <input id="subtitle" className={`mt-1 ${inputClass}`} value={details.subtitle}
-              onChange={(e) => setDetails({ ...details, subtitle: e.target.value })} maxLength={200} />
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="description">Description</label>
-            <textarea id="description" rows={4} className={`mt-1 ${textareaClass}`} value={details.description}
+
+          {/* The summary reads back what was configured, in the unit it is charged in — a price with no
+              unit is the ambiguity this step exists to remove. With bands it names the range rather than
+              one number, because "₹250" on a ticket that also charges ₹400 would be the same lie. */}
+          <p className="text-caption text-muted">
+            {pricing === "paid"
+              ? ticket.participation === "team"
+                ? ticket.tiers.length > 0
+                  ? `₹${Math.min(...ticket.tiers.map((t) => Number(t.priceRupees) || 0))}–₹${Math.max(...ticket.tiers.map((t) => Number(t.priceRupees) || 0))} per team by size · teams of ${ticket.teamMin || "—"}–${ticket.teamMax || "—"} · ${ticket.quantity || "—"} team slots`
+                  : `₹${ticket.priceRupees || "—"} per team · teams of ${ticket.teamMin || "—"}–${ticket.teamMax || "—"} · ${ticket.quantity || "—"} team slots`
+                : `₹${ticket.priceRupees || "—"} per participant · ${ticket.quantity || "—"} places`
+              : ticket.participation === "team"
+                ? `Free · teams of ${ticket.teamMin || "—"}–${ticket.teamMax || "—"} · ${ticket.quantity || "—"} team slots`
+                : `Free · ${ticket.quantity || "—"} places`}
+          </p>
+        </div>
+      ) : null}
+
+      {/*
+        Step 7 — Details.
+
+        `Field`/`Input`/`Textarea`/`DateTimeField` rather than the hand-rolled `<label>` + `controlClass`
+        the other steps still use. That is not a restyle: `Field` is the ONE place a control gets
+        `aria-invalid`, `aria-describedby` and a `role="alert"` error node (audit S1-1), and this step is
+        the only one in the wizard that now has per-field errors to announce. Every message below comes
+        from `validateDetails` — there is no second validation system here, only its rendering.
+      */}
+      {step === STEP.details ? (
+        <div className="space-y-4">
+          <Field label="Title" required error={detailsErrors.title}>
+            <Input id="title" value={details.title} minLength={2} maxLength={200}
+              onChange={(e) => setDetails({ ...details, title: e.target.value })} />
+          </Field>
+          <Field label="Subtitle" required error={detailsErrors.subtitle}>
+            <Input id="subtitle" value={details.subtitle} maxLength={200}
+              onChange={(e) => setDetails({ ...details, subtitle: e.target.value })} />
+          </Field>
+          <Field label="Description" required error={detailsErrors.description}>
+            <Textarea id="description" rows={4} value={details.description}
               onChange={(e) => setDetails({ ...details, description: e.target.value })} />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* `min` is the picker's floor (§3/§4): today is reachable, earlier today is not, and the
+                past is not offered at all. Recomputed every render, never hard-coded. */}
+            <DateTimeField id="startsAt" label="Starts at" required value={details.startsAt}
+              min={nowLocal} error={detailsErrors.startsAt}
+              helper={detailsErrors.startsAt ? undefined : "Cannot be in the past."}
+              onChange={(e) => setDetails({ ...details, startsAt: e.target.value })} />
+            {/* The End floor follows Start, so moving Start forward narrows End with it (§5). */}
+            <DateTimeField id="endsAt" label="Ends at" required value={details.endsAt}
+              min={endsAtMin} error={detailsErrors.endsAt}
+              helper={detailsErrors.endsAt ? undefined : "Must be after the start."}
+              onChange={(e) => setDetails({ ...details, endsAt: e.target.value })} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium" htmlFor="startsAt">Starts at</label>
-              <input id="startsAt" type="datetime-local" className={`mt-1 ${inputClass}`} value={details.startsAt}
-                onChange={(e) => setDetails({ ...details, startsAt: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium" htmlFor="endsAt">Ends at</label>
-              <input id="endsAt" type="datetime-local" className={`mt-1 ${inputClass}`} value={details.endsAt}
-                onChange={(e) => setDetails({ ...details, endsAt: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium" htmlFor="venueName">Venue name</label>
-              <input id="venueName" className={`mt-1 ${inputClass}`} value={details.venueName}
+            <Field label="Venue name" required error={detailsErrors.venueName}>
+              <Input id="venueName" value={details.venueName}
                 onChange={(e) => setDetails({ ...details, venueName: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium" htmlFor="city">City</label>
-              <input id="city" className={`mt-1 ${inputClass}`} value={details.city}
+            </Field>
+            <Field label="City" required error={detailsErrors.city}>
+              <Input id="city" value={details.city}
                 onChange={(e) => setDetails({ ...details, city: e.target.value })} />
-            </div>
+            </Field>
           </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="venueAddress">Venue address</label>
-            <input id="venueAddress" className={`mt-1 ${inputClass}`} value={details.venueAddress}
+          <Field label="Venue address" required error={detailsErrors.venueAddress}>
+            <Input id="venueAddress" value={details.venueAddress}
               onChange={(e) => setDetails({ ...details, venueAddress: e.target.value })} />
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="capacity">Capacity</label>
-            <input id="capacity" type="number" min={1} className={`mt-1 ${inputClass}`} value={details.capacity}
+          </Field>
+          <Field label="Capacity" required error={detailsErrors.capacity}>
+            <Input id="capacity" type="number" min={1} step={1} value={details.capacity}
               onChange={(e) => setDetails({ ...details, capacity: e.target.value })} />
-          </div>
+          </Field>
           {pricing === "paid" ? (
             <p className="text-xs text-muted">You&apos;ll add ticket types and prices in the event&apos;s Tickets tab after it&apos;s created.</p>
           ) : null}
@@ -874,7 +1123,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Step 6 — Content */}
-      {step === 6 ? (
+      {step === STEP.content ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">Optional, but these are what a listing card and a share preview show.</p>
           <div>
@@ -907,7 +1156,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Step 7 — Location */}
-      {step === 7 ? (
+      {step === STEP.location ? (
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium" htmlFor="eventMode">Mode</label>
@@ -940,20 +1189,21 @@ export function CreateEventWizard({
           ) : null}
 
           {place.eventMode !== "Online" ? (
-            <div>
-              <label className="text-sm font-medium" htmlFor="googleMapsUrl">Google Maps link</label>
-              <input id="googleMapsUrl" type="url" className={`mt-1 ${inputClass}`} value={place.googleMapsUrl}
+            <Field label="Google Maps link" error={placeErrors.googleMapsUrl}>
+              <Input id="googleMapsUrl" type="url" value={place.googleMapsUrl}
                 onChange={(e) => setPlace({ ...place, googleMapsUrl: e.target.value })} />
-            </div>
+            </Field>
           ) : null}
 
           {place.eventMode !== "Offline" ? (
             <>
-              <div>
-                <label className="text-sm font-medium" htmlFor="onlineUrl">Join link</label>
-                <input id="onlineUrl" type="url" className={`mt-1 ${inputClass}`} value={place.onlineUrl}
+              {/* Conditionally REQUIRED, and the one field on this step that is: `ValidateMode`
+                  refuses an Online/Hybrid event with no link (`online_url_required`). Switching Mode
+                  back to In person makes it optional again on the same render. */}
+              <Field label="Join link" required error={placeErrors.onlineUrl}>
+                <Input id="onlineUrl" type="url" value={place.onlineUrl}
                   onChange={(e) => setPlace({ ...place, onlineUrl: e.target.value })} />
-              </div>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium" htmlFor="meetingPlatform">Platform</label>
@@ -974,7 +1224,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Step 8 — Windows */}
-      {step === 8 ? (
+      {step === STEP.windows ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
             All optional. Registration times bound every ticket type; a ticket&apos;s own sale window can
@@ -987,24 +1237,22 @@ export function CreateEventWizard({
                 value={windows.registrationOpensAt}
                 onChange={(e) => setWindows({ ...windows, registrationOpensAt: e.target.value })} />
             </div>
-            <div>
-              <label className="text-sm font-medium" htmlFor="regCloses">Registration closes</label>
-              <input id="regCloses" type="datetime-local" className={`mt-1 ${inputClass}`}
-                value={windows.registrationClosesAt}
-                onChange={(e) => setWindows({ ...windows, registrationClosesAt: e.target.value })} />
-            </div>
+            {/* `min` follows the opening time, so the picker cannot offer a close before an open —
+                the same rule `invalid_registration_window` refuses. */}
+            <DateTimeField id="regCloses" label="Registration closes"
+              value={windows.registrationClosesAt} min={windows.registrationOpensAt || undefined}
+              error={windowErrors.registrationClosesAt}
+              onChange={(e) => setWindows({ ...windows, registrationClosesAt: e.target.value })} />
             <div>
               <label className="text-sm font-medium" htmlFor="checkinOpens">Check-in opens</label>
               <input id="checkinOpens" type="datetime-local" className={`mt-1 ${inputClass}`}
                 value={windows.checkinOpensAt}
                 onChange={(e) => setWindows({ ...windows, checkinOpensAt: e.target.value })} />
             </div>
-            <div>
-              <label className="text-sm font-medium" htmlFor="checkinCloses">Check-in closes</label>
-              <input id="checkinCloses" type="datetime-local" className={`mt-1 ${inputClass}`}
-                value={windows.checkinClosesAt}
-                onChange={(e) => setWindows({ ...windows, checkinClosesAt: e.target.value })} />
-            </div>
+            <DateTimeField id="checkinCloses" label="Check-in closes"
+              value={windows.checkinClosesAt} min={windows.checkinOpensAt || undefined}
+              error={windowErrors.checkinClosesAt}
+              onChange={(e) => setWindows({ ...windows, checkinClosesAt: e.target.value })} />
             {/* `scoring` and `certificates` are Unsupported for the private-gathering archetype, so a
                 wedding was being asked when its results are announced. Keyed on `product` rather than
                 on a fetched capability set for two reasons: the wizard already holds the product, and
@@ -1041,7 +1289,7 @@ export function CreateEventWizard({
       ) : null}
 
       {/* Step 9 — Eligibility */}
-      {step === 9 ? (
+      {step === STEP.eligibility ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
             Optional. Anyone turned away is told which rule stopped them, so only set a restriction the
@@ -1053,18 +1301,16 @@ export function CreateEventWizard({
               stopped them") describes an interaction that cannot happen. */}
           {isPrivate ? null : (
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium" htmlFor="minAge">Minimum age</label>
-                <input id="minAge" type="number" min={0} max={120} className={`mt-1 ${inputClass}`}
-                  value={eligibility.minAge}
+              {/* Optional — an event with no age bound is the normal case. What is checked is the
+                  RANGE once both are given, which `ApplyFieldGroups` refuses as `invalid_age_range`. */}
+              <Field label="Minimum age" error={eligibilityErrors.minAge}>
+                <Input id="minAge" type="number" min={0} max={120} step={1} value={eligibility.minAge}
                   onChange={(e) => setEligibility({ ...eligibility, minAge: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium" htmlFor="maxAge">Maximum age</label>
-                <input id="maxAge" type="number" min={0} max={120} className={`mt-1 ${inputClass}`}
-                  value={eligibility.maxAge}
+              </Field>
+              <Field label="Maximum age" error={eligibilityErrors.maxAge}>
+                <Input id="maxAge" type="number" min={0} max={120} step={1} value={eligibility.maxAge}
                   onChange={(e) => setEligibility({ ...eligibility, maxAge: e.target.value })} />
-              </div>
+              </Field>
             </div>
           )}
           <div>
@@ -1079,28 +1325,27 @@ export function CreateEventWizard({
           {/* `teams` is Unsupported for private-gathering — a wedding has no team cap. Same rule and
               same caveat as the two date fields on the Windows step. */}
           {isPrivate ? null : (
-            <div>
-              <label className="text-sm font-medium" htmlFor="maxTeams">Maximum teams</label>
-              <input id="maxTeams" type="number" min={1} className={`mt-1 ${inputClass}`}
-                value={eligibility.maxTeams}
+            // Optional, but a 0 is not "no cap" — `ApplyFieldGroups` silently DISCARDS `MaxTeams <= 0`,
+            // so an organiser capping teams at 0 got no cap and no warning. Refused here instead.
+            <Field label="Maximum teams" error={eligibilityErrors.maxTeams}
+              helper={eligibilityErrors.maxTeams ? undefined : "Total teams for the event, not teams per person."}>
+              <Input id="maxTeams" type="number" min={1} step={1} value={eligibility.maxTeams}
                 onChange={(e) => setEligibility({ ...eligibility, maxTeams: e.target.value })} />
-              <p className="mt-1 text-xs text-muted">Total teams for the event, not teams per person.</p>
-            </div>
+            </Field>
           )}
         </div>
       ) : null}
 
       {/* Step 10 — Legal */}
-      {step === 10 ? (
+      {step === STEP.legal ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
             Kurx&apos;s own terms always apply. These are your additional terms for this event.
           </p>
-          <div>
-            <label className="text-sm font-medium" htmlFor="termsUrl">Terms link</label>
-            <input id="termsUrl" type="url" className={`mt-1 ${inputClass}`} value={legal.termsUrl}
+          <Field label="Terms link" error={legalErrors.termsUrl}>
+            <Input id="termsUrl" type="url" value={legal.termsUrl}
               onChange={(e) => setLegal({ ...legal, termsUrl: e.target.value })} />
-          </div>
+          </Field>
           <div>
             <label className="text-sm font-medium" htmlFor="codeOfConduct">Code of conduct</label>
             <textarea id="codeOfConduct" rows={3} className={`mt-1 ${textareaClass}`} value={legal.codeOfConduct}
@@ -1124,15 +1369,14 @@ export function CreateEventWizard({
               onChange={(e) => setLegal({ ...legal, requiresConsent: e.target.checked })} />
             Require registrants to accept a statement
           </label>
+          {/* The wizard's other conditional requirement: optional until the switch above is on, then
+              required on the same render (`consent_text_required`). */}
           {legal.requiresConsent ? (
-            <div>
-              <label className="text-sm font-medium" htmlFor="consentText">What they must accept</label>
-              <textarea id="consentText" aria-describedby="consentText-help" required rows={3} className={`mt-1 ${textareaClass}`} value={legal.consentText}
+            <Field label="What they must accept" required error={legalErrors.consentText}
+              helper={legalErrors.consentText ? undefined : "Acceptance is recorded against this exact wording."}>
+              <Textarea id="consentText" rows={3} value={legal.consentText}
                 onChange={(e) => setLegal({ ...legal, consentText: e.target.value })} />
-              <p id="consentText-help" className="mt-1 text-xs text-muted">
-                Required — acceptance is recorded against this exact wording.
-              </p>
-            </div>
+            </Field>
           ) : null}
         </div>
       ) : null}
@@ -1156,46 +1400,43 @@ export function CreateEventWizard({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-text" htmlFor="auth-head-name">Signatory&apos;s name</label>
-              <input id="auth-head-name" className={inputClass} value={authorization.headName} maxLength={160}
+            <Field label="Signatory's name" required error={authErrors.headName}>
+              <Input id="auth-head-name" value={authorization.headName} maxLength={160}
                 onChange={(e) => setAuthorization({ ...authorization, headName: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text" htmlFor="auth-head-designation">Their designation</label>
-              <input id="auth-head-designation" className={inputClass} value={authorization.headDesignation} maxLength={160}
+            </Field>
+            <Field label="Their designation" required error={authErrors.headDesignation}>
+              <Input id="auth-head-designation" value={authorization.headDesignation} maxLength={160}
                 onChange={(e) => setAuthorization({ ...authorization, headDesignation: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text" htmlFor="auth-email">Official email</label>
-              <input id="auth-email" type="email" className={inputClass} value={authorization.officialEmail}
+            </Field>
+            <Field label="Official email" required error={authErrors.officialEmail}>
+              <Input id="auth-email" type="email" value={authorization.officialEmail}
                 onChange={(e) => setAuthorization({ ...authorization, officialEmail: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-text" htmlFor="auth-phone">Official phone</label>
-              <input id="auth-phone" className={inputClass} value={authorization.officialPhone}
-                placeholder="+919876543210"
+            </Field>
+            {/* The same E.164 shape `EventAuthorizationBodyValidator` matches — checked here so the
+                refusal names the field rather than arriving as a 400 after the event exists. */}
+            <Field label="Official phone" required error={authErrors.officialPhone}
+              helper={authErrors.officialPhone ? undefined : "International format, e.g. +919876543210."}>
+              <Input id="auth-phone" value={authorization.officialPhone} placeholder="+919876543210"
                 onChange={(e) => setAuthorization({ ...authorization, officialPhone: e.target.value })} />
-              <p className="mt-1 text-xs text-muted">International format, e.g. +919876543210.</p>
-            </div>
+            </Field>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-text" htmlFor="auth-role">Your role in this organization</label>
-            {/* The server's vocabulary, never a copy — a list that drifts offers a role the API refuses. */}
-            <select id="auth-role" className={inputClass} value={authorization.representativeRole}
+          {/* The server's vocabulary, never a copy — a list that drifts offers a role the API refuses. */}
+          <Field label="Your role in this organization" required error={authErrors.representativeRole}>
+            <Select id="auth-role" value={authorization.representativeRole}
               onChange={(e) => setAuthorization({ ...authorization, representativeRole: e.target.value })}>
               <option value="">Select a role…</option>
               {representativeRoles.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
+          {/* Conditionally required: choosing "Other" is what makes the free-text field mandatory
+              (`representative_role_other_required`). */}
           {authorization.representativeRole === "Other" ? (
-            <div>
-              <label className="text-sm font-medium text-text" htmlFor="auth-role-other">Describe your role</label>
-              <input id="auth-role-other" className={inputClass} value={authorization.representativeRoleOther} maxLength={80}
+            <Field label="Describe your role" required error={authErrors.representativeRoleOther}>
+              <Input id="auth-role-other" value={authorization.representativeRoleOther} maxLength={80}
                 onChange={(e) => setAuthorization({ ...authorization, representativeRoleOther: e.target.value })} />
-            </div>
+            </Field>
           ) : null}
 
           <div>
@@ -1252,9 +1493,13 @@ export function CreateEventWizard({
         ) : null}
         {error ? <p role="alert" className="mb-3 text-sm text-danger">{error}</p> : null}
         <div className="flex items-center justify-between">
-          <Button variant="ghost" disabled={step === 0 || isPending} onClick={() => setStep((s) => s - 1)}>Back</Button>
+          {/* Back never validates — leaving a half-filled step to go correct an earlier one is the
+              whole point of a wizard, and the error is cleared so a stale refusal does not follow. */}
+          <Button variant="ghost" disabled={step === 0 || isPending}
+            onClick={() => { setError(null); setStep((s) => Math.max(s - 1, 0)); }}>Back</Button>
           {step < steps.length - 1 ? (
-            <Button disabled={!canNext} onClick={() => setStep((s) => s + 1)}>Continue</Button>
+            // Disabled AND guarded: `disabled` is presentation, `goNext` is the rule (§6).
+            <Button disabled={!canNext} onClick={goNext}>Continue</Button>
           ) : (
             <Button disabled={!canSubmit || isPending} onClick={submit}>
               {isPending ? <Spinner size={16} decorative /> : null}

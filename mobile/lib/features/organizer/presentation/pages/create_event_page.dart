@@ -42,10 +42,11 @@ class CreateEventPage extends ConsumerStatefulWidget {
 
   final String product;
 
-  /// Already answered in the gate (D-343): the free/paid pair is what selected the verification tier
-  /// the caller just cleared. Carried in as the starting value rather than re-asked from scratch, and
-  /// still changeable here — the Paid card stays gated on `canOrganizePaid`, so moving to Paid after
-  /// entering as Free cannot escape the financial tier.
+  /// Answered ONCE, in the gate (D-343): the product+pricing pair is what selected the verification
+  /// tier the caller cleared to get here. This form READS it and offers no way to change it — the two
+  /// guards were never the same guard (the gate also requires a verified representation, which the
+  /// card here did not check), so a second control meant an event could become Paid after eligibility
+  /// for Paid had been decided against it.
   final String initialPricing;
 
   @override
@@ -58,7 +59,7 @@ class CreateEventPage extends ConsumerStatefulWidget {
 /// and the whole pricing step. One product, one flow: a person who learns this on web must recognise it
 /// here.
 enum _Step {
-  representing, visibility, pricing, category, type, details,
+  representing, visibility, category, type, registration, details,
   content, location, windows, eligibility, legal,
   /// D-351 — the represented institution's written consent, asked in-flow rather than on a separate
   /// screen after the draft exists. Appended last so every earlier step keeps its position, and only
@@ -69,9 +70,9 @@ enum _Step {
 const _stepTitles = <_Step, String>{
   _Step.representing: 'Representing',
   _Step.visibility: 'Who can see it',
-  _Step.pricing: 'Pricing',
   _Step.category: 'Category',
   _Step.type: 'Type',
+  _Step.registration: 'Registration',
   _Step.details: 'The basics',
   _Step.content: 'How it reads',
   _Step.location: 'Where it happens',
@@ -97,7 +98,9 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   final _venueName = TextEditingController();
   final _venueAddress = TextEditingController();
   final _capacity = TextEditingController();
-  /// Free / paid. A capability gate, exactly as on web — it creates no ticket by itself.
+  /// The gate's free/paid answer, carried in and never written again after [initState]. Nothing in this
+  /// form may set it: the verification tier was chosen from it (D-343) before the form opened, so a
+  /// control here would let an event become Paid after being judged as Free.
   String _pricing = 'free';
   String? _categoryId;
   String? _typeId;
@@ -113,6 +116,17 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   final _ticketName = TextEditingController(text: 'General Admission');
   final _ticketPrice = TextEditingController();
   final _ticketQuantity = TextEditingController(text: '100');
+
+  /// D-357 — how people take part, which is what gives the price its unit. `team` maps to
+  /// `RegistrationMode.Group` + `PricingUnit.PerGroup` together: one charge and one inventory unit for
+  /// the whole team. Defaults to individual, which is what every event this wizard made before now was.
+  String _participation = 'individual';
+  final _teamMin = TextEditingController(text: '2');
+  final _teamMax = TextEditingController(text: '4');
+
+  /// D-366 — team-size price bands. Empty means one price for every size, which is D-357 unchanged and
+  /// stays the default: an organiser who does not need bands never sees the table.
+  final List<TeamPriceBand> _bands = [];
 
   // ── Content ───────────────────────────────────────────────────────────────
   final _tagline = TextEditingController();
@@ -176,17 +190,10 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
       ? _Step.values
       : _Step.values.where((s) => s != _Step.authorization).toList();
 
-  /// Mirrors web's `missingForSubmit()` for this step, and the server's own refusals
-  /// (`authorization_fields_required`, `letterhead_required`, `representative_role_other_required`).
-  bool get _authorizationValid =>
-      !_needsAuthorization ||
-      (_headName.text.trim().isNotEmpty &&
-          _headDesignation.text.trim().isNotEmpty &&
-          _officialEmail.text.trim().isNotEmpty &&
-          _officialPhone.text.trim().isNotEmpty &&
-          (_representativeRole?.isNotEmpty ?? false) &&
-          (_representativeRole != 'Other' || _representativeRoleOther.text.trim().isNotEmpty) &&
-          _letterBytes != null);
+  // `_authorizationValid` lived here as a boolean that could only say "no". Replaced by
+  // `validateEventAuthorization` in `_stepErrors`, which names the field — and adds the E.164 and
+  // email shapes the boolean never checked, so a malformed phone no longer reaches the API as a 400
+  // after the event has already been created.
 
   _Step _step = _Step.representing;
   bool _submitting = false;
@@ -211,7 +218,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
       _onlineUrl, _building, _floor, _room, _mapsUrl, _meetingPlatform, _meetingPassword,
       _minAge, _maxAge, _maxTeams,
       _termsUrl, _codeOfConduct, _refundPolicy, _cancellationPolicy, _consentText,
-      _ticketName, _ticketPrice, _ticketQuantity,
+      _ticketName, _ticketPrice, _ticketQuantity, _teamMin, _teamMax,
     ]) {
       c.dispose();
     }
@@ -235,25 +242,115 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
     return types.any((t) => t.parentId == _categoryId && t.allowsProduct(widget.product));
   }
 
-  bool get _basicsValid =>
-      _title.text.trim().isNotEmpty &&
-      _categoryId != null &&
-      (!_categoryHasTypes || _typeId != null) &&
-      _endsAt.isAfter(_startsAt);
-
-  /// Mirrors the server's `consent_text_required`: asking people to accept an empty string would
-  /// record a consent that evidences nothing.
-  bool get _consentOk => !_requiresConsent || _consentText.text.trim().isNotEmpty;
-
   /// Rupees → paise. A blank price is free (0), never absent.
   int get _ticketPricePaise =>
       ((double.tryParse(_ticketPrice.text.trim()) ?? 0) * 100).round();
 
-  /// A ticket must be nameable and countable. Price may be 0 (free) but never negative.
-  bool get _ticketValid =>
-      _ticketName.text.trim().isNotEmpty &&
-      (int.tryParse(_ticketQuantity.text.trim()) ?? 0) > 0 &&
-      _ticketPricePaise >= 0;
+  /*
+   * ── The wizard's one validation mechanism ────────────────────────────────────────────────────────
+   *
+   * `_Step → the step's rules → errors → Continue enabled/disabled`, for EVERY step, from ONE map.
+   * This replaces two hand-written getters consulted at two step positions: `_basicsValid` on Details
+   * and `_representingValid` on Representing/Pricing, with every other step ungated by design ("Every
+   * other step stays ungated: blocking inside an optional step is how a wizard gets abandoned").
+   *
+   * That reasoning was right about optional steps and wrong about the steps that are not:
+   *   · Location requires a join link once the event is Online (`online_url_required`);
+   *   · Pricing's ticket must be nameable and countable, or the event is unbookable;
+   *   · Legal requires the consent text once consent is switched on (`consent_text_required`);
+   *   · Eligibility refuses an inverted age range (`invalid_age_range`);
+   *   · Details asked nine questions and checked four.
+   *
+   * A step with genuinely no rules returns an empty map — an explicit statement that it is
+   * all-optional, which is what the old comment was reaching for. Rebuilt from current state on every
+   * `setState`, so nothing can hold a stale "valid".
+   */
+  Map<_Step, Map<String, String>> get _stepErrors => {
+        _Step.representing: _representingValid
+            ? const {}
+            : const {'representingOrgId': 'Choose the organization you are hosting this event on behalf of'},
+        _Step.visibility: const {},
+        // D-357 — the registration UNIT, asked after Type because the archetype decides whether team
+        // entry exists at all. The paid-event eligibility check rides here too (D-365): it used to sit
+        // on the deleted Pricing step, and this is the first step where money is actually typed.
+        _Step.registration: {
+          if (_pricing == 'paid' && !_representingValid)
+            'representingOrgId':
+                "Choose a verified organization — a paid event can't be hosted under your own name",
+          ...validateEventTicket(
+            name: _ticketName.text,
+            priceRupees: _ticketPrice.text,
+            quantity: _ticketQuantity.text,
+            paid: _pricing == 'paid',
+            participation: _participation,
+            teamMin: _teamMin.text,
+            teamMax: _teamMax.text,
+            bands: _bands,
+          ),
+        },
+        _Step.category: _categoryId == null ? const {'categoryId': 'Choose a category to continue'} : const {},
+        // Required only when the category HAS types — see `_categoryHasTypes`.
+        _Step.type: (!_categoryHasTypes || _typeId != null)
+            ? const {}
+            : const {'typeId': 'Choose a type to continue'},
+        _Step.details: validateEventDetails(
+          title: _title.text,
+          subtitle: _subtitle.text,
+          description: _description.text,
+          startsAt: _startsAt,
+          endsAt: _endsAt,
+          venueName: _venueName.text,
+          city: _city.text,
+          venueAddress: _venueAddress.text,
+          capacity: _capacity.text,
+        ),
+        // Content is all-optional: every field on `EventContentInput` is nullable, and the two length
+        // ceilings are already enforced by `maxLength` on the inputs.
+        _Step.content: const {},
+        _Step.location: validateEventPlace(
+          eventMode: _eventMode,
+          onlineUrl: _onlineUrl.text,
+          mapsUrl: _mapsUrl.text,
+        ),
+        _Step.windows: validateEventWindows(
+          registrationOpensAt: _registrationOpensAt,
+          registrationClosesAt: _registrationClosesAt,
+          checkinOpensAt: _checkinOpensAt,
+          checkinClosesAt: _checkinClosesAt,
+        ),
+        _Step.eligibility: validateEventEligibility(
+          minAge: _minAge.text,
+          maxAge: _maxAge.text,
+          maxTeams: _maxTeams.text,
+        ),
+        _Step.legal: validateEventLegal(
+          termsUrl: _termsUrl.text,
+          requiresConsent: _requiresConsent,
+          consentText: _consentText.text,
+        ),
+        _Step.authorization: _needsAuthorization
+            ? validateEventAuthorization(
+                headName: _headName.text,
+                headDesignation: _headDesignation.text,
+                officialEmail: _officialEmail.text,
+                officialPhone: _officialPhone.text,
+                representativeRole: _representativeRole,
+                representativeRoleOther: _representativeRoleOther.text,
+                letterAttached: _letterBytes != null,
+              )
+            : const {},
+      };
+
+  /// The current step's result — the one thing Continue is derived from.
+  Map<String, String> get _currentErrors => _stepErrors[_step] ?? const {};
+
+  /// What is still wrong across the whole wizard, for the final button and its list.
+  List<String> get _missingForSubmit {
+    final errors = _stepErrors;
+    return [
+      for (final step in _steps) ...errors[step]?.values ?? const <String>[],
+    ];
+  }
 
   /// D-350 — a paid event must represent a VERIFIED organisation; hosting as yourself has no account
   /// for the money to settle into, and the server refuses it at submit-for-review. Free events keep the
@@ -272,8 +369,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             orElse: () => false,
           );
 
-  bool get _canSubmit => _basicsValid && _consentOk && _ticketValid && _representingValid
-      && _authorizationValid && !_submitting;
+  bool get _canSubmit => _missingForSubmit.isEmpty && !_submitting;
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
@@ -347,10 +443,25 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
       try {
         await ref.read(eventContentSourceProvider).createTicketType(created.orgId, created.id, {
           'name': _ticketName.text.trim().isEmpty ? 'General Admission' : _ticketName.text.trim(),
-          // Rupees in, paise on the wire (D-004). Free is genuinely 0, never absent.
-          'pricePaise': _ticketPricePaise,
-          'pricingUnit': 'PerTicket',
-          'registrationMode': 'Individual',
+          // Rupees in, paise on the wire (D-004). Free is genuinely 0, never absent. With bands the
+          // server derives the headline from the cheapest one, so this only carries the single-price
+          // case (D-366).
+          'pricePaise': _bands.isEmpty ? _ticketPricePaise : 0,
+          /*
+           * D-357 — the unit, no longer a literal.
+           *
+           * These two read `'PerTicket'` and `'Individual'` and made a capable API uni-modal: this app
+           * could not create a team registration in any form, so an organiser on a phone could only
+           * ever make an individual-entry event whatever the archetype allowed. `PerGroup` is what
+           * tells the money path to charge once per team and take one inventory unit for it.
+           */
+          'pricingUnit': _participation == 'team' ? 'PerGroup' : 'PerTicket',
+          'registrationMode': _participation == 'team' ? 'Group' : 'Individual',
+          if (_participation == 'team') 'groupMin': int.tryParse(_teamMin.text.trim()),
+          if (_participation == 'team') 'groupMax': int.tryParse(_teamMax.text.trim()),
+          // D-366 — omitted entirely for an unbanded ticket, so that request stays what it always was.
+          if (_participation == 'team' && _pricing == 'paid' && _bands.isNotEmpty)
+            'priceTiers': teamPriceBandsPayload(_bands),
           'quantity': int.tryParse(_ticketQuantity.text.trim()) ?? 100,
           'saleStarts': DateTime.now().toUtc().toIso8601String(),
           // A ticket's window may narrow the event's later, never widen it, so equal is the only
@@ -415,15 +526,44 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
     }
   }
 
+  /// Advances only if the current step re-validates, and says why if it does not.
+  ///
+  /// The disabled button is the affordance; this is the rule. They read the same `_stepErrors`, so
+  /// they cannot disagree, and a tap that arrives from anywhere else still cannot skip a step.
+  void _goNext(List<_Step> steps, int index) {
+    final errors = _currentErrors;
+    if (errors.isNotEmpty) {
+      setState(() => _error = errors.values.first);
+      return;
+    }
+    setState(() {
+      _error = null;
+      _step = steps[index + 1];
+    });
+  }
+
+  /// The date/time picker.
+  ///
+  /// [floor] is the earliest selectable instant — `DateTime.now()` for the event's own start (the past
+  /// is not offered at all), the chosen start for its end, and the opening time for a window's close.
+  /// It replaces `firstDate: DateTime.now().subtract(const Duration(days: 1))`, which explicitly
+  /// offered **yesterday**. Never a constant: the floor is computed from the clock or from the field it
+  /// depends on, every time the picker opens.
+  ///
+  /// The date picker's `firstDate` is day-granular, so it alone cannot refuse an earlier time *today* —
+  /// `validateEventDetails` is what holds that, and this narrows what has to be typed to reach it.
   Future<void> _pickDateTime({
     required DateTime? initial,
     required ValueChanged<DateTime> onPicked,
+    DateTime? floor,
   }) async {
-    final base = initial ?? DateTime.now().add(const Duration(days: 1));
+    final limit = floor ?? DateTime.now();
+    var base = initial ?? DateTime.now().add(const Duration(days: 1));
+    if (base.isBefore(limit)) base = limit;
     final date = await showDatePicker(
       context: context,
       initialDate: base,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      firstDate: DateTime(limit.year, limit.month, limit.day),
       lastDate: DateTime(base.year + 3),
     );
     if (date == null || !mounted) return;
@@ -460,9 +600,9 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             switch (_step) {
               _Step.representing => _buildRepresenting(),
               _Step.visibility => _buildVisibility(),
-              _Step.pricing => _buildPricing(),
               _Step.category => _buildCategory(),
               _Step.type => _buildType(),
+              _Step.registration => _buildRegistration(),
               _Step.details => _buildDetails(),
               _Step.content => _buildContent(),
               _Step.location => _buildLocation(),
@@ -497,19 +637,12 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
                 child: KurxButton(
                   label: isLast ? 'Create draft' : 'Continue',
                   loading: _submitting,
-                  // Basics gates progress, and since D-350 so does Representing — but only for a PAID
-                  // event, where hosting as yourself is not a legal answer at all. Pricing re-checks it
-                  // because someone can pass Representing as themselves while Free, then switch to Paid
-                  // one step later and carry the stale answer to a submission the server refuses.
-                  // Every other step stays ungated: blocking inside an optional step is how a wizard
-                  // gets abandoned.
+                  // Every step now gates its OWN fields, from `_stepErrors`. `onPressed: null` is
+                  // presentation; `_goNext` re-reads the same result before advancing, so a
+                  // programmatic tap or a stale rebuild cannot walk past an invalid step.
                   onPressed: isLast
                       ? (_canSubmit ? _submit : null)
-                      : ((_step == _Step.details && !_basicsValid) ||
-                              ((_step == _Step.representing || _step == _Step.pricing) &&
-                                  !_representingValid)
-                          ? null
-                          : () => setState(() => _step = steps[index + 1])),
+                      : (_currentErrors.isEmpty ? () => _goNext(steps, index) : null),
                 ),
               ),
             ],
@@ -746,37 +879,6 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
     );
   }
 
-  /// The event's first ticket (D-305), asked here rather than left to the manage screen.
-  ///
-  /// Web asks the same three things in its Pricing step. Without a ticket type the event cannot be
-  /// registered for at all, so a wizard that skipped this produced an event nobody could join and said
-  /// nothing about it.
-  Widget _buildTicket() {
-    final c = context.kurx;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: KSpace.lg),
-        _label('Your ticket'),
-        Text(
-          'Every event needs at least one ticket before anyone can register. Leave the price blank for a free event; add more tiers later.',
-          style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
-        ),
-        const SizedBox(height: KSpace.sm),
-        _field(_ticketName, 'Ticket name'),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.product != 'Private') ...[
-              Expanded(child: _field(_ticketPrice, 'Price (₹)', keyboard: TextInputType.number)),
-              const SizedBox(width: KSpace.md),
-            ],
-            Expanded(child: _field(_ticketQuantity, 'How many', keyboard: TextInputType.number)),
-          ],
-        ),
-      ],
-    );
-  }
 
   Widget _buildVisibility() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -804,44 +906,262 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
         ],
       );
 
-  /// Free / paid, plus the event's first ticket. Mirrors web's Pricing step: the free/paid choice is a
-  /// capability gate and creates nothing by itself; the ticket below it is what makes the event
-  /// bookable at all.
-  Widget _buildPricing() {
-    // A Private product cannot take payment (`private_product_cannot_take_payment`), so Paid is not
-    // offered at all — and the price field with it.
-    final canChoosePaid = widget.product == 'Public' &&
-        (ref.watch(currentUserProvider)?.trust.canOrganizePaid ?? false);
+  /// D-357/D-366 — the registration option: what people book, HOW they take part, what that costs in
+  /// the unit it is charged in, and how many of that unit exist.
+  ///
+  /// Placed after Type because the Type carries the archetype, and the archetype's `teams` capability
+  /// is the only thing that may decide whether team entry is offered (D-266 M2). Asking earlier — which
+  /// is where the ticket fields used to sit — meant the unit could only ever be a guess.
+  Widget _buildRegistration() {
+    final c = context.kurx;
+    final types = ref.watch(eventTypesProvider).valueOrNull ?? const <EventCategory>[];
+    final archetype = types.where((t) => t.id == _typeId).firstOrNull?.archetypeSlug;
+    final teamsSupported = ref.watch(archetypeSupportsTeamsProvider(archetype)).valueOrNull ?? false;
+
+    // Reconciled, never left invalid — web does the same in a `useEffect`. Going back and changing the
+    // Type to one whose archetype has no `teams` capability HIDES the radio, and without this the
+    // answer would survive underneath it: a team ticket submitted for a conference, which the server
+    // accepts because the capability engine describes rather than enforces (D-266 M2). Bands go with
+    // it — they mean nothing on an individual ticket and would be sent to a refusal.
+    if (!teamsSupported && _participation == 'team') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _participation = 'individual';
+          _bands.clear();
+        });
+      });
+    }
+
+    final team = _participation == 'team' && teamsSupported;
+    final paid = _pricing == 'paid';
+    final errors = _currentErrors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        RadioGroup<String>(
-          groupValue: _pricing,
-          onChanged: (v) => setState(() => _pricing = v ?? 'free'),
-          child: Column(
+        // States the pricing mode; never asks it (D-365). The gate settled it, and this is the step
+        // where its consequence appears — a price field, or the absence of one.
+        Text(
+          paid
+              ? 'Paid event — chosen during setup. Set what people pay below.'
+              : 'Free event — chosen during setup. No one will be charged to register.',
+          style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
+        ),
+        const SizedBox(height: KSpace.md),
+        _label('What people are booking'),
+        _field(_ticketName, 'Registration name'),
+        if (errors['name'] != null) _fieldError(errors['name']!),
+
+        // Individual vs team, offered only where the archetype allows it: a conference marks `teams`
+        // Unsupported, and offering it there would configure something the event can never run.
+        if (teamsSupported) ...[
+          const SizedBox(height: KSpace.md),
+          _label('How do people take part?'),
+          RadioGroup<String>(
+            groupValue: _participation,
+            onChanged: (v) => setState(() => _participation = v ?? 'individual'),
+            child: const Column(
+              children: [
+                RadioListTile<String>(
+                  value: 'individual',
+                  title: Text('Individually'),
+                  subtitle: Text('Each person registers for themselves.'),
+                ),
+                RadioListTile<String>(
+                  value: 'team',
+                  title: Text('As a team'),
+                  subtitle: Text('One person registers the team and the rest join it.'),
+                ),
+              ],
+            ),
+          ),
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(top: KSpace.sm),
+            child: Text(
+              "This kind of event doesn't support team entry, so people register individually.",
+              style: TextStyle(color: c.muted, fontSize: 12.5),
+            ),
+          ),
+
+        if (team) ...[
+          const SizedBox(height: KSpace.md),
+          _label('Team size'),
+          Row(
             children: [
-              const RadioListTile<String>(
-                value: 'free',
-                title: Text('Free'),
-                subtitle: Text('No ticket charges. Anyone can register.'),
-              ),
-              RadioListTile<String>(
-                value: 'paid',
-                enabled: canChoosePaid,
-                title: const Text('Paid'),
-                subtitle: Text(widget.product == 'Private'
-                    ? "Private events are always free — they can't sell tickets."
-                    : canChoosePaid
-                        ? 'Sell tickets. Set the price below.'
-                        : 'Needs identity, PAN and a verified bank account.'),
-              ),
+              Expanded(child: _field(_teamMin, 'Smallest team', keyboard: TextInputType.number)),
+              const SizedBox(width: KSpace.md),
+              Expanded(child: _field(_teamMax, 'Largest team', keyboard: TextInputType.number)),
             ],
           ),
+          if (errors['teamMin'] != null) _fieldError(errors['teamMin']!),
+          if (errors['teamMax'] != null) _fieldError(errors['teamMax']!),
+        ],
+
+        // D-366 — price by team size. Only for a PAID TEAM ticket: an individual price already scales
+        // with the roster, and a free event has no prices to band.
+        if (paid && team) ...[
+          const SizedBox(height: KSpace.lg),
+          Row(
+            children: [
+              Expanded(child: _label('Price by team size')),
+              if (_bands.isEmpty)
+                TextButton(
+                  onPressed: () => setState(() => _bands.add(TeamPriceBand(
+                        // Seeded across the whole allowed range so the first thing shown is already a
+                        // valid set — an editor that opens invalid teaches people to ignore it.
+                        minSize: _teamMin.text.trim(),
+                        maxSize: _teamMax.text.trim(),
+                        priceRupees: _ticketPrice.text.trim(),
+                      ))),
+                  child: const Text('Different prices per size'),
+                )
+              else
+                TextButton(
+                  onPressed: () => setState(_bands.clear),
+                  child: const Text('One price for all'),
+                ),
+            ],
+          ),
+          if (_bands.isEmpty)
+            Text(
+              'Every team pays the same, whatever its size. Add rules to charge a team of 2 differently '
+              'from a team of 5.',
+              style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35),
+            )
+          else ...[
+            for (var i = 0; i < _bands.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: KSpace.sm),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _bandField(
+                        initial: _bands[i].minSize,
+                        label: 'From',
+                        onChanged: (v) => setState(() => _bands[i].minSize = v),
+                      ),
+                    ),
+                    const SizedBox(width: KSpace.sm),
+                    Expanded(
+                      child: _bandField(
+                        initial: _bands[i].maxSize,
+                        label: 'To',
+                        onChanged: (v) => setState(() => _bands[i].maxSize = v),
+                      ),
+                    ),
+                    const SizedBox(width: KSpace.sm),
+                    Expanded(
+                      flex: 2,
+                      child: _bandField(
+                        initial: _bands[i].priceRupees,
+                        label: 'Price / team (Rs.)',
+                        onChanged: (v) => setState(() => _bands[i].priceRupees = v),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove rule',
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () => setState(() => _bands.removeAt(i)),
+                    ),
+                  ],
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add price rule'),
+                onPressed: () => setState(() {
+                  // The next rule starts where the last one ended: a set built by hand is where gaps
+                  // come from, and the common case is contiguous bands.
+                  final last = _bands.isEmpty ? null : _bands.last;
+                  final next = ((int.tryParse(last?.maxSize.trim() ?? '') ?? 1) + 1).toString();
+                  _bands.add(TeamPriceBand(minSize: next, maxSize: next));
+                }),
+              ),
+            ),
+            if (errors['bands'] != null)
+              _fieldError(errors['bands']!)
+            else
+              Text(
+                'Each rule is the price for the WHOLE team, not per member. Every allowed team size '
+                'needs exactly one rule.',
+                style: TextStyle(color: c.muted, fontSize: 12, height: 1.35),
+              ),
+          ],
+        ],
+
+        const SizedBox(height: KSpace.lg),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Hidden once bands exist: the bands ARE the price then, and two price inputs for one
+            // decision is the duplicate-question mistake again (D-365).
+            if (paid && _bands.isEmpty) ...[
+              Expanded(
+                child: _field(_ticketPrice,
+                    team ? 'Price per team (Rs.)' : 'Price per participant (Rs.)',
+                    keyboard: TextInputType.number),
+              ),
+              const SizedBox(width: KSpace.md),
+            ],
+            // Under PerGroup one team takes exactly one unit, so for a team event this counts TEAMS.
+            Expanded(
+              child: _field(_ticketQuantity, team ? 'How many teams' : 'How many places',
+                  keyboard: TextInputType.number),
+            ),
+          ],
         ),
-        _buildTicket(),
+        if (errors['priceRupees'] != null) _fieldError(errors['priceRupees']!),
+        if (errors['quantity'] != null) _fieldError(errors['quantity']!),
+
+        const SizedBox(height: KSpace.md),
+        Text(_registrationSummary(), style: TextStyle(color: c.muted, fontSize: 12, height: 1.35)),
       ],
     );
   }
+
+  /// Reads back what was configured, in the unit it is charged in — a price with no unit is the
+  /// ambiguity this step exists to remove. With bands it names the RANGE, because one number on a
+  /// ticket that also charges another would be the same lie.
+  String _registrationSummary() {
+    final team = _participation == 'team';
+    final qty = _ticketQuantity.text.trim().isEmpty ? '—' : _ticketQuantity.text.trim();
+    final sizes = '${_teamMin.text.trim()}–${_teamMax.text.trim()}';
+    if (_pricing != 'paid') {
+      return team ? 'Free · teams of $sizes · $qty team slots' : 'Free · $qty places';
+    }
+    if (team && _bands.isNotEmpty) {
+      final prices = _bands.map((b) => double.tryParse(b.priceRupees.trim()) ?? 0).toList()..sort();
+      return 'Rs.${prices.first.round()}–Rs.${prices.last.round()} per team by size · '
+          'teams of $sizes · $qty team slots';
+    }
+    final price = _ticketPrice.text.trim().isEmpty ? '—' : _ticketPrice.text.trim();
+    return team
+        ? 'Rs.$price per team · teams of $sizes · $qty team slots'
+        : 'Rs.$price per participant · $qty places';
+  }
+
+  /// A band cell. `initialValue` rather than a controller per cell: bands are added and removed, and a
+  /// controller list has to be kept in lockstep with the model or it feeds the wrong row's text back.
+  Widget _bandField({
+    required String initial,
+    required String label,
+    required ValueChanged<String> onChanged,
+  }) =>
+      TextFormField(
+        initialValue: initial,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
+        onChanged: onChanged,
+      );
+
+  Widget _fieldError(String message) => Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(message, style: TextStyle(color: context.kurx.danger, fontSize: 12)),
+      );
 
   Widget _buildCategory() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -905,31 +1225,43 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
         ],
       );
 
-  Widget _buildDetails() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _field(_title, 'Title', hint: 'What is your event called?'),
-          _field(_subtitle, 'Subtitle', hint: 'One line that sells it (optional)'),
-          _field(_description, 'Description', lines: 4,
-              hint: 'Required before you can publish'),
-          _label('When'),
-          _dateTile('Starts', _startsAt, (d) => setState(() {
-                _startsAt = d;
-                if (!_endsAt.isAfter(_startsAt)) _endsAt = _startsAt.add(const Duration(hours: 3));
-              })),
-          _dateTile('Ends', _endsAt, (d) => setState(() => _endsAt = d)),
-          if (!_endsAt.isAfter(_startsAt))
+  /// Every field here is required by the STEP, and the errors come from `validateEventDetails` — the
+  /// same result Continue is derived from, so a field can never disagree with the button.
+  ///
+  /// Six of these were previously unchecked (`_basicsValid` read title, category, type and the date
+  /// ordering only), and "Subtitle · One line that sells it (optional)" said so on screen.
+  Widget _buildDetails() {
+    final errors = _currentErrors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _field(_title, 'Title', hint: 'What is your event called?', error: errors['title']),
+        _field(_subtitle, 'Subtitle', hint: 'One line that sells it', error: errors['subtitle']),
+        _field(_description, 'Description', lines: 4,
+            hint: 'Required before you can publish', error: errors['description']),
+        _label('When'),
+        // The start cannot be picked in the past at all; moving it drags an end that no longer
+        // follows it, which is the "changing Start invalidates End" case.
+        _dateTile('Starts', _startsAt, (d) => setState(() {
+              _startsAt = d;
+              if (!_endsAt.isAfter(_startsAt)) _endsAt = _startsAt.add(const Duration(hours: 3));
+            })),
+        // The end's floor is the start, so the picker cannot offer a day before it.
+        _dateTile('Ends', _endsAt, (d) => setState(() => _endsAt = d), floor: _startsAt),
+        for (final key in const ['startsAt', 'endsAt'])
+          if (errors[key] != null)
             Padding(
               padding: const EdgeInsets.only(top: KSpace.sm, bottom: KSpace.sm),
-              child: Text('End must be after the start.',
+              child: Text(errors[key]!,
                   style: TextStyle(color: context.kurx.danger, fontSize: 13)),
             ),
-          _field(_venueName, 'Venue name'),
-          _field(_city, 'City'),
-          _field(_venueAddress, 'Venue address'),
-          _field(_capacity, 'Capacity', keyboard: TextInputType.number),
-        ],
-      );
+        _field(_venueName, 'Venue name', error: errors['venueName']),
+        _field(_city, 'City', error: errors['city']),
+        _field(_venueAddress, 'Venue address', error: errors['venueAddress']),
+        _field(_capacity, 'Capacity', keyboard: TextInputType.number, error: errors['capacity']),
+      ],
+    );
+  }
 
   Widget _buildContent() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -941,62 +1273,77 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
         ],
       );
 
-  Widget _buildLocation() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _label('Mode'),
-          DropdownButtonFormField<String>(
-            initialValue: _eventMode,
-            isExpanded: true,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem(value: 'Offline', child: Text('In person')),
-              DropdownMenuItem(value: 'Online', child: Text('Online')),
-              DropdownMenuItem(value: 'Hybrid', child: Text('Hybrid')),
+  Widget _buildLocation() {
+    final errors = _currentErrors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label('Mode'),
+        DropdownButtonFormField<String>(
+          initialValue: _eventMode,
+          isExpanded: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'Offline', child: Text('In person')),
+            DropdownMenuItem(value: 'Online', child: Text('Online')),
+            DropdownMenuItem(value: 'Hybrid', child: Text('Hybrid')),
+          ],
+          // Changing Mode is what makes the join link required or optional — the step's validity is
+          // recomputed on this `setState`, never carried over from before the change.
+          onChanged: (v) => setState(() => _eventMode = v ?? 'Offline'),
+        ),
+        const SizedBox(height: KSpace.md),
+        if (_eventMode != 'Online') ...[
+          _field(_venueName, 'Venue name'),
+          _field(_city, 'City'),
+          Row(
+            children: [
+              Expanded(child: _field(_building, 'Building')),
+              const SizedBox(width: KSpace.md),
+              Expanded(child: _field(_floor, 'Floor')),
+              const SizedBox(width: KSpace.md),
+              Expanded(child: _field(_room, 'Room')),
             ],
-            onChanged: (v) => setState(() => _eventMode = v ?? 'Offline'),
           ),
-          const SizedBox(height: KSpace.md),
-          if (_eventMode != 'Online') ...[
-            _field(_venueName, 'Venue name'),
-            _field(_city, 'City'),
-            Row(
-              children: [
-                Expanded(child: _field(_building, 'Building')),
-                const SizedBox(width: KSpace.md),
-                Expanded(child: _field(_floor, 'Floor')),
-                const SizedBox(width: KSpace.md),
-                Expanded(child: _field(_room, 'Room')),
-              ],
-            ),
-            _field(_mapsUrl, 'Google Maps link', keyboard: TextInputType.url),
-          ],
-          if (_eventMode != 'Offline') ...[
-            _field(_onlineUrl, 'Join link', keyboard: TextInputType.url),
-            _field(_meetingPlatform, 'Platform', hint: 'Zoom, Meet, Teams…'),
-            _field(_meetingPassword, 'Meeting password'),
-            _hint('The password is only shown to confirmed registrants.'),
-          ],
+          _field(_mapsUrl, 'Google Maps link',
+              keyboard: TextInputType.url, error: errors['mapsUrl']),
         ],
-      );
+        if (_eventMode != 'Offline') ...[
+          // Required by `ValidateMode` for exactly these two modes (`online_url_required`).
+          _field(_onlineUrl, 'Join link',
+              keyboard: TextInputType.url, error: errors['onlineUrl']),
+          _field(_meetingPlatform, 'Platform', hint: 'Zoom, Meet, Teams…'),
+          _field(_meetingPassword, 'Meeting password'),
+          _hint('The password is only shown to confirmed registrants.'),
+        ],
+      ],
+    );
+  }
 
-  Widget _buildWindows() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _hint("All optional. Registration times bound every ticket type; a ticket's own sale "
-              'window can narrow that further, never widen it.'),
-          _label('Registration'),
-          _dateTile('Opens', _registrationOpensAt, (d) => setState(() => _registrationOpensAt = d),
-              onClear: () => setState(() => _registrationOpensAt = null)),
-          _dateTile('Closes', _registrationClosesAt, (d) => setState(() => _registrationClosesAt = d),
-              onClear: () => setState(() => _registrationClosesAt = null)),
-          const SizedBox(height: KSpace.md),
-          _label('Check-in'),
-          _dateTile('Opens', _checkinOpensAt, (d) => setState(() => _checkinOpensAt = d),
-              onClear: () => setState(() => _checkinOpensAt = null)),
-          _dateTile('Closes', _checkinClosesAt, (d) => setState(() => _checkinClosesAt = d),
-              onClear: () => setState(() => _checkinClosesAt = null)),
-          const SizedBox(height: KSpace.md),
+  Widget _buildWindows() {
+    final errors = _currentErrors;
+    // Each close is floored at its own open, so the picker cannot offer the pair inverted — the same
+    // rule `invalid_registration_window` / `invalid_checkin_window` refuse.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _hint("All optional. Registration times bound every ticket type; a ticket's own sale "
+            'window can narrow that further, never widen it.'),
+        _label('Registration'),
+        _dateTile('Opens', _registrationOpensAt, (d) => setState(() => _registrationOpensAt = d),
+            onClear: () => setState(() => _registrationOpensAt = null)),
+        _dateTile('Closes', _registrationClosesAt, (d) => setState(() => _registrationClosesAt = d),
+            onClear: () => setState(() => _registrationClosesAt = null),
+            floor: _registrationOpensAt),
+        if (errors['registrationClosesAt'] != null) _inlineError(errors['registrationClosesAt']!),
+        const SizedBox(height: KSpace.md),
+        _label('Check-in'),
+        _dateTile('Opens', _checkinOpensAt, (d) => setState(() => _checkinOpensAt = d),
+            onClear: () => setState(() => _checkinOpensAt = null)),
+        _dateTile('Closes', _checkinClosesAt, (d) => setState(() => _checkinClosesAt = d),
+            onClear: () => setState(() => _checkinClosesAt = null), floor: _checkinOpensAt),
+        if (errors['checkinClosesAt'] != null) _inlineError(errors['checkinClosesAt']!),
+        const SizedBox(height: KSpace.md),
           // Both were in `EventScheduleInput` and on web's Windows step from the start; Flutter simply
           // never sent them, so a competition's result date and a certificate release could not be set
           // at creation on mobile (D-305).
@@ -1011,28 +1358,42 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
                 (d) => setState(() => _certificateReleaseAt = d),
                 onClear: () => setState(() => _certificateReleaseAt = null)),
           ],
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _autoClose,
-            title: const Text('Close registration when capacity is reached'),
-            onChanged: (v) => setState(() => _autoClose = v),
-          ),
-        ],
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _autoClose,
+          title: const Text('Close registration when capacity is reached'),
+          onChanged: (v) => setState(() => _autoClose = v),
+        ),
+      ],
+    );
+  }
+
+  /// A validation message that belongs to a control with no `errorText` of its own — the date tiles.
+  Widget _inlineError(String message) => Padding(
+        padding: const EdgeInsets.only(top: KSpace.sm, bottom: KSpace.sm),
+        child: Text(message, style: TextStyle(color: context.kurx.danger, fontSize: 13)),
       );
 
-  Widget _buildEligibility() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+  Widget _buildEligibility() {
+    final errors = _currentErrors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
           _hint('Optional. Anyone turned away is told which rule stopped them, so only set a '
               'restriction the event genuinely has.'),
           // D-327 — age bounds turn away a stranger who registered. A private event has no open door
           // to turn anyone away from; attendance is the invitation list. Same rule as web.
           if (widget.product != 'Private')
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _field(_minAge, 'Minimum age', keyboard: TextInputType.number)),
+                Expanded(
+                    child: _field(_minAge, 'Minimum age',
+                        keyboard: TextInputType.number, error: errors['minAge'])),
                 const SizedBox(width: KSpace.md),
-                Expanded(child: _field(_maxAge, 'Maximum age', keyboard: TextInputType.number)),
+                Expanded(
+                    child: _field(_maxAge, 'Maximum age',
+                        keyboard: TextInputType.number, error: errors['maxAge'])),
               ],
             ),
           _label('Gender'),
@@ -1051,17 +1412,24 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           // D-327 — `teams` is Unsupported for private-gathering; a wedding has no team cap.
           if (widget.product != 'Private') ...[
             const SizedBox(height: KSpace.md),
-            _field(_maxTeams, 'Maximum teams', keyboard: TextInputType.number),
+            // A 0 is not "no cap": `ApplyFieldGroups` DISCARDS `MaxTeams <= 0`, so it silently meant
+            // no cap at all. Refused here rather than swallowed.
+            _field(_maxTeams, 'Maximum teams',
+                keyboard: TextInputType.number, error: errors['maxTeams']),
             _hint('Total teams for the event, not teams per person.'),
           ],
-        ],
-      );
+      ],
+    );
+  }
 
-  Widget _buildLegal() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+  Widget _buildLegal() {
+    final errors = _currentErrors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
           _hint("Kurx's own terms always apply. These are your additional terms for this event."),
-          _field(_termsUrl, 'Terms link', keyboard: TextInputType.url),
+          _field(_termsUrl, 'Terms link',
+              keyboard: TextInputType.url, error: errors['termsUrl']),
           _field(_codeOfConduct, 'Code of conduct', lines: 3),
           _field(_refundPolicy, 'Refund policy', lines: 3),
           _field(_cancellationPolicy, 'Cancellation policy', lines: 3),
@@ -1071,13 +1439,16 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             title: const Text('Require registrants to accept a statement'),
             onChanged: (v) => setState(() => _requiresConsent = v),
           ),
+          // Conditionally required: switching consent on is what makes this mandatory
+          // (`consent_text_required`), and switching it back off makes it optional again.
           if (_requiresConsent) ...[
             const SizedBox(height: KSpace.md),
-            _field(_consentText, 'What they must accept', lines: 3),
+            _field(_consentText, 'What they must accept', lines: 3, error: errors['consentText']),
             _hint('Required — acceptance is recorded against this exact wording.'),
           ],
-        ],
-      );
+      ],
+    );
+  }
 
   // ── Small builders ────────────────────────────────────────────────────────
 
@@ -1096,6 +1467,9 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.kurx.muted)),
       );
 
+  /// [error] is Material's own `errorText` — the framework's error affordance, which already carries
+  /// the red border, the message and the screen-reader announcement. `onChanged` rebuilds on every
+  /// keystroke, which is what makes the per-step result (and so Continue) track the form continuously.
   Widget _field(
     TextEditingController controller,
     String label, {
@@ -1103,6 +1477,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
     int lines = 1,
     int? maxLength,
     TextInputType? keyboard,
+    String? error,
   }) =>
       Padding(
         padding: const EdgeInsets.only(bottom: KSpace.md),
@@ -1117,17 +1492,20 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           decoration: InputDecoration(
             labelText: label,
             hintText: hint,
+            errorText: error,
             border: const OutlineInputBorder(),
             counterText: maxLength == null ? '' : null,
           ),
         ),
       );
 
+  /// [floor] narrows what the picker will offer — see `_pickDateTime`. Absent means "now".
   Widget _dateTile(
     String label,
     DateTime? value,
     ValueChanged<DateTime> onPicked, {
     VoidCallback? onClear,
+    DateTime? floor,
   }) =>
       ListTile(
         contentPadding: EdgeInsets.zero,
@@ -1143,7 +1521,9 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
                 onPressed: onClear,
               )
             : const Icon(Icons.edit_calendar_outlined),
-        onTap: _submitting ? null : () => _pickDateTime(initial: value, onPicked: onPicked),
+        onTap: _submitting
+            ? null
+            : () => _pickDateTime(initial: value, onPicked: onPicked, floor: floor),
       );
 }
 

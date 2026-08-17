@@ -26,6 +26,7 @@ _$EventSummaryDtoImpl _$$EventSummaryDtoImplFromJson(
   eventMode: json['event_mode'] as String?,
   categoryName: json['category_name'] as String?,
   priceFromPaise: (json['price_from_paise'] as num?)?.toInt(),
+  priceFromUnit: json['price_from_unit'] as String?,
   currency: json['currency'] as String?,
   isFeatured: json['is_featured'] as bool?,
 );
@@ -46,6 +47,7 @@ Map<String, dynamic> _$$EventSummaryDtoImplToJson(
   'event_mode': instance.eventMode,
   'category_name': instance.categoryName,
   'price_from_paise': instance.priceFromPaise,
+  'price_from_unit': instance.priceFromUnit,
   'currency': instance.currency,
   'is_featured': instance.isFeatured,
 };

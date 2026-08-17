@@ -12,14 +12,59 @@ namespace Kurx.Tests;
 /// are what make reintroducing it a build failure rather than a silent regression.</para></summary>
 public class EventExposureTests
 {
-    private static Event Ev(EventProduct product, EventVisibility visibility, bool deleted = false) => new()
+    /// <summary>D-362 — <c>Status</c> is now part of the rule, so the fixture states it. It defaults to
+    /// <c>Published</c> because these cases are about the OTHER two axes; the lifecycle axis has its own
+    /// block below.</summary>
+    private static Event Ev(EventProduct product, EventVisibility visibility, bool deleted = false,
+        EventStatus status = EventStatus.Published) => new()
     {
+        Status = status,
         Product = product,
         Visibility = visibility,
         DeletedAt = deleted ? DateTime.UtcNow : null,
     };
 
-    // ── The rule itself: Product == Public AND Visibility == Listed. Nothing else. ───────────
+    // ── The rule itself: Published AND Product == Public AND Visibility == Listed. Nothing else. ──
+
+    /*
+     * D-362 — the lifecycle axis, which this predicate did not carry.
+     *
+     * It answered Product + Visibility + not-deleted and said nothing about STATUS, so a PendingReview
+     * event was "publicly visible" by the one rule the class docs call "the one rule for public
+     * exposure". Nothing leaked — the single production consumer wrote its own status check beside the
+     * call — but a rule every caller must silently complete is two sources of truth wearing one name.
+     */
+    [Theory]
+    [InlineData(EventStatus.Draft)]
+    [InlineData(EventStatus.PendingReview)]
+    [InlineData(EventStatus.UnderReview)]
+    [InlineData(EventStatus.ChangesRequested)]
+    [InlineData(EventStatus.Rejected)]
+    [InlineData(EventStatus.Approved)]     // approval is PERMISSION to publish, never publication
+    [InlineData(EventStatus.Scheduled)]    // precedes open_registration, which is what publishes
+    [InlineData(EventStatus.Closed)]
+    [InlineData(EventStatus.Archived)]
+    public void No_status_other_than_published_is_publicly_visible(EventStatus status)
+    {
+        var ev = Ev(EventProduct.Public, EventVisibility.Listed, status: status);
+        Assert.False(EventExposure.IsPubliclyVisible(ev));
+        Assert.False(EventExposure.PubliclyVisible.Compile()(ev));
+    }
+
+    /// <summary>The pre-publication question, asked deliberately by name: `ApprovalService`'s `IfExternal`
+    /// condition must answer "will this face an external audience once live" WHILE the event is in review.
+    /// Keeping it a separate, named predicate is what stops it being read as a forgotten status check.</summary>
+    [Fact]
+    public void External_exposure_ignores_status_on_purpose()
+    {
+        var pending = Ev(EventProduct.Public, EventVisibility.Listed, status: EventStatus.PendingReview);
+        Assert.True(EventExposure.IsExternallyExposed(pending));
+        Assert.False(EventExposure.IsPubliclyVisible(pending));
+
+        // It is still the exposure rule on the other two axes.
+        Assert.False(EventExposure.IsExternallyExposed(
+            Ev(EventProduct.Private, EventVisibility.Listed, status: EventStatus.PendingReview)));
+    }
 
     [Fact]
     public void Only_a_listed_public_product_is_publicly_visible()

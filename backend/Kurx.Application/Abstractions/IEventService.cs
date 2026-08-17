@@ -84,10 +84,41 @@ public record EventScheduleView(DateTime? RegistrationOpensAt, DateTime? Registr
 public record EventLocationDetailView(string? Building, string? Floor, string? Room,
     string? GoogleMapsUrl, string? MeetingPlatform);
 
+/// <param name="MaxTeams">How many teams may enter — <b>derived, not the stored column</b> (D-360).
+///
+/// <para><c>events.MaxTeams</c> is a D-265 eligibility field that was written, echoed here, and enforced by
+/// nothing: an organiser could type 50 while the ticket type sold 20 team slots, and both numbers were
+/// shown as fact on different screens. The authoritative team capacity is the registration unit's own
+/// inventory — <c>TicketType.Quantity</c> for a <c>PerGroup</c> ticket, which is what the pool draws
+/// against (V3 §17.1) — so this projects THAT when the event has one, and falls back to the stored hint
+/// only for an event with no team ticket, where there is nothing to contradict.</para>
+///
+/// <para>Deriving rather than enforcing is deliberate: wiring the stored column into inventory would give
+/// the platform a second capacity authority competing with the pool, which is the mistake §17.1 exists to
+/// prevent. This leaves exactly one number a client can see, and it is the pool's.</para></param>
 public record EventEligibilityView(int? MinAge, int? MaxAge, string GenderRestriction, int? MaxTeams);
 
+/// <summary>The event's full commercial configuration, <b>including the platform's own cut</b>. Internal:
+/// it stays on <see cref="EventDetail"/> for the service layer and any future organiser finance surface,
+/// and is never the shape put on the wire — see <see cref="PublicEventCommerceView"/> (D-356).</summary>
 public record EventCommerceView(decimal? PlatformFeePercent, long? PlatformFeeFlatPaise,
     decimal? TaxPercent, bool TaxInclusive, string? PrizePoolJson);
+
+/// <summary>What an attendee may know about an event's commercials, and nothing more (D-356).
+///
+/// <para><c>PlatformFeePercent</c> and <c>PlatformFeeFlatPaise</c> are the <b>Kurx↔organiser commercial
+/// arrangement</b>. They were reaching anonymous callers because <see cref="EventDetailResponse"/> — the
+/// wire record whose own summary says it serves "the public <c>GET /v1/events/{slug}</c> as well as every
+/// organiser read" — passed <see cref="EventCommerceView"/> straight through. That is the same seam
+/// <c>MeetingPassword</c> was already excluded at; this closes the other half.</para>
+///
+/// <para>What stays: tax is a property of <b>what the attendee pays</b>, and a prize pool is something a
+/// competition advertises. Neither is an internal figure.</para></summary>
+public record PublicEventCommerceView(decimal? TaxPercent, bool TaxInclusive, string? PrizePoolJson)
+{
+    public static PublicEventCommerceView? From(EventCommerceView? c)
+        => c is null ? null : new(c.TaxPercent, c.TaxInclusive, c.PrizePoolJson);
+}
 
 public record EventDetail(
     Guid Id, Guid RepresentingOrgId, Guid? ParentEventId, string Title, string Slug, string ShortCode, string Subtitle, string Description,
@@ -130,6 +161,12 @@ public record EventSummary(Guid Id, Guid RepresentingOrgId, Guid? ParentEventId,
     // discovery let you narrow by a value it then refused to show you.
     string EventMode = "Offline", string? CategoryName = null,
     long? PriceFromPaise = null, string Currency = "INR", bool IsFeatured = false,
+    /// <summary>The unit <see cref="PriceFromPaise"/> is charged in — `PerTicket` or `PerGroup` (D-361).
+    ///
+    /// <para>Without it a discovery card can only say "From ₹2,000", which on a team event reads as a
+    /// per-person minimum when it is the price of the whole team. The card stays condensed by design; it
+    /// just stops being ambiguous. Taken from the CHEAPEST ticket, so it pairs with the price beside it.</para></summary>
+    string? PriceFromUnit = null,
     /// <summary>Presigned banner. Every card on every surface rendered imageless because the summary
     /// carried only <c>BannerKey</c>, which is not fetchable (D-302).</summary>
     string? BannerUrl = null)

@@ -21,6 +21,7 @@ public class OrderTests : IClassFixture<KurxApiFactory>
 {
     private readonly KurxApiFactory _factory;
     private static Guid _categoryId;
+    private static Guid _typeId;
     private static Guid _orgId;
     private static HttpClient _owner = null!;
     private static HttpClient _a1 = null!, _a2 = null!, _a3 = null!;
@@ -40,8 +41,18 @@ public class OrderTests : IClassFixture<KurxApiFactory>
                     var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
                     var category = new EventCategory { Level = CategoryLevel.Category, Name = "Tech", Slug = "tech-ord" };
                     db.EventCategories.Add(category);
+                    // D-367 — the group-mode cases below create TEAM ticket types, which are only legal
+                    // where the archetype supports `teams`. `competitive` has it Optional in the seeded
+                    // matrix; an event with no Type resolves every capability to Unsupported.
+                    var type = new EventCategory
+                    {
+                        Level = CategoryLevel.Type, ParentId = category.Id, Name = "Order Hackathon",
+                        Slug = "order-hackathon", ArchetypeSlug = "competitive",
+                    };
+                    db.EventCategories.Add(type);
                     db.SaveChanges();
                     _categoryId = category.Id;
+                    _typeId = type.Id;
                 }
 
                 _owner = LoginAsAsync("9810099001").GetAwaiter().GetResult();
@@ -78,6 +89,7 @@ public class OrderTests : IClassFixture<KurxApiFactory>
             title,
             description = "Annual summit.",
             categoryId = _categoryId,
+            typeId = _typeId,
             venueName = "Order Hall",
             venueAddress = "1 Main St",
             city = "Bengaluru",
@@ -241,7 +253,17 @@ public class OrderTests : IClassFixture<KurxApiFactory>
         var group = await Json(await _a1.GetAsync($"/v1/groups/{groupId}"));
         Assert.Equal(2, group.GetProperty("members").EnumerateArray().Count());
 
-        Assert.Equal(2, SoldFor(ttId));
+        /*
+         * D-357 — ONE, not two. The roster has two people and the ticket type is `PerGroup`, so the
+         * registration unit is the TEAM: it took one inventory unit when the leader registered and the
+         * joiner took none, because that member was already inside the slot the team holds.
+         *
+         * This asserted 2 because inventory used to count participants, which is what made
+         * `Quantity = 50` with a team size of 3–5 admit 10–16 teams rather than 50. The number moving
+         * here IS the fix; a `PerTicket` group ticket still counts every person, and its own case is
+         * pinned in `TeamPricingTests`.
+         */
+        Assert.Equal(1, SoldFor(ttId));
 
         await DispatchOutboxAsync();
         Assert.True(HasChatMember(eventId, await MeIdAsync(_a2)), "group joiner should auto-join the event chat room");
@@ -431,7 +453,8 @@ public class OrderTests : IClassFixture<KurxApiFactory>
 
         var group = await Json(await _a1.GetAsync($"/v1/groups/{groupId}"));
         Assert.Equal(2, group.GetProperty("members").EnumerateArray().Count());
-        Assert.Equal(2, SoldFor(ttId));
+        // D-357 — one TEAM slot for a two-person team on a `PerGroup` ticket. See the note above.
+        Assert.Equal(1, SoldFor(ttId));
 
         // Re-accepting the same token fails — already accepted.
         var again = await _a2.PostAsJsonAsync($"/v1/groups/invitations/{token}/accept", new { });

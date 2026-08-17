@@ -3,9 +3,14 @@ namespace Kurx.Application.Abstractions;
 /// <summary>The Team subsystem (V3 §6, Phase 10) — the only group entity, and only where competition exists.
 /// Additive: the purchase <c>Group</c> stays as a legacy compatibility mirror and the Phase-9 money path is
 /// untouched. This phase is <b>formation only</b>: create/roster/invite/join-request/substitute/lifecycle/merge/
-/// split + <c>TeamPolicy</c>. Team registration as a purchase subject (drawing a team-slot, §6.5) is deferred to the
-/// competitive-purchase phase. Organiser actions reuse the Phase-6 <c>event:manage</c> permission union — no
-/// parallel authorization.</summary>
+/// split + <c>TeamPolicy</c>. Organiser actions reuse the Phase-6 <c>event:manage</c> permission union — no
+/// parallel authorization.
+///
+/// <para><b>§6.5 team-slot purchase landed in D-359.</b> A competition group registration now materialises the
+/// Team alongside the legacy purchase <c>Group</c> — see <see cref="MaterialiseForGroupAsync"/> — so buying a team
+/// entry produces the authoritative Team rather than only its mirror. The Phase-9 money path is still
+/// untouched: the Team is a projection of a completed registration, never a second inventory or payment
+/// subject.</para></summary>
 public interface ITeamService
 {
     // ── TeamPolicy (§6.3) — one per competition ticket type, like the registration policy / Pass ──────────────
@@ -16,6 +21,21 @@ public interface ITeamService
     Task<ServiceResult<TeamPolicyView>> SetPolicyAsync(Guid actorId, Guid eventId, Guid ticketTypeId, bool isAdmin, TeamPolicyInput input, CancellationToken ct = default);
 
     // ── Formation (users + captains) ──────────────────────────────────────────────────────────────────────────
+    /// <summary>D-359 — materialise the authoritative <c>Team</c> for a purchase <c>Group</c>, and keep its roster
+    /// in step as members join.
+    ///
+    /// <para><b>Why not <see cref="CreateTeamAsync"/>.</b> That is the user-facing formation entry point and
+    /// enforces things a completed purchase has already settled: it refuses organiser-formed modes, applies
+    /// <c>MaxTeamsPerPersonInEvent</c>, and demands a name. Routing a paid registration through it would let a
+    /// policy refuse a team someone has already been charged for. This is the projection side — the purchase IS
+    /// the authorisation — and it reuses the same entities, policy and slug rules rather than adding a second
+    /// team model.</para>
+    ///
+    /// <para>Idempotent and additive: a no-op for a non-competition ticket type, for a group whose Team already
+    /// exists, and for a member already on the roster. Rows are added to the CALLER's DbContext and not saved,
+    /// so the Team commits inside the same money transaction as the Group it mirrors.</para></summary>
+    Task MaterialiseForGroupAsync(Guid groupId, CancellationToken ct = default);
+
     Task<ServiceResult<TeamView>> CreateTeamAsync(Guid userId, Guid eventId, Guid ticketTypeId, TeamInput input, CancellationToken ct = default);
     Task<ServiceResult<TeamView>> UpdateTeamAsync(Guid userId, Guid teamId, bool isAdmin, TeamInput input, CancellationToken ct = default);
     Task<ServiceResult<TeamInviteView>> InviteAsync(Guid userId, Guid teamId, TeamInviteInput input, CancellationToken ct = default);

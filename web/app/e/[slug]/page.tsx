@@ -7,6 +7,10 @@ import { Badge, Breadcrumbs, Card, LinkButton } from "@kurx/ui";
 import { EventCard } from "@/components/events/event-card";
 import { SaveButton } from "@/components/events/save-button";
 import { ReviewForm } from "@/components/events/review-form";
+import {
+  GettingThereSection, ParticipationSection, RulesSection, TermsSection,
+  priceLabel, teamPriceRows, teamSizeLabel
+} from "@/components/events/event-detail-sections";
 import { getPublicEvent, getRelatedEvents, listEventReviews, listPublicTicketTypes, listSavedEvents, type EventReview } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import { currentSession } from "@/lib/session";
@@ -148,6 +152,18 @@ export default async function EventPage({ params }: Props) {
 
               {/* Ticket types and prices. You previously pressed "Book ticket" without ever being shown
                   what a ticket cost. */}
+              {/*
+                D-265's field groups, rendered for the first time. They were validated by the wizard,
+                stored, returned by this very response, and displayed nowhere — so an event could carry
+                an 18+ rule, a registration deadline and a binding consent statement that the person
+                deciding whether to register never saw. Each section returns null when the organiser set
+                nothing, so a simple event stays a short page.
+              */}
+              <ParticipationSection event={event} />
+              <RulesSection event={event} />
+
+              {/* Ticket types and prices. You previously pressed "Book ticket" without ever being shown
+                  what a ticket cost. */}
               {ticketTypes.length > 0 && (
                 <section>
                   <h2 className="text-h2">Tickets</h2>
@@ -157,18 +173,48 @@ export default async function EventPage({ params }: Props) {
                       return (
                         <li key={t.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border p-3">
                           <span className="text-label text-text">{t.name}</span>
+                          {/* D-357 — the unit, always. "₹2,000" alone cannot tell a registrant whether
+                              they are buying a team entry or one seat of four. */}
                           <span className="text-label text-text">
-                            {t.price_paise === 0 ? "Free" : formatCurrency(t.price_paise, "en-IN", t.currency ?? "INR")}
+                            {priceLabel(t.price_paise, t.pricing_unit,
+                              (p) => formatCurrency(p, "en-IN", t.currency ?? "INR"), t.price_tiers)}
                           </span>
                           <span className="w-full text-caption text-muted">
-                            {left === 0 ? "Sold out" : left != null ? `${left} left` : "Available"}
+                            {[
+                              teamSizeLabel(t.registration_mode, t.group_min, t.group_max),
+                              left === 0
+                                ? "Sold out"
+                                : left != null
+                                  ? `${left} ${t.registration_mode === "Group" ? "team slots" : "left"}`
+                                  : "Available"
+                            ].filter(Boolean).join(" · ")}
                           </span>
+                          {/* D-366 — the whole table, not a single figure. A registrant deciding whether
+                              to enter with three people or five needs both numbers in front of them, and
+                              "₹300" on an event that also charges ₹400 is a price they cannot act on. */}
+                          {teamPriceRows(t.price_tiers, (p) => formatCurrency(p, "en-IN", t.currency ?? "INR")) ? (
+                            <div className="w-full overflow-x-auto">
+                            <table className="w-full text-caption text-muted">
+                              <caption className="sr-only">Price by team size for {t.name}</caption>
+                              <tbody>
+                                {teamPriceRows(t.price_tiers, (p) => formatCurrency(p, "en-IN", t.currency ?? "INR"))!.map((row) => (
+                                  <tr key={row.size}>
+                                    <td className="py-0.5 pr-3">{row.size}</td>
+                                    <td className="py-0.5 text-text">{row.price}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            </div>
+                          ) : null}
                         </li>
                       );
                     })}
                   </ul>
                 </section>
               )}
+              <GettingThereSection event={event} />
+              <TermsSection event={event} />
               {reviews && (
                 <ReviewsSection
                   eventId={event.id}

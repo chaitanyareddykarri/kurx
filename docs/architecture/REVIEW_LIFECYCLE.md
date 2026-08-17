@@ -12,7 +12,7 @@
 | `PendingReview` | Submitted, waiting for a reviewer to claim it. **Edit-locked.** |
 | `UnderReview` | A reviewer has claimed it — and `review_claimed_by` says which one. **Edit-locked.** |
 | `ChangesRequested` | Returned with notes. **Editable — that is the point of the state.** |
-| `Approved` | Review passed. The only state a reviewed event publishes from. |
+| `Approved` | Review passed. Publication is now the **creator's** call, not the reviewer's (D-362) — the event is permitted to go live and is not yet public. |
 | `Rejected` | Refused with a reason code. Resubmittable. |
 
 `InReview` was retired in Stage 4. It conflated *waiting for a reviewer* with *a reviewer has it*, which is
@@ -64,11 +64,64 @@ Draft ──submit_for_review──▶ PendingReview ──claim_review──▶
                                  ◀──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**`withdraw` works only from `PendingReview`.** Once a reviewer has claimed an item, withdrawing would
-discard their in-flight work.
+**`withdraw` works from `PendingReview` and from `Approved` (D-363 §1)** — never from `UnderReview`.
+Once a reviewer has claimed an item, withdrawing would discard their in-flight work; once they have
+finished with it, taking it back is the organiser's call again.
 
 **A Public product cannot self-publish** — `publish_approved` is reachable only from `Approved`. Private
 products are never reviewed, so `publish` direct from `Draft` remains for them.
+
+### Who presses publish (D-362)
+
+**Approval grants permission to publish. It does not publish.** The two acts belong to two different
+people, and the transition table alone does not say which:
+
+| Status | Creator may publish | Publicly visible |
+|---|---|---|
+| `PendingReview` / `UnderReview` | **no** — `reviewer_required` | no |
+| `Approved` | **yes**, free or paid | **no** |
+| `Published` | — | **yes** |
+
+The gate sits on `target == Published`, so both doors — the legacy `publish` and the reviewed
+`publish_approved` — pass through it. It previously sat inside `if (isPaid)`, which meant a free Public
+event could be submitted for review and then published by its own creator, out of the queue and with no
+approval; and a paid event could not be published by its creator even *after* a reviewer approved it.
+
+`Approved` is therefore a state an event genuinely sits in — reviewed, permitted, not yet public. It is
+also the state at which the **host workspace opens** (web `OPEN_HOST_STATES`, Flutter `openHostStates`).
+### Leaving `Approved`, and editing after it (D-363)
+
+`Approved` is no longer forward-only, and approval no longer floats free of what it approved:
+
+| Action from `Approved` | Goes to | Why it is allowed |
+|---|---|---|
+| `publish_approved` | `Published`/`Scheduled` | approval granted the permission; the creator spends it |
+| `withdraw` (§1) | `Draft` | never public, so it can hold no orders — nothing is lost by reworking it |
+| `cancel` (§2) | `Cancelled` | abandoning it outright; terminal, never resurrected (D-101) |
+
+**A material edit re-opens the review (§4).** `EventStatusWorkflow.RequiresFreshReview` names the fields
+a reviewer actually assessed — title, category/type, dates and timezone, venue/mode/URL, capacity,
+visibility, eligibility, legal, commerce. Changing any of them on an `Approved` event returns it to
+`PendingReview`, clears the claim, and audits `event.review.reopened_by_edit`. Cosmetic fields (banner,
+tagline, prose, FAQ, rules, contact, registration windows) are free. Product (Public/Private) and the
+representing organization are not editable at all: changing either invalidates the eligibility gate the
+event was created under (D-323).
+
+The predicate tests *presence in the payload*, not *change of value*, so a client that posts the whole
+record on every save re-reviews on every save from that form.
+
+**Two of the material fields are not on the event row**, and are governed by their own services calling
+the same shared reopen (`EventReviewReopen.IfApprovedAsync`):
+
+| Surface | Endpoint | Under review | After approval |
+|---|---|---|---|
+| the event | `PATCH .../events/{id}` | `event_under_review` (409) | material field → `PendingReview` |
+| ticket price / quantity | `POST·PATCH·DELETE .../ticket-types` | `event_under_review` (409) | any change → `PendingReview` |
+| eligibility (audience rule) | `PUT·DELETE .../audience` | `event_under_review` (409) | any change → `PendingReview` |
+| legal / authorization letter | `POST /v1/events/{id}/authorization` | `event_under_review` (409) | resubmission → `PendingReview` |
+
+Adding a ticket type counts as much as editing one — otherwise a free approved event could acquire its
+entire price list the moment it cleared review.
 
 ## Legacy actions
 

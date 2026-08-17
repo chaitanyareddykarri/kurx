@@ -148,6 +148,10 @@ public static class OrderEndpoints
     {
         "forbidden" or "not_eligible" => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
+        // D-366 — a 409, not a 400: the buyer's request is well formed and their team size is one the
+        // ticket admits. What is wrong is the event's own price configuration, and telling the buyer
+        // they sent something invalid would send them looking for a mistake they did not make.
+        "ambiguous_price_rule" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

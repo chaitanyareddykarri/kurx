@@ -37,6 +37,9 @@ public class OrderService(
     ITrustService trust,
     IRealtimeBroadcaster realtime,
     IProfileVisibilityResolver visibility,
+    // D-359 — a competition group registration materialises the authoritative Team beside the legacy
+    // purchase Group. Team formation itself stays entirely in the Phase-10 subsystem.
+    ITeamService teams,
     ILogger<OrderService> log) : IOrderService
 {
     /// <summary>V3 §17.1 (Phase 9): the admission's non-money side effect — adding the buyer to the event chat —
@@ -68,6 +71,73 @@ public class OrderService(
         }
         catch { /* live dashboard tick only */ }
     }
+
+    /*
+     * D-357 — the pricing unit decides what is charged, and it is the ONLY thing that does.
+     *
+     * `PricePaise` is an amount without a unit until this is applied. The three live combinations:
+     *
+     *   PerTicket + Individual  →  price × 1            (unchanged)
+     *   PerTicket + Group       →  price × groupSize    ("₹500 per participant", team of 4 = ₹2,000)
+     *   PerGroup  + Group       →  price × 1            ("₹2,000 per team", whatever the team size)
+     *
+     * The bug this exists to make impossible is the middle row applied to the last one: charging
+     * ₹2,000 × 4 for a ticket whose organiser said ₹2,000 per team. `BillableUnits` is the single
+     * expression of that rule, used for the charge, the OrderItem, and the gateway order alike, so
+     * they cannot disagree.
+     *
+     * `PerGroup + Individual` is degenerate — one registration either way — and yields 1, which is
+     * the same answer as PerTicket, so it needs no branch of its own.
+     */
+    private static int BillableUnits(TicketType tt, int? groupSize)
+        => tt.RegistrationMode == RegistrationMode.Group && tt.PricingUnit == PricingUnit.PerTicket
+            ? groupSize ?? 1
+            : 1;
+
+    /// <summary>What a group order costs, in paise. Kept beside <see cref="BillableUnits"/> because the
+    /// two are one rule: an amount is the unit count times the unit price, and nothing else.</summary>
+    private static long AmountFor(TicketType tt, int? groupSize, long? tierPricePaise = null)
+        => (tierPricePaise ?? tt.PricePaise) * BillableUnits(tt, groupSize);
+
+    /*
+     * D-366 — which band prices THIS team.
+     *
+     * A team ticket may carry a set of size bands (2 → ₹250, 3 → ₹300, 4–5 → ₹400) instead of one price
+     * for its whole range. Resolution is deliberately strict in both directions:
+     *
+     *   · no band contains the size          → `no_price_for_team_size`, the registration is refused
+     *   · more than one contains it          → `ambiguous_price_rule`, a configuration error
+     *
+     * Never "take the first match". Two matching bands mean the organiser's intent is genuinely unknown,
+     * and charging one of two prices they wrote is worse than refusing: the attendee pays an amount
+     * nobody decided. It is also unreachable in a correct database — an exclusion constraint forbids
+     * overlap — so this is the code that turns a corrupted configuration into a refusal rather than a
+     * silent wrong charge.
+     *
+     * A ticket with NO bands returns null, and the caller prices from `PricePaise` exactly as before,
+     * which is every ticket type that predates D-366.
+     */
+    private async Task<(long? Price, string? Error)> TierPriceAsync(TicketType tt, int? groupSize, CancellationToken ct)
+    {
+        if (tt.RegistrationMode != RegistrationMode.Group) return (null, null);
+        var tiers = await db.TicketPriceTiers.AsNoTracking()
+            .Where(x => x.TicketTypeId == tt.Id).ToListAsync(ct);
+        if (tiers.Count == 0) return (null, null);
+
+        var size = groupSize ?? 1;
+        var matching = tiers.Where(x => size >= x.MinSize && size <= x.MaxSize).ToList();
+        if (matching.Count == 0) return (null, "no_price_for_team_size");
+        if (matching.Count > 1) return (null, "ambiguous_price_rule");
+        return (matching[0].PricePaise, null);
+    }
+
+    /// <summary>Whether joining an already-registered group takes another seat.
+    ///
+    /// <para><b>`PerGroup` is the whole point:</b> the team slot was bought as one unit, so its members
+    /// cost no further inventory and <c>Quantity</c> finally means "number of teams". Under `PerTicket`
+    /// each person is a separately-priced seat and still consumes one, which is what every pre-D-357 row
+    /// does — so nothing existing changes.</para></summary>
+    private static bool JoinConsumesInventory(TicketType tt) => tt.PricingUnit != PricingUnit.PerGroup;
 
     public async Task<ServiceResult<OrderView>> CreateOrderAsync(Guid? userId, Guid eventId, CreateOrderInput input, CancellationToken ct = default)
     {
@@ -155,23 +225,39 @@ public class OrderService(
             var orgCaps = await trust.GetOrgCapabilitiesAsync(ev.CreatedBy, ev.RepresentingOrgId, ct);
             if (!caps.CanOrganizePaid || !orgCaps.IsOrgVerified)
                 return ServiceResult<OrderView>.Fail("payments_not_enabled");
-            if (tt.RegistrationMode != RegistrationMode.Individual)
-                return ServiceResult<OrderView>.Fail("paid_group_not_supported_yet");
 
+            /*
+             * D-357 — `paid_group_not_supported_yet` stood here and refused every non-Individual mode.
+             * It is gone because the path below now exists, not because the guard was inconvenient: the
+             * amount is unit-derived, the group is materialised at capture, and joining it consumes no
+             * further inventory under PerGroup. Removing it without those three would have shipped a
+             * team event that charges per head.
+             */
+            // D-366 — the band the team's SIZE resolves to, or null for a ticket priced by one amount.
+            // Refused rather than approximated: a team whose size no band covers must not be charged the
+            // headline price by accident.
+            var (tierPrice, tierError) = await TierPriceAsync(tt, input.GroupSize, ct);
+            if (tierError is not null) return ServiceResult<OrderView>.Fail(tierError);
+
+            var paidAmount = AmountFor(tt, input.GroupSize, tierPrice);
             var paidOrder = new Order
             {
                 UserId = userId,
                 EventId = eventId,
                 TicketTypeId = tt.Id,
                 Status = OrderStatus.Pending,
-                AmountPaise = tt.PricePaise,
+                AmountPaise = paidAmount,
                 Currency = ev.SettlementCurrency,   // V3 §9.1 — an event's money is in its settlement currency
                 AnswersJson = answers.Count > 0 ? JsonSerializer.Serialize(answers) : null,
                 IdempotencyKey = input.IdempotencyKey,
+                // Carried to capture: the Group is created there, so both survive as order state rather
+                // than being re-asked of a buyer who has already paid.
+                GroupSize = tt.RegistrationMode == RegistrationMode.Group ? input.GroupSize : null,
+                GroupDisplayName = tt.RegistrationMode == RegistrationMode.Group ? input.DisplayName : null,
             };
             // Order.Id is app-generated, so the gateway order can be created before the transaction (the external
             // call must not run inside an open DB transaction). A rare lost hold race orphans a gateway order only.
-            var gatewayOrder = await paymentGateway.CreateOrderAsync(paidOrder.Id, tt.PricePaise, ct);
+            var gatewayOrder = await paymentGateway.CreateOrderAsync(paidOrder.Id, paidAmount, ct);
             paidOrder.RazorpayOrderId = gatewayOrder.GatewayOrderId;
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -181,7 +267,13 @@ public class OrderService(
             if (!await inventory.TryHoldManyAsync([new PoolDraw(poolId, 1)], ct))
                 return ServiceResult<OrderView>.Fail("sold_out");
             db.Orders.Add(paidOrder);
-            db.OrderItems.Add(new OrderItem { OrderId = paidOrder.Id, TicketTypeId = tt.Id, Qty = 1, UnitPricePaise = tt.PricePaise, Currency = ev.SettlementCurrency });
+            // `Qty` is the BILLABLE quantity, so `Qty × UnitPricePaise == AmountPaise` holds for every
+            // combination — 1 × ₹2,000 for a team, 4 × ₹500 for four per-participant seats. The team's
+            // SIZE lives on `Order.GroupSize`; conflating the two is what made ₹2,000 ambiguous.
+            // `UnitPricePaise` is the band that was resolved, not the headline: the order line has to
+            // record what this buyer was actually charged, or `Qty × UnitPrice == AmountPaise` stops
+            // holding the moment a team pays a band above the cheapest one (D-366).
+            db.OrderItems.Add(new OrderItem { OrderId = paidOrder.Id, TicketTypeId = tt.Id, Qty = BillableUnits(tt, input.GroupSize), UnitPricePaise = tierPrice ?? tt.PricePaise, Currency = ev.SettlementCurrency });
             // ExpireSeatHoldsJob (D-029) reclaims the hold if payment never captures within the window.
             db.SeatHolds.Add(new SeatHold { TicketTypeId = tt.Id, PoolId = poolId, OrderId = paidOrder.Id, Qty = 1, Status = SeatHoldStatus.Active, ExpiresAt = now.AddMinutes(10) });
             tt.Sold += 1;   // legacy mirror (held+issued); the pool's Held is now the authority
@@ -206,10 +298,17 @@ public class OrderService(
             GuestEmail = guestEmail,
             GuestAccessToken = userId is null ? GenerateGuestAccessToken() : null,
             IdempotencyKey = input.IdempotencyKey,
+            // D-357 — recorded explicitly rather than inferred from `Qty`, which is now the billable
+            // quantity. Free events are always billable-1, so the two agree here; a paid team is where
+            // they diverge, and the roster cap must read the same field on both paths.
+            GroupSize = tt.RegistrationMode == RegistrationMode.Group ? input.GroupSize : null,
+            GroupDisplayName = tt.RegistrationMode == RegistrationMode.Group ? input.DisplayName : null,
         };
-        var qty = tt.RegistrationMode == RegistrationMode.Group ? input.GroupSize!.Value : 1;
-        var orderItem = new OrderItem { OrderId = order.Id, TicketTypeId = tt.Id, Qty = qty, UnitPricePaise = 0, Currency = ev.SettlementCurrency };
+        // Free: the amount is zero whatever the unit, so `Qty` carries the billable count for symmetry
+        // with the paid path — 1 for a team, 1 for an individual. The team's size is `Order.GroupSize`.
+        var orderItem = new OrderItem { OrderId = order.Id, TicketTypeId = tt.Id, Qty = BillableUnits(tt, input.GroupSize), UnitPricePaise = 0, Currency = ev.SettlementCurrency };
 
+        Guid? groupIdForTeam = null;
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             if (await BuyerLimitReachedAsync(tt, userId, guestPhone, ct))
@@ -242,6 +341,7 @@ public class OrderService(
                     LeaderUserId = leaderId,
                 };
                 db.Groups.Add(group);
+                groupIdForTeam = group.Id;
 
                 var leaderUser = await db.Users.AsNoTracking().FirstAsync(u => u.Id == leaderId, ct);
                 var leaderMember = new GroupMember
@@ -265,6 +365,10 @@ public class OrderService(
             await db.SaveChangesAsync(ct);
             await registration.ProjectOrderInTransactionAsync(order.Id, ct);   // reg + admission + credential + VAR, authoritative
             EnqueueChatJoin(eventId, userId);                                  // §17.1 side effect via outbox, never inline
+            // D-359 — AFTER the projection: the Team links to the Registration the money path just made,
+            // which is what `Team.RegistrationId` was reserved for. A no-op unless the ticket type is a
+            // competition, so a plain group purchase is unchanged.
+            if (groupIdForTeam is { } freeGroupId) await teams.MaterialiseForGroupAsync(freeGroupId, ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
@@ -333,10 +437,58 @@ public class OrderService(
             }
         }
 
-        // Issue the ticket (paid = Individual, one ticket). Per-participant answers were stashed on the order.
+        // Issue the ticket. Per-participant answers were stashed on the order.
         var fields = await db.FormFields.AsNoTracking().Where(f => f.TicketTypeId == tt.Id).ToListAsync(ct);
         var participantJson = SplitScope(order.AnswersJson, fields, FormFieldScope.PerParticipant);
-        db.Tickets.Add(NewTicket(orderItem.Id, order.EventId, order.UserId, null, participantJson));
+
+        if (tt.RegistrationMode == RegistrationMode.Group && order.UserId is { } paidLeaderId)
+        {
+            /*
+             * D-357 — a PAID group materialises its Group here, at capture, and not at checkout.
+             *
+             * The free path creates the Group immediately because there is nothing to wait for. A paid
+             * order is Pending until the gateway confirms, and a Pending team that could already hand out
+             * its join code would let an unpaid buyer recruit members into a registration that may never
+             * be paid for. Same shape as the free branch otherwise — deliberately, so the two produce
+             * identical rows and the roster, gate and projection code cannot tell them apart.
+             */
+            var leaderUser = await db.Users.AsNoTracking().FirstAsync(u => u.Id == paidLeaderId, ct);
+            var group = new Group
+            {
+                EventId = order.EventId,
+                TicketTypeId = tt.Id,
+                OrderId = order.Id,
+                GroupNumber = await NextGroupNumberAsync(order.EventId, ct),
+                DisplayName = order.GroupDisplayName,
+                JoinCode = await GenerateUniqueJoinCodeAsync(ct),
+                LeaderUserId = paidLeaderId,
+            };
+            db.Groups.Add(group);
+
+            var leaderMember = new GroupMember
+            {
+                GroupId = group.Id,
+                UserId = paidLeaderId,
+                Name = leaderUser.Name,
+                Phone = leaderUser.PhoneE164 ?? leaderUser.Phone,   // canonical column first (D-089)
+                AnswersJson = participantJson,
+                JoinedAt = DateTime.UtcNow,
+            };
+            db.GroupMembers.Add(leaderMember);
+
+            var leaderTicket = NewTicket(orderItem.Id, order.EventId, paidLeaderId, leaderMember.Id, participantJson);
+            db.Tickets.Add(leaderTicket);
+            leaderMember.TicketId = leaderTicket.Id;
+
+            // D-359 — the authoritative Team for a competition entry, made in the same transaction as the
+            // Group it mirrors. Saved first so the roster read inside sees the captain's GroupMember row.
+            await db.SaveChangesAsync(ct);
+            await teams.MaterialiseForGroupAsync(group.Id, ct);
+        }
+        else
+        {
+            db.Tickets.Add(NewTicket(orderItem.Id, order.EventId, order.UserId, null, participantJson));
+        }
 
         // Ledger write-path (D-028): the payment is Collected funds for the org; update the cached wallet
         // balance in the SAME transaction as the ledger insert (never SUM the ledger on the hot path).
@@ -677,8 +829,11 @@ public class OrderService(
         if (fields.Any(f => f.Required && !answersMap.ContainsKey(f.Key)))
             return ServiceResult<GroupMemberView>.Fail("missing_required_field");
 
-        // Authoritative sold-out pre-check (§17.1): the pool, never the legacy Sold mirror.
-        if (await inventory.AvailableAsync(tt.Id, ct) < 1) return ServiceResult<GroupMemberView>.Fail("sold_out");
+        // Authoritative sold-out pre-check (§17.1): the pool, never the legacy Sold mirror. Skipped for
+        // PerGroup, where this join takes no seat — otherwise the last team sold would be unable to fill
+        // the roster it had already paid for.
+        if (JoinConsumesInventory(tt) && await inventory.AvailableAsync(tt.Id, ct) < 1)
+            return ServiceResult<GroupMemberView>.Fail("sold_out");
 
         var participantAnswersJson = ToJsonOrNull(fields, answersMap, FormFieldScope.PerParticipant);
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
@@ -710,24 +865,45 @@ public class OrderService(
         var (g1, g2) = (BitConverter.ToInt32(group.Id.ToByteArray(), 0), BitConverter.ToInt32(group.Id.ToByteArray(), 4));
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({g1}, {g2})", ct);
 
-        var targetSize = await db.OrderItems.AsNoTracking()
+        /*
+         * D-357 — the team's size, which is no longer always `OrderItem.Qty`.
+         *
+         * `Qty` is now the BILLABLE quantity (1 for a PerGroup team), so reading it as the roster cap
+         * would limit every paid team to one member. `Order.GroupSize` carries the real size; the
+         * fallback to `Qty` is what keeps every pre-D-357 free-group order — where the two were the same
+         * number — behaving exactly as before.
+         */
+        var orderRow = await db.Orders.AsNoTracking()
+            .Where(o => o.Id == group.OrderId).Select(o => new { o.GroupSize }).FirstAsync(ct);
+        var billableQty = await db.OrderItems.AsNoTracking()
             .Where(oi => oi.OrderId == group.OrderId).Select(oi => oi.Qty).FirstAsync(ct);
+        var targetSize = orderRow.GroupSize ?? billableQty;
         var memberCount = await db.GroupMembers.CountAsync(m => m.GroupId == group.Id, ct);
         if (memberCount >= targetSize) return ServiceResult<GroupMemberView>.Fail("group_full");
 
         if (await BuyerLimitReachedAsync(tt, userId, null, ct))
             return ServiceResult<GroupMemberView>.Fail("limit_exceeded");
 
-        // Conditional CONSUME (§17.1): this member takes one seat now. No capacity ⇒ roll back the join.
-        if (!await inventory.TryConsumeManyAsync([new PoolDraw(poolId, 1)], ct))
+        /*
+         * Conditional CONSUME (§17.1) — but only when a member IS a seat.
+         *
+         * Under `PerGroup` the whole team was bought and reserved as ONE unit, so a joining member takes
+         * nothing further and `Quantity` finally means "number of teams": 50 teams stays 50 teams rather
+         * than draining to 10 as rosters fill. Under `PerTicket` each person is a separately-priced seat
+         * and still consumes one — which is every pre-D-357 row, so nothing existing moves.
+         */
+        if (JoinConsumesInventory(tt) && !await inventory.TryConsumeManyAsync([new PoolDraw(poolId, 1)], ct))
             return ServiceResult<GroupMemberView>.Fail("sold_out");
         db.GroupMembers.Add(member);
         db.Tickets.Add(ticket);
-        tt.Sold += 1;   // legacy mirror; the pool's Consumed is the authority
+        if (JoinConsumesInventory(tt)) tt.Sold += 1;   // legacy mirror; the pool's Consumed is the authority
 
         await db.SaveChangesAsync(ct);
         await registration.ProjectOrderInTransactionAsync(group.OrderId, ct);   // member admission + credential, authoritative
         EnqueueChatJoin(group.EventId, userId);                                 // §17.1 side effect via outbox, never inline
+        // D-359 — the Team roster follows the Group roster. Idempotent, so a member already on the team
+        // (or a non-competition ticket type, which has no team at all) is a no-op.
+        await teams.MaterialiseForGroupAsync(group.Id, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

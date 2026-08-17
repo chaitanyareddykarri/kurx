@@ -50,7 +50,8 @@ export function CreateEventGate({
   canCreatePublicEvent,
   canCreatePrivateEvent,
   requiresRepresentation,
-  representativeRoles
+  representativeRoles,
+  teamCapableArchetypes
 }: {
   representations: Representation[];
   canHostPaid: boolean;
@@ -73,6 +74,8 @@ export function CreateEventGate({
   /// dev bypass; the gate then stops demanding one, matching what the server will actually accept.
   requiresRepresentation: boolean;
   representativeRoles: string[];
+  /// D-357 — passed straight through to the wizard's Registration step.
+  teamCapableArchetypes: string[];
 }) {
   const [stage, setStage] = useState<"product" | "pricing" | "form">("product");
   const [product, setProduct] = useState<Product | null>(null);
@@ -96,6 +99,7 @@ export function CreateEventGate({
       initialPricing={pricing}
       requiresRepresentation={requiresRepresentation}
       representativeRoles={representativeRoles}
+      teamCapableArchetypes={teamCapableArchetypes}
     />;
   }
 

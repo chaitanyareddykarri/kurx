@@ -76,6 +76,8 @@ public static class AudienceEndpoints
     {
         "forbidden" or "not_eligible" => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
+        // As on the event's own PATCH (D-363 §4) — the state refuses, not the request.
+        "event_under_review" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

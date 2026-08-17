@@ -58,7 +58,7 @@ export default async function OrganizationsPage({ searchParams }: { searchParams
         <PageHeader
           kicker="People & Orgs"
           title="Organizations"
-          description="Every organization on the platform — search, open one to see its wallet, risk score, and events, and moderate it directly."
+          description="Every institution on the platform — search, open one to see its wallet, risk score, and events, and moderate it directly. Self-representation rows are not organizations and are never listed (D-353)."
         />
         <OrgFilterBar values={{ q: searchParams.q, status: searchParams.status, type: searchParams.type }} />
         <OrgWorkspace

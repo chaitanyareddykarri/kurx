@@ -38,6 +38,24 @@ class EventDetail {
     this.eventMode,
     this.onlineUrl,
     this.representing,
+    this.rules,
+    this.codeOfConduct,
+    this.refundPolicy,
+    this.cancellationPolicy,
+    this.termsUrl,
+    this.consentText,
+    this.registrationOpensAt,
+    this.registrationClosesAt,
+    this.checkinOpensAt,
+    this.checkinClosesAt,
+    this.minAge,
+    this.maxAge,
+    this.genderRestriction,
+    this.maxTeams,
+    this.building,
+    this.floor,
+    this.room,
+    this.meetingPlatform,
   });
 
   final String id;
@@ -63,9 +81,57 @@ class EventDetail {
   final String? onlineUrl;
   final EventRepresentation? representing;
 
+  /*
+   * The D-265 field groups an attendee needs before registering.
+   *
+   * Collected by the create-event wizard, stored, returned by this endpoint since D-265, and mapped by
+   * no client — so the rules a registration is subject to were only ever legible after it. Flattened
+   * onto the entity rather than kept as nested objects because the UI reads them one at a time and a
+   * five-object entity would make every widget null-check twice.
+   *
+   * `consentText` is non-null ONLY when the event actually requires consent — the DTO drops it
+   * otherwise, so a stale statement on an event that no longer asks for one cannot render.
+   */
+  final String? rules;
+  final String? codeOfConduct;
+  final String? refundPolicy;
+  final String? cancellationPolicy;
+  final String? termsUrl;
+  final String? consentText;
+  final DateTime? registrationOpensAt;
+  final DateTime? registrationClosesAt;
+  final DateTime? checkinOpensAt;
+  final DateTime? checkinClosesAt;
+  final int? minAge;
+  final int? maxAge;
+  /// Null when unrestricted — the DTO maps the server's "Any" default to null so it never reads as a rule.
+  final String? genderRestriction;
+  final int? maxTeams;
+  final String? building;
+  final String? floor;
+  final String? room;
+  final String? meetingPlatform;
+
   /// "City · venue", trimmed to whichever parts exist.
   String? get location {
     final parts = [city, venueName].where((p) => p != null && p.isNotEmpty).cast<String>();
     return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// Where inside the venue — "Block A · Floor 3 · Room 301", or null when none was set.
+  String? get placeInVenue {
+    final parts = [
+      building,
+      if (floor != null && floor!.isNotEmpty) 'Floor $floor',
+      if (room != null && room!.isNotEmpty) 'Room $room',
+    ].where((p) => p != null && p.isNotEmpty).cast<String>();
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// The age rule as one line, or null when there is none.
+  String? get ageRule {
+    if (minAge == null && maxAge == null) return null;
+    if (minAge != null && maxAge != null) return '$minAge–$maxAge';
+    return minAge != null ? '$minAge and over' : '$maxAge and under';
   }
 }

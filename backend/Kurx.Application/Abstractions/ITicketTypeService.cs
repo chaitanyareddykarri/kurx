@@ -1,5 +1,9 @@
 namespace Kurx.Application.Abstractions;
 
+/// <summary>D-366 — one price band of a team ticket. Both ends inclusive; the price is for the WHOLE
+/// team, never per member.</summary>
+public record TicketPriceTierInput(int MinSize, int MaxSize, long PricePaise);
+
 public record TicketTypeInput(
     string Name,
     long PricePaise,
@@ -12,7 +16,12 @@ public record TicketTypeInput(
     DateTime SaleEnds,
     int PerUserLimit,
     bool IsAllAccess,
-    bool IsCompetition = false);
+    bool IsCompetition = false,
+    /// <summary>D-366. Null and empty are the same thing and both mean "price from
+    /// <paramref name="PricePaise"/>", which is every ticket type that predates this. A non-empty set
+    /// must cover <paramref name="GroupMin"/>..<paramref name="GroupMax"/> exactly — no gap, no overlap.
+    /// Sending it on a non-Group ticket is refused rather than ignored.</summary>
+    IReadOnlyList<TicketPriceTierInput>? PriceTiers = null);
 
 public record TicketTypeView(
     Guid Id,
@@ -30,7 +39,12 @@ public record TicketTypeView(
     DateTime SaleEnds,
     int PerUserLimit,
     bool IsAllAccess,
-    bool IsCompetition);
+    bool IsCompetition,
+    /// <summary>D-366 — empty for every ticket priced by a single amount, which is the default and the
+    /// whole existing corpus. Ordered by size so a client can render the table without sorting it.</summary>
+    IReadOnlyList<TicketPriceTierView>? PriceTiers = null);
+
+public record TicketPriceTierView(int MinSize, int MaxSize, long PricePaise);
 
 public record FormFieldInput(
     string Key,

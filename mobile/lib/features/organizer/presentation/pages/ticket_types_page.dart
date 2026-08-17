@@ -182,12 +182,35 @@ class _TicketTypeCard extends StatelessWidget {
                   style: TextStyle(color: c.text, fontWeight: FontWeight.w700, fontSize: 16),
                 ),
               ),
+              // D-366 — on a banded ticket `pricePaise` is only the CHEAPEST band, so printing it bare
+              // shows one of several prices as if it were the price, on the screen the organiser edits.
               Text(
-                type.pricePaise == 0 ? 'Free' : formatPaise(type.pricePaise),
+                (type.priceTiers?.isNotEmpty ?? false)
+                    ? 'from ${formatPaise(type.priceTiers!.map((b) => b.pricePaise).reduce((a, b) => a < b ? a : b))}'
+                    : type.pricePaise == 0
+                        ? 'Free'
+                        : formatPaise(type.pricePaise),
                 style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
               ),
             ],
           ),
+          // The bands themselves. The editor below cannot change them yet — it PATCHes without them,
+          // which the server reads as "leave them alone" — so this is the only place on mobile an
+          // organiser can see what a team of each size actually pays.
+          if (type.priceTiers?.isNotEmpty ?? false)
+            Padding(
+              padding: const EdgeInsets.only(top: KSpace.xs),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final b in ([...type.priceTiers!]..sort((x, y) => x.minSize.compareTo(y.minSize))))
+                    Text(
+                      '${b.minSize == b.maxSize ? '${b.minSize} members' : '${b.minSize}–${b.maxSize} members'} — ${formatPaise(b.pricePaise)}',
+                      style: TextStyle(color: c.muted, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
           const SizedBox(height: KSpace.sm),
           Wrap(
             spacing: KSpace.md,

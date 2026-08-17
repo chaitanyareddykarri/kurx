@@ -6,6 +6,7 @@ import '../../../../common/widgets/empty_state.dart';
 import '../../../../common/widgets/kurx_card.dart';
 import '../../../../common/widgets/kurx_shell_app_bar.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/utils/event_status.dart';
 import '../../../orders/presentation/providers/attendee_providers.dart';
 import '../../../organizer/data/models/event_manage_dto.dart';
 import '../../../organizer/presentation/providers/organizer_providers.dart';
@@ -33,7 +34,14 @@ class WorkspaceHubPage extends ConsumerWidget {
 
   /// Statuses where the host workspace is genuinely open. Everything else is pre-approval and gets
   /// a state chip instead of a working link (flow: "Admin Review → Approved → Host Workspace Opens").
-  static const _openHostStates = {'published', 'scheduled', 'live', 'completed', 'closed'};
+  ///
+  /// D-362 — `approved` belongs here and its absence contradicted that flow: approval is exactly when
+  /// the workspace opens, and the host's next action (publish) lives inside it. Kept identical to web's
+  /// `OPEN_HOST_STATES`; the two disagreeing is one defect written twice — and public, so a test can
+  /// pin that claim rather than leave it as a comment.
+  static const openHostStates = {
+    'approved', 'published', 'scheduled', 'live', 'completed', 'closed'
+  };
 
   /// Views over the caller's own events. Status filters on one list, never separate containers.
   static const _views = <(String, String)>[
@@ -209,7 +217,7 @@ class _HostEventRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.kurx;
     final status = event.status.toLowerCase();
-    final isOpen = WorkspaceHubPage._openHostStates.contains(status);
+    final isOpen = WorkspaceHubPage.openHostStates.contains(status);
     // Representation is a property of the event, shown on its row — never a folder it lives in.
     final representing = event.representation?.kind == 'organization'
         ? event.representation?.organizationName
@@ -239,7 +247,9 @@ class _HostEventRow extends StatelessWidget {
                 ),
                 Text(
                   [
-                    isOpen ? 'Host workspace' : 'Opens after approval · ${event.status}',
+                    isOpen
+                        ? 'Host workspace'
+                        : 'Opens after approval · ${eventStatusLabel(event.status)}',
                     if (representing != null) 'representing $representing',
                   ].join(' · '),
                   maxLines: 1,

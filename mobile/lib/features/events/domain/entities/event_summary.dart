@@ -11,6 +11,7 @@ class EventSummary {
     required this.status,
     this.categoryName,
     this.priceFromPaise,
+    this.priceFromUnit,
     this.isFeatured = false,
     this.bannerUrl,
     this.eventMode,
@@ -39,8 +40,15 @@ class EventSummary {
   final String currency;
 
   /// Null price means no ticket type exists yet — NOT free. Callers must distinguish the two.
+  /// D-361 — what the "From" price buys. Absent reads as per-participant, which is every
+  /// pre-D-357 ticket type.
+  final String? priceFromUnit;
+
   bool get isFree => priceFromPaise != null && priceFromPaise! <= 0;
   bool get hasPrice => priceFromPaise != null;
+
+  /// True when the "From" price is a whole team's entry fee rather than one person's.
+  bool get isPricedPerTeam => priceFromUnit == 'PerGroup';
 
   /// "City · venue", trimmed to whichever parts exist.
   String? get location {

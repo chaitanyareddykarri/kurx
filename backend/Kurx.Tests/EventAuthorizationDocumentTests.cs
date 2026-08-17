@@ -47,11 +47,21 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
         return (t.ParentId!.Value, t.Id);
     }
 
-    /// <param name="orgId">null exercises the Personal (self-represented) path.</param>
-    private async Task<Guid> CreateEventAsync(HttpClient owner, Guid? orgId, string typeSlug = "hackathon")
+    /// <param name="orgId">The organization the event represents. When null, one is seeded for this
+    /// caller — <b>D-353 refuses a self-represented PUBLIC event at creation</b> (409
+    /// `representation_required`), and every type used here is Public, so passing null through would
+    /// only ever produce a 409. The twelve call sites that pass null are about the authorization
+    /// document, not about representation; they get a verified org so they test what they name.</param>
+    /// <param name="selfRepresented">Opts out of that seeding, for the two cases that ARE about
+    /// self-representation. Only legal with a Private type.</param>
+    private async Task<Guid> CreateEventAsync(HttpClient owner, Guid? orgId, string typeSlug = "hackathon",
+        bool selfRepresented = false)
     {
         var (catId, typeId) = await TaxonAsync(typeSlug);
-        var res = await owner.CreateEventAsync(orgId, new
+        Guid? representing = selfRepresented
+            ? null
+            : orgId ?? _factory.SeedVerifiedOrgForClient(owner, "Auth Org " + Guid.NewGuid().ToString("N")[..6]);
+        var res = await owner.CreateEventAsync(representing, new
         {
             title = "Auth " + Guid.NewGuid().ToString("N")[..6], description = "a real description",
             categoryId = catId, typeId, venueName = "Hall", city = "C",
@@ -126,7 +136,10 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
     public async Task A_self_represented_event_needs_no_authorization()
     {
         var (owner, _) = await LoginAsync("9702000003");
-        var id = await CreateEventAsync(owner, orgId: null);
+        // D-353 narrowed self-representation to PRIVATE. The rule under test is unchanged — an event
+        // with no institution behind it has no institution to file consent for — but the only shape
+        // that can still reach it is a private one, so the fixture moved rather than the assertion.
+        var id = await CreateEventAsync(owner, orgId: null, typeSlug: "wedding", selfRepresented: true);
 
         using var scope = _factory.Services.CreateScope();
         var orgId = await scope.ServiceProvider.GetRequiredService<KurxDbContext>()
@@ -142,18 +155,29 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
     public async Task An_archetype_that_requires_representation_refuses_a_self_represented_event()
     {
         var (owner, _) = await LoginAsync("9702000013");
-        // "Campus Recruitment" rather than "Career Fair": the latter exists under two audiences, so the
-        // seeder prefixes its slug and a bare "career-fair" resolves to nothing.
-        var id = await CreateEventAsync(owner, orgId: null, typeSlug: "campus-recruitment");
+        var (catId, typeId) = await TaxonAsync("campus-recruitment");
 
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
-        var ev = await db.Events.AsNoTracking().Where(e => e.Id == id)
-            .Select(e => new { e.RepresentingOrgId, e.ArchetypeSlug }).FirstAsync();
+        /*
+         * D-353 moved this refusal from PUBLISH to CREATE, and widened it.
+         *
+         * It used to be an archetype-level publish blocker: a Career Fair filed self-represented was
+         * misfiled, so `PolicyResolver` raised `representation_required` when it tried to publish. Every
+         * OTHER public archetype was publishable with no institution behind it — the hole D-353's entry
+         * names. Now any Public product is refused at creation, so the event never exists to be blocked.
+         *
+         * Asserting the create refusal rather than the publish blocker: that is where the rule now lives,
+         * and a test that still walked through creation would be asserting against a row the API will
+         * not make. 409 rather than 400 — the request is well-formed, the state forbids it.
+         */
+        var res = await owner.CreateEventAsync(null, new
+        {
+            title = "Auth " + Guid.NewGuid().ToString("N")[..6], description = "a real description",
+            categoryId = catId, typeId, venueName = "Hall", city = "C",
+            startsAt = DateTime.UtcNow.AddDays(30), endsAt = DateTime.UtcNow.AddDays(30).AddHours(3),
+        });
 
-        // Guard the premise: if the type stopped resolving to `recruitment` this test would pass vacuously.
-        Assert.Equal("recruitment", ev.ArchetypeSlug);
-        Assert.Contains("representation_required", await BlockersAsync(owner, ev.RepresentingOrgId, id));
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        Assert.Equal("representation_required", (await Json(res)).GetProperty("error").GetString());
     }
 
     // ── Filing ───────────────────────────────────────────────────────────────────────────────

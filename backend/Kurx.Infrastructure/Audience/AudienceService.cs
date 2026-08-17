@@ -20,7 +20,7 @@ public class AudienceService(KurxDbContext db, IEventAuthority authority, IInvit
 
     public async Task<ServiceResult<AudienceRuleView?>> GetRuleAsync(Guid actorUserId, Guid orgId, Guid eventId, bool isAdmin, CancellationToken ct = default)
     {
-        if (!await EventInOrgAsync(eventId, orgId, ct)) return ServiceResult<AudienceRuleView?>.Fail("not_found");
+        if (await EventStatusInOrgAsync(eventId, orgId, ct) is null) return ServiceResult<AudienceRuleView?>.Fail("not_found");
         if (!(await authority.ResolveAsync(actorUserId, eventId, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<AudienceRuleView?>.Fail("forbidden");
         var rule = await db.AudienceRules.AsNoTracking().FirstOrDefaultAsync(r => r.EventId == eventId, ct);
         return ServiceResult<AudienceRuleView?>.Success(rule is null ? null : ToView(rule));
@@ -28,8 +28,12 @@ public class AudienceService(KurxDbContext db, IEventAuthority authority, IInvit
 
     public async Task<ServiceResult<AudienceRuleView>> SetRuleAsync(Guid actorUserId, Guid orgId, Guid eventId, bool isAdmin, AudienceRuleInput input, CancellationToken ct = default)
     {
-        if (!await EventInOrgAsync(eventId, orgId, ct)) return ServiceResult<AudienceRuleView>.Fail("not_found");
+        if (await EventStatusInOrgAsync(eventId, orgId, ct) is not { } status) return ServiceResult<AudienceRuleView>.Fail("not_found");
         if (!(await authority.ResolveAsync(actorUserId, eventId, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<AudienceRuleView>.Fail("forbidden");
+        // D-363 §4 — WHO MAY ATTEND is eligibility, which a reviewer assesses. The event's own eligibility
+        // group already froze under review and re-reviewed after approval; the audience rule is the same
+        // question asked through a different endpoint, and was doing neither.
+        if (Events.EventStatusWorkflow.IsEditLocked(status)) return ServiceResult<AudienceRuleView>.Fail("event_under_review");
 
         var appliesTo = AudienceAppliesTo.EveryMember;
         if (input.AppliesTo is not null && !Enum.TryParse(input.AppliesTo, ignoreCase: true, out appliesTo))
@@ -68,19 +72,24 @@ public class AudienceService(KurxDbContext db, IEventAuthority authority, IInvit
         db.AuditLogs.Add(new AuditLog { ActorType = "user", ActorId = actorUserId, Action = "audience.set", Entity = "events", EntityId = eventId });
         db.OutboxMessages.Add(Search.SearchReindex.Message(eventId));   // V3 §15 (Phase 16): HasAudienceRule changed → reindex so the eligibility feed re-evaluates it
         await db.SaveChangesAsync(ct);
+        await Events.EventReviewReopen.IfApprovedAsync(db, eventId, status, actorUserId, "the audience rule", ct);
         return ServiceResult<AudienceRuleView>.Success(ToView(rule));
     }
 
     public async Task<ServiceResult<bool>> DeleteRuleAsync(Guid actorUserId, Guid orgId, Guid eventId, bool isAdmin, CancellationToken ct = default)
     {
-        if (!await EventInOrgAsync(eventId, orgId, ct)) return ServiceResult<bool>.Fail("not_found");
+        if (await EventStatusInOrgAsync(eventId, orgId, ct) is not { } status) return ServiceResult<bool>.Fail("not_found");
         if (!(await authority.ResolveAsync(actorUserId, eventId, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<bool>.Fail("forbidden");
+        if (Events.EventStatusWorkflow.IsEditLocked(status)) return ServiceResult<bool>.Fail("event_under_review");
         var rule = await db.AudienceRules.FirstOrDefaultAsync(r => r.EventId == eventId, ct);
-        if (rule is null) return ServiceResult<bool>.Success(true);   // already open — idempotent
+        // Idempotent, and deliberately BEFORE the reopen: deleting a rule that was never there changed
+        // nothing, so it must not bounce an approved event out of its approval.
+        if (rule is null) return ServiceResult<bool>.Success(true);   // already open
         db.AudienceRules.Remove(rule);
         db.AuditLogs.Add(new AuditLog { ActorType = "user", ActorId = actorUserId, Action = "audience.delete", Entity = "events", EntityId = eventId });
         db.OutboxMessages.Add(Search.SearchReindex.Message(eventId));   // V3 §15 (Phase 16): rule removed → reindex (event becomes open)
         await db.SaveChangesAsync(ct);
+        await Events.EventReviewReopen.IfApprovedAsync(db, eventId, status, actorUserId, "the audience rule", ct);
         return ServiceResult<bool>.Success(true);
     }
 
@@ -182,8 +191,12 @@ public class AudienceService(KurxDbContext db, IEventAuthority authority, IInvit
     // ── helpers ──────────────────────────────────────────────────────────────
 
 
-    private async Task<bool> EventInOrgAsync(Guid eventId, Guid orgId, CancellationToken ct)
-        => await db.Events.AsNoTracking().AnyAsync(e => e.Id == eventId && e.RepresentingOrgId == orgId, ct);
+    /// <summary>The event's status, or null when it is not this org's event — one query answering both,
+    /// because every caller needs the existence check and the mutating ones need the review state too
+    /// (D-363 §4).</summary>
+    private async Task<EventStatus?> EventStatusInOrgAsync(Guid eventId, Guid orgId, CancellationToken ct)
+        => await db.Events.AsNoTracking().Where(e => e.Id == eventId && e.RepresentingOrgId == orgId)
+            .Select(e => (EventStatus?)e.Status).FirstOrDefaultAsync(ct);
 
     private static string? Serialize<T>(IReadOnlyList<T>? list) => list is { Count: > 0 } ? JsonSerializer.Serialize(list, J) : null;
     private static T? Deser<T>(string? json) => string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json!, J);

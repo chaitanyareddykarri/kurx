@@ -18,6 +18,422 @@ Changes · Verification · Remaining Work).
 
 ## [Unreleased]
 
+### A team ticket is not sellable at the gate or in a seat block (2026-08-17) - D-369
+
+**Implementation Summary.** D-366 made `TicketType.PricePaise` a derived value — the cheapest band — so
+that `IsPaidEventAsync`, the paid/free filter and "from ₹250" keep working without learning what a band
+is. Every charged price resolves in `OrderService.AmountFor` via `TierPriceAsync`. **Two services never
+went through it**: `WalkInService.CreateAsync` and `SeatBlockService.CreateAsync` each build an
+`OrderItem` straight off the column, so a banded team ticket was admitted at the *cheapest* band —
+₹250 at the gate for a team of five whose band says ₹400, and the same shortfall invoiced to the
+organisation under a `DEFERRED` seat block.
+
+The money was the symptom. Neither channel can express a team at all: a walk-in mints one ticket with no
+`GroupSize`, no display name and no roster; a seat block mints N unassigned admissions a delegate binds to
+N individual people. Both were producing a team of nobody, correctly priced or not.
+
+**Both channels now refuse a `RegistrationMode.Group` ticket type** (`group_ticket_not_supported`),
+checked before the pool draw and before any mutation. Refused rather than repriced, on the reasoning
+D-366 already settled when it chose `ambiguous_price_rule` over "take the first band" — charging an
+amount nobody decided is worse than refusing. The guard is on `Group` rather than on "has bands" so the
+unbanded sibling (a phantom team with an empty roster) closes with it.
+
+**Files Changed.** Backend: `Kurx.Infrastructure/Events/{WalkInService,SeatBlockService}.cs` (one guard
+each), `docs/DECISIONS.md` (D-369). Tests: `Kurx.Tests/DelegatedRegistrationTests.cs` (+1 —
+`Neither_a_walk_in_nor_a_seat_block_can_sell_a_team_ticket`, asserting the refusal *and* that no order,
+no seat block and no pool consumption survives it).
+
+**Database.** None. No schema change, no migration, no data change — a read-side guard only.
+
+**API.** `POST /v1/events/{eventId}/walk-ins` and `POST /v1/events/{eventId}/seat-blocks` gain one
+refusal code, `group_ticket_not_supported`.
+
+**Breaking Changes.** None shipped. Neither endpoint has a caller in `web/`, `admin/`, `mobile/` or
+`packages/ui` — they are backend-only Phase 13 surfaces, which is also why no error copy is added
+(`invalid_ticket_type` and `no_walkin_pool` have none either). Copy arrives with the delegate console.
+
+**Verification.** `dotnet build` clean. Full-suite run pending the compose stack.
+
+**Remaining Work.** Nothing already sold is revisited — this stops a wrong charge being created, it does
+not find the ones that were. No banded team ticket has been sold through either channel in the dev data.
+
+### `teams` is enforced by the domain, not only described (2026-08-16) - D-367
+
+**Implementation Summary.** D-266 M2 drew a hard line — the Capability Engine *describes* what an event
+supports and never decides anything — and `teams` turned out to be the one capability that cannot live on
+the descriptive side of it. A `RegistrationMode.Group` ticket creates a `TeamPolicy`, a roster, a join
+code, a `PerGroup` inventory unit and a D-366 price band set; on an archetype whose `teams` capability is
+Unsupported, all of that is real, persisted, chargeable state describing something the event cannot run.
+
+Both clients already refused to offer it — web reverts `participation` in an effect, Flutter on rebuild —
+which is **two implementations of one rule, neither of which is the one that matters**. `POST
+.../ticket-types` with `registrationMode: "Group"` was accepted whatever the archetype said, so the
+invariant held only while every client kept its half of the bargain.
+
+**Three enforcement points, all reading the existing engine:**
+
+| Boundary | Rule | Refusal |
+|---|---|---|
+| `TicketTypeService.CreateAsync` | may not create a `Group` ticket | `teams_not_supported` (400) |
+| `TicketTypeService.UpdateAsync` | may not *become* `Group` | `teams_not_supported` (400) |
+| `EventService.ApplyUpdateAsync` | Type may not change to a non-team archetype while a `Group` ticket exists | `type_conflicts_with_team_ticket` (409) |
+
+No second capability system: an existing event is read through `ICapabilityService.GetForEventAsync`, an
+incoming Type through `GetForArchetypeAsync`, and both interpret the result through one
+`CapabilitySet.Supports` — because "`Locked` means unsupported" is a two-line rule and two copies of it
+drift. The persisted `archetype_capability_defaults` matrix stays the authority, so an admin enabling
+`teams` for an archetype makes team events legal there **with no code change** — asserted by a test that
+flips the cell and watches the answer change.
+
+**Two decisions inside it that are not obvious.** An event with **no archetype** cannot create a team
+ticket: `CapabilityResolver.StateOf` returns Unsupported for a null archetype deliberately, and
+enforcement inherits that rather than special-casing it open. And an **existing** `Group` ticket stays
+editable even where the matrix would refuse it today — enforcing on every update would strand rows that
+were legal when written, leaving an organiser unable to fix or reprice a ticket that may already have
+sold. The invariant is "no NEW invalid state", not "punish old state".
+
+**The Type change is refused, never converted.** Converting would delete a `TeamPolicy`, its roster rules
+and its D-366 price bands as a side effect of a dropdown. The check runs **before a single field is
+assigned**, so a refusal leaves nothing staged — not even the new archetype.
+
+**Files Changed.** `Kurx.Infrastructure/Events/TicketTypeService.cs` (both points + `SupportsTeamsAsync`),
+`Kurx.Infrastructure/Events/EventService.cs` (Type-change guard + `ArchetypeSupportsTeamsAsync`), new
+`Kurx.Infrastructure/Events/CapabilitySet.cs`, `Kurx.Api/Endpoints/EventEndpoints.cs` (409 mapping),
+`packages/ui/src/problem-copy.ts`, `mobile/lib/core/network/api_error.dart`, `docs/DECISIONS.md` (D-367),
+`docs/api/README.md`, `.claude/memory/backend-conventions.md`. Tests: new
+`TeamCapabilityEnforcementTests.cs` (14); fixtures corrected in `TeamSizePricingTests.cs` and
+`OrderTests.cs`.
+
+**Test fixtures that were creating an illegal shape.** Both suites built **archetype-less** events and
+gave them team registrations — exactly what D-367 refuses. They now carry a `competitive` Type, which is
+what a real team event has; the rule was not weakened to accommodate them. That is the invariant doing its
+job on first contact with existing code.
+
+
+### A team's price depends on its size (2026-08-16) - D-366
+
+**Implementation Summary.** D-357 settled what a team price MEANS — charged once for the whole team,
+one inventory slot, never multiplied by the roster. What it could not express is the shape organisers
+actually use: `2 → ₹250, 3 → ₹300, 4–5 → ₹400`. A `TicketType` carries one `PricePaise` for its whole
+`GroupMin..GroupMax` range, and a min/max range describes *eligibility* — overloading it to mean a price
+curve would be a lie in the schema.
+
+**The model: a child table, `ticket_price_tiers`** (`TicketTypeId`, `MinSize`, `MaxSize`, `PricePaise`,
+both ends inclusive). One ticket type, one inventory pool — which is exactly why a child table beats one
+ticket type per size: `Quantity` stays "how many teams may enter" for the event as a whole, where four
+ticket types would have been four independent pools with nowhere for "maximum 100 teams" to live.
+
+Resolution happens in **one function** — `OrderService.AmountFor`, already the single authority on what a
+registration costs. No band covering the team size refuses the sale (`no_price_for_team_size`); two
+covering it is a configuration error (`ambiguous_price_rule`, 409) and never "pick the first", because
+charging one of two prices the organiser wrote means the attendee pays an amount nobody decided.
+
+**Overlap is impossible in the database, not just checked in code:**
+`EXCLUDE USING gist ("TicketTypeId" WITH =, int4range("MinSize","MaxSize",'[]') WITH &&)`. Two concurrent
+updates can each read a clean set and each pass an application check; they cannot both commit past this.
+
+**The headline price is derived, never trusted.** With bands, `TicketType.PricePaise` becomes the cheapest
+band, so `IsPaidEventAsync`, the paid/free discovery filter, price sorting and "from ₹250" all keep
+working without learning what a band is. A client sending ₹9,999 alongside bands starting at ₹250 gets
+₹250 — verified live.
+
+**Backward compatible by construction.** No bands → priced by `PricePaise`, exactly as before. No data
+migration, no backfill, no reinterpretation of an existing paid event. Bands are refused on anything but
+`RegistrationMode.Group`, and a free event has no bands at all rather than ₹0 rules.
+
+**Mobile can now author a team registration, not just display one.** Until this change the Flutter
+wizard sent `'pricingUnit': 'PerTicket', 'registrationMode': 'Individual'` as **literals**, so an
+organiser on a phone produced an individual-entry event whatever the archetype allowed — bands were
+visible on mobile and impossible to create there. It now has the same Registration step as web, in the
+same place (after Type, because the Type carries the archetype and the archetype's `teams` capability is
+the only thing that may decide whether team entry is offered): participation, team size, the band editor,
+and capacity labelled in the unit it counts. `_Step.pricing` is gone from the Flutter wizard with it, so
+neither client has a Pricing step any more (D-365).
+
+Two supporting gaps closed on the way: the taxonomy DTO dropped `archetype_slug`, so the app had no way
+to ask the capability engine anything; and there was no capabilities call at all —
+`archetypeSupportsTeamsProvider` asks `GET /v1/archetypes/{slug}/capabilities` and **fails closed**, so an
+unreadable answer offers individual entry rather than a team option the server may refuse.
+
+**Files Changed.** Backend: new `Kurx.Domain/Entities` `TicketPriceTier`,
+`Kurx.Infrastructure/Persistence/KurxDbContext.cs`, `Kurx.Infrastructure/Events/TicketTypeService.cs`
+(validation as a SET: coverage, overlap, range, price > 0), `Kurx.Infrastructure/Orders/OrderService.cs`
+(`TierPriceAsync`, `AmountFor`, `OrderItem.UnitPricePaise`), `Kurx.Application/Abstractions/ITicketTypeService.cs`,
+`Kurx.Api/Endpoints/{TicketTypeEndpoints,OrderEndpoints}.cs`, migration `AddTicketPriceTiers`.
+Clients: `web/lib/{event-wizard,event-actions,api}.ts`, `web/components/host/create-event-wizard.tsx`
+(band editor), `web/components/events/{event-detail-sections,booking-form}.tsx`, `web/app/e/[slug]/page.tsx`,
+`admin/{lib/api.ts,components/admin/review-dossier.tsx}`, `packages/ui/src/problem-copy.ts`,
+`mobile/lib/features/events/{domain/entities/ticket_type,data/models/ticket_type_dto}.dart`,
+`mobile/lib/features/events/presentation/widgets/ticket_type_tile.dart`,
+`mobile/lib/core/network/api_error.dart`,
+`mobile/lib/features/organizer/presentation/pages/create_event_page.dart` (Registration step),
+`mobile/lib/features/organizer/domain/event_wizard_payload.dart`,
+`mobile/lib/features/organizer/presentation/providers/organizer_providers.dart`,
+`mobile/lib/features/events/{domain/entities/event_category,data/models/event_category_dto}.dart`.
+Tests: new `TeamSizePricingTests.cs` (15); updated `web/test/{event-wizard,event-detail-sections,event-creation}`,
+`mobile/test/features/events/ticket_pricing_unit_test.dart` and
+`mobile/test/features/organizer/event_wizard_validation_test.dart` (the same band cases as web, case for case).
+
+**Database.** One migration, `20260816082701_AddTicketPriceTiers` — a new table, an FK cascading from
+`ticket_types`, two check constraints, and the exclusion constraint above (requires `btree_gist`, a
+standard contrib module, because the constraint mixes uuid equality with range overlap). **No existing row
+is touched.**
+
+**Verification.** Full backend suite **1912: 1911 pass, 1 skip, 0 fail** (46m41s, SDK container) — up from
+1897. Web 646 pass/1 skip, admin 40, Flutter **498** + analyze clean, contract-check 0 errors, `openapi.json`
+regenerated (442 schemas).
+
+**Proved live** against the running stack over HTTP, one ticket type, three teams:
+
+```
+team of 2  groupSize=2  charged Rs.250   |  stored: 2|25000|qty 1|unit 25000
+team of 3  groupSize=3  charged Rs.300   |  stored: 3|30000|qty 1|unit 30000
+team of 5  groupSize=5  charged Rs.400   |  stored: 5|40000|qty 1|unit 40000
+```
+
+A team of 3 paid ₹300, not ₹900. The headline sent as ₹9,999 stored as ₹250. Artifacts removed afterwards
+under a guard that refuses to delete an event carrying a captured order.
+
+
+### Free/Paid is asked once, not twice (2026-08-16) - D-365
+
+**Implementation Summary.** The organiser answered "is this event free or paid?" at the create-event
+gate, and then again at step 3 of the wizard the gate opens. D-343 needs the gate's answer — the
+product+pricing pair selects the verification tier the caller must clear before the form exists — and
+D-357 pinned the wizard step at index 2 to sit near that dependency. Neither noticed that a second
+control does not merely repeat the question, it can **change the answer after the decision was made on
+it**: the gate refuses Paid unless the caller is `canHostPaid` **and** representing a verified
+organization, while the wizard's `canChoosePaid` checked only the first. A host the gate had refused
+could re-select Paid inside the form and spend eleven steps on an event the server rejects at submit.
+
+The Pricing step is deleted (web: 12 steps → 11, plus Authorization), `pricing` is now a read-only value
+carried from the gate — a `const` on web, written only in `initState` on mobile, with no setter anywhere
+— and Registration *states* the inherited mode ("Paid event — chosen during setup") instead of asking
+for it. The two paid-eligibility checks moved to Registration, the first step where money is typed and
+the step after Representing is chosen. Mobile's step outlived web's by one change — its ticket fields
+still lived there — and went with them when the Registration step landed (D-366); its Free/Paid selector
+is gone either way.
+
+No new state was introduced: `EventService.IsPaidEventAsync` still derives paid-ness from
+`AnyAsync(t => t.PricePaise > 0)`, so the ticket price remains the single source of truth.
+
+**Files Changed.** `web/components/host/create-event-wizard.tsx` (step table, read-only pricing, step
+body removed), `web/test/event-creation.test.tsx` (renumbered; the "asks only free or paid" case
+replaced by one asserting it is never asked again),
+`mobile/lib/features/organizer/presentation/pages/create_event_page.dart`,
+`docs/DECISIONS.md` (D-365), `docs/architecture/event-creation.md`.
+
+**Verification.** Web 631 pass/1 skip, Flutter 479 + analyze clean, typecheck clean. No backend file
+touched — the 1897 backend suite result stands.
+
+
+### Event lifecycle — approval separated from publication, and deletion made non-destructive (2026-08-16) - D-362, D-363, D-364
+
+**Implementation Summary.** Three defects on one axis: what an event's status *permits*, and what it
+*destroys*.
+
+*D-362* — the reviewer gate on `publish` sat inside `if (isPaid)`. That was wrong in both directions: a
+**free** public event could be submitted for review and then published by its own creator, live and
+unapproved, out of the queue while a reviewer might be holding it (reproduced over HTTP:
+`submit_for_review` → 200, `publish` as creator → 200 `published`); and a **paid** event reached the same
+gate from `Approved`, so a creator whose event a reviewer had already approved still could not publish
+it. One gate keyed on the *target* state replaces both. Separately, `EventExposure` — the file whose own
+docstring calls it "the one rule for public exposure" — tested Product + Visibility + not-deleted and
+said nothing about status; nothing leaked only because its single public-surface consumer wrote its own
+status check beside the call.
+
+*D-363* — `Published (with orders) → unpublish → Draft → delete` was open. `DeleteDraftAsync` checked
+only `Status == Draft`, `unpublish` returns a Published event to Draft, and delete was a hard
+`db.Events.Remove` with **46 tables cascading from `events`**. Found live: the dev database held a Draft
+event with an order already on it. `PROJECT_HANDBOOK.md` had documented the correct rule ("unpublish:
+only allowed pre-registration/sales") for as long as the hole existed.
+
+*D-363 §1/§2/§4* — `Approved` had no exit but forward, and approval bound to nothing. `withdraw` now
+also runs `Approved → Draft` and `cancel` accepts `Approved`, so an organiser who changes their mind can
+rework the event or abandon it instead of holding a state with one door. And `IsEditLocked` covered the
+review states only, which meant an **approved event was fully editable with no re-review** — approved,
+then re-titled, re-dated, re-venued, and published as something no reviewer had seen. A material edit
+now returns it to `PendingReview`, clears the reviewer's claim and audits the reopen; cosmetic edits stay
+free. The edit is applied rather than refused: refusing would leave "cancel and start again" as the only
+way to correct an approved event.
+
+Three of the fields §4 names are not on the event row: **ticket price** lives on `ticket_types`,
+**eligibility** on `audience_rules` and the **authorization letter** on `event_authorizations`, each
+behind its own endpoint and service, so the trigger on the event's PATCH could see none of them. An
+organiser approved on a free event could raise the ticket to ₹5,000, change who may attend, or swap the
+letter, and publish it themselves. All four services now call one shared reopen (`EventReviewReopen`),
+and the ticket-type and audience services also gained the `event_under_review` (409) freeze they lacked —
+a reviewer could otherwise approve a price that had already been replaced underneath them.
+
+*D-364* — D-025 ratified soft deletes for `events`. The column existed, `EventExposure` filtered on it,
+and **nothing ever wrote it**. The admin console's dialog even read "Soft delete — removed from every
+list but not purged", the decision's own words attached to a button doing the opposite.
+
+**Client sweep against the workflow table (same day).** Reading every client's status/action map against
+`EventStatusWorkflow` and `EventStatus` — rather than against the docs — turned up six more defects, all
+client-side:
+
+1. **Mobile printed the raw enum.** `event.status.toUpperCase()` on the status page, `Opens after
+   approval · ${event.status}` on the workspace hub — the *exact* sentence web's `event-status.ts` was
+   written to kill — and the raw value again in the manage-screen badge. Mobile had no status label map
+   at all. Added `core/utils/event_status.dart` with web's labels word for word, used in all three.
+2. **Two phantom error codes on mobile.** The status screen mapped `approval_required` and
+   `no_ticket_types`; **no backend file emits either**. The codes that do arrive (`approval_pending`,
+   `no_pass`) fell through to "Something went wrong."
+3. **Five V3 §14.2 gate refusals had copy nowhere** — `no_pass`, `no_inventory_pool`, `no_currency`,
+   `no_staff_assigned`, `results_not_published`. Every one is fixable in a minute by the organiser, and
+   all three surfaces showed "Something went wrong. Please try again." Added to `PROBLEM_COPY` and
+   mobile's map.
+4. **`Scheduled` was unreachable from every UI.** Both clients render a full action list for that status,
+   and neither offered `schedule`, the only action that produces it. Now offered from `Approved`.
+5. **Mobile omitted `cancel` from Published/Scheduled/Live and `complete` from Published** — the action
+   that obliges refunds (D-101) was on web but not on the phone.
+6. **The admin console had no way back from `Approved`.** D-363 §1 exists because "a reviewer who
+   approves in error cannot take it back", and the console still offered only Publish. Added `withdraw`.
+
+`web/test/error-copy.test.ts` gained three cases that pin **both** label maps against the backend
+`EventStatus` enum, so a status added there now fails a test instead of reaching a user as
+`CHANGESREQUESTED`.
+
+**Three follow-ups from that sweep, fixed after it.**
+
+*The rail drew terminal states as "Draft".* `statusIndex` sends anything unrecognised to step 0 — correct
+for an *unknown* status, since guessing forward would tell someone their event is published — but
+`rejected`, `cancelled` and `archived` are known statuses that were never given an arm and inherited it.
+A cancelled event was drawn as if it were back at the beginning. Those three now replace the rail with
+`EventStatusPage.offRailNote`, a sentence saying what actually happened and what remains; every status
+that belongs on the rail still gets it, and the unknown fallback is unchanged. Three test cases pin the
+split.
+
+*`archive` from Draft existed in the workflow table and in no host UI* — only the admin console offered
+it. Added to web and mobile, beside (not instead of) Delete: archive files a draft away, delete removes
+it.
+
+*Mobile could create a draft and never get rid of it.* It had delete calls for speakers, sponsors,
+sessions, ticket types and media, and none for the event — so a draft started on a phone stayed in that
+person's list forever, while web and the console could both delete it. Added
+`EventManageRemoteDataSource.deleteEvent` and a confirmed Delete draft action that names what goes with
+it. Its refusals (`event_has_history`, `not_draft`) already had copy on that screen.
+
+Web's delete surfaced none of that: `deleteDraftEventAction` threw, and a thrown server action reaches
+the client as an opaque digest in production, so the component could only say "That draft could not be
+deleted." It now returns the refusal — which is the point of `event_has_history` naming cancel and close
+as the doors that are open.
+
+**Files Changed.** Backend: `Kurx.Infrastructure/Events/{EventService,EventStatusWorkflow,TicketTypeService,SeriesService}.cs`,
+new `Kurx.Infrastructure/Events/EventReviewReopen.cs`, `Kurx.Infrastructure/Events/EventAuthorizationService.cs`,
+`Kurx.Infrastructure/Audience/AudienceService.cs`,
+`Kurx.Api/Endpoints/{TicketTypeEndpoints,AudienceEndpoints}.cs` (409 for `event_under_review`),
+`Kurx.Infrastructure/{Search/SearchIndexService,Posts/PostService}.cs`,
+`Kurx.Infrastructure/Persistence/KurxDbContext.cs`, `Kurx.Domain/Entities/EventExposure.cs`. Clients:
+`web/lib/workspace.ts`, `packages/ui/src/problem-copy.ts`,
+`mobile/lib/features/{organizer/presentation/pages/event_status_page,workspace/presentation/pages/workspace_hub_page}.dart`,
+`admin/components/admin/events-workspace/event-workspace-sheet.tsx`,
+`web/components/host/{event-status-actions,edit-event-form}.tsx`,
+`web/app/(app)/host/events/[id]/tickets/page.tsx`, `mobile/lib/core/network/api_error.dart`,
+new `mobile/lib/core/utils/event_status.dart`,
+`mobile/lib/features/{organizer/presentation/pages/event_manage_detail_page,workspace/presentation/pages/workspace_hub_page}.dart`,
+`mobile/lib/features/organizer/data/datasources/org_remote_data_source.dart`,
+`admin/components/admin/review-actions.tsx`, `packages/ui/src/problem-copy.ts`,
+`web/lib/event-actions.ts`. Tests: new
+`LifecycleVisibilityTests.cs` (13), `LifecycleDeletionGuardTests.cs` (9),
+`ApprovedEventLifecycleTests.cs` (7), `mobile/test/features/workspace/lifecycle_visibility_test.dart`
+(6); updated `EventExposureTests.cs`, `AdminEventManagementTests.cs`, `web/test/workspace-rules.test.ts`,
+`web/test/event-creation.test.tsx`, `web/test/error-copy.test.ts`.
+
+**Database.** One migration, `20260815203711_EventSoftDeleteFilter` — index-only, no data change. The
+unique indexes on `events.Slug` and `events.ShortCode` became partial (`WHERE "DeletedAt" IS NULL`),
+because a retained row keeps its slug and a plain unique index would make recreating a deleted event's
+title collide on a row nobody can see. Reads are filtered by an EF global query filter on `Event` rather
+than by 169 hand-written clauses.
+
+**API.** No new endpoints. New refusal `event_has_history` (`unpublish`, `DELETE` event);
+`tickets_already_sold` extended to any `order_item` reference; `reviewer_required` now reachable on
+`publish` from `PendingReview`/`UnderReview`; `paid_event_requires_review` narrowed to `Draft` only
+(it previously listed reviewed states and omitted `Scheduled`, dead-ending
+`Approved → schedule → open_registration`). `DELETE` of an event is now soft. Contract check: 0 errors,
+no drift.
+
+**Docs.** `docs/DECISIONS.md` (D-362, D-363, D-364); `docs/api/README.md`;
+`docs/architecture/{REVIEW_LIFECYCLE,diagrams}.md`; `docs/PROJECT_HANDBOOK.md` (lifecycle diagram +
+rules); `.claude/memory/{database-conventions,testing-standards}.md`; `.claude/CLAUDE.md` §9 baseline;
+`.claude/FUTURE-IMPROVEMENTS.md` (two stale claims — web/admin now have suites; contract tests shipped).
+
+**Breaking Changes.** None on existing data: nothing had ever set `DeletedAt`, so the new query filter
+hides no existing row. Behavioural changes are all refusals of paths that should never have worked.
+
+**Verification.** Full backend suite **1897: 1896 pass, 1 skip, 0 fail** (35m56s, SDK container, clamd
+up) — up from 1831, then 1880 at the end of the §3/D-364 work. Web 630 pass/1 skip, admin 40, Flutter 479
++ analyze clean, contract-check 0 errors, and the committed `openapi.json` verified byte-identical to
+what the running API serves (no DTO changed). `web/test/error-copy.test.ts` caught the mobile copy for
+`event_under_review` drifting from `PROBLEM_COPY` by a clause — which is exactly the drift that test
+exists to catch, and it was found before the words reached anyone.
+Live acceptance against the dev stack over real HTTP, every "not public" assertion made anonymously: all
+six lifecycle tests green, including `Approved` invisible on the slug route and all six discovery feeds,
+and the creator publishing their own approved event. Artifacts cleaned up under a guard that refuses if
+any order is attached.
+
+**Remaining Work.** D-363 is now implemented in full. Three known edges, none a hole: the re-review
+predicate tests *presence in the payload* rather than a changed value, so a client posting the whole
+record re-reviews on every save (web's `EditEventForm` does, and now warns before you press Save); the
+client action tables that offer withdraw/cancel are UI lists with no test of their own — the server's
+transition table is the authority and refuses anything they get wrong with `invalid_transition`; and
+`EmergencyUpdateAsync` (Super Admin, D-191) still bypasses both the edit lock and the reopen, which is
+what an emergency edit is for and is audited as one.
+
+### Documentation accuracy pass — the contract regenerated, and every count made re-derivable (2026-08-15) - D-361
+
+**Implementation Summary.** A full read of `docs/` (53 files, 35.5k lines) against the running system.
+The findings clustered on one kind of claim: **rules and vocabulary had survived; counts had rotted**.
+Fifteen stale figures were corrected and each now carries the command that re-derives it or defers to
+the single live authority (D-361). One finding was CI-breaking: `docs/api/openapi.json` was missing
+`requires_representation` on `TrustCapabilities` (added by D-353), so the D-259 drift gate would have
+failed on `main`. Two findings were user-facing traps rather than cosmetics —
+`EXTERNAL_SERVICES_AND_PROVIDERS.md` documented `PUSH_PROVIDER=fcm`, a value that makes the API refuse
+to boot (the switch takes `firebase`), and it plus `PRODUCTION_PROVIDERS_CHECKLIST.md` both still said
+`EMAIL_PROVIDER=ses` throws at startup, untrue since D-284 shipped `SesEmailSender`.
+
+**Files Changed.** `docs/api/openapi.json` (regenerated); `docs/architecture/{overview,diagrams,
+PLATFORM_FLOW_MAP}.md`; `docs/roadmap/README.md`; `docs/EXTERNAL_SERVICES_AND_PROVIDERS.md`;
+`docs/deployment/PRODUCTION_PROVIDERS_CHECKLIST.md`; `docs/PROJECT_HANDBOOK.md`;
+`docs/auth/AUTHENTICATION_TESTING.md`; `docs/ui-ux/{inventory-web,inventory-mobile,regression-criteria,
+HANDOFF,do-not-change}.md`; `docs/DECISIONS.md` (collision note + D-361); `mobile/README.md`;
+`UI_REDESIGN_PROGRESS.{md,json}`; `CHANGELOG.md`. One code file, comment-only:
+`backend/Kurx.Infrastructure/DependencyInjection.cs` — a provider comment that read "only the dev
+implementations exist so far" sat directly above the `case "ses"` disproving it.
+
+**Database.** No change.
+
+**API.** No behaviour change. `docs/api/openapi.json` regenerated from the running API: **441 paths /
+535 operations / 440 schemas**, one real diff (`TrustCapabilities.requires_representation`).
+
+**Docs.** The substantive corrections: DbSets 70→**162** and migrations 19→**91** (both asserted stale
+in two files); recurring jobs 15→**18**; endpoint files 70→**72**; entity files 14→**42**; web routes
+88/91→**93**; Flutter pages 91→**95**; response-schema coverage "only 15 of ~424"→**496 of 535** (that
+project had shipped under D-246/D-313); real provider adapters "two"→**six**. `inventory-web.md` had
+listed its own 88 pages *twice* — once as the inventory, once under "Non-visual route handlers (no UI —
+excluded from redesign scope)" — so every web page was simultaneously in scope and excluded from it;
+the duplicate is removed and the table rebuilt from the filesystem (9 dead rows dropped,
+`/chats/[eventId]`→`/chats/[roomId]`, 13 untracked pages added with **no fabricated status**).
+`diagrams.md`'s event-lifecycle state diagram predated Phase 14 and was missing four states
+(`Scheduled`, `Live`, `Completed`, `Cancelled`) and five transitions. A three-collision note
+(`D-105`/`D-114`/`D-299`) was added to the `DECISIONS.md` header.
+
+**Breaking Changes.** None.
+
+**Verification.** `dotnet build Kurx.sln -c Debug -warnaserror` in the SDK container: **Build succeeded,
+0 Warning(s), 0 Error(s)** (5 m 21 s). `scripts/openapi-response-check.mjs`: 496/535 declared, 0 new,
+0 stale. `scripts/contract-check.mjs`: 0 errors, no contract drift. Inventories diffed against the
+filesystem: web **93 = 93**, mobile **95 = 95**, admin **27 = 27**, zero missing and zero dead rows.
+Relative links resolve across all edited files, and every source path cited in the two rebuilt
+inventories exists. Suites were not re-run — no product code changed.
+
+**Remaining Work.** `D-350`–`D-360` are a concurrent workstream's (create-event wizard, team pricing)
+and their CHANGELOG entries are owed by that session, not invented here. The three genuine `D-NNN`
+collisions are documented rather than renumbered — the log is append-only and 100+ citations point at
+them. `architecture/diagrams.md` was audited only for the lifecycle diagram and the ownership ER
+(both now correct); its remaining sequence diagrams were not line-checked against code.
+
 ### A dormant crypto leak, nine seeders outside the migration lock, and 52 phantom IDE errors (2026-08-15) - D-344, D-345
 
 **Implementation Summary.** Four findings from an external read of `Program.cs` were checked against the

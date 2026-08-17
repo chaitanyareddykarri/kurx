@@ -296,7 +296,11 @@ function ActionBar({ event: e, isSuperAdmin }: { event: AdminEvent; isSuperAdmin
         onClose={() => setDeleting(false)}
         onConfirm={confirmDelete}
         title="Delete this draft?"
-        description="Soft delete — removed from every list but not purged. Only available while the event is still Draft."
+        /* This said "Soft delete … not purged" while calling a HARD delete that cascaded through 46
+           tables — the D-025 design described on a button doing the opposite of it. D-364 made the code
+           match: the row is now retained and hidden. The wording still leads with what the admin needs
+           to know, because "soft" reads as reversible and there is no restore. */
+        description="The event disappears from every surface — its schedule, ticket types, media and registration form go with it — and there is no way to restore it from here. Only available while the event is still Draft, and refused outright once anyone has registered."
         confirmLabel="Delete"
         tone="danger"
       />

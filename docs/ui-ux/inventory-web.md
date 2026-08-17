@@ -2,7 +2,22 @@
 
 Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation applied` · `Partially migrated` · `Redesigned` · `Verified` · `Blocked` · `N/A`. Every row starts `Legacy`. This file is regenerated only by hand — edit rows in place as work lands.
 
-**Total: 88 routes** (`web/app/**/page.tsx`), plus 90 non-visual route handlers listed at the bottom.
+**Total: 93 routes** (`find web/app -name page.tsx | wc -l`, re-measured 2026-08-15), plus **2** genuine
+non-visual route handlers (`route.ts`) listed at the bottom.
+
+> ⚠️ **This header said "88 routes, plus 90 non-visual route handlers" and both halves were wrong.**
+> The bottom section titled *"Non-visual route handlers (no UI — excluded from redesign scope)"* held
+> 90 rows of which **88 were `page.tsx`** — it was a second copy of this very table, so every page in
+> the inventory was simultaneously listed as in scope and as a no-UI handler excluded from it. Only
+> `/api/realtime-token` and `/host/admin/doc/[id]` were ever real route handlers, and the second no
+> longer exists. The duplicate has been removed; the table below is the only inventory.
+>
+> Also corrected in the same pass: 9 rows pointed at pages deleted weeks earlier (`/host/admin/*`
+> migrated to the admin console by [D-195](../DECISIONS.md), `/host/risk` and `/host/templates/*`
+> removed), `/chats/[eventId]` was renamed `/chats/[roomId]` when a room stopped being event-bound
+> ([D-264](../DECISIONS.md)), and **14 pages that shipped after the Phase 0.1 baseline were never
+> added at all**. Re-derive the route list rather than trusting this count; the diff that found all
+> of this is one `find` against the table.
 
 | Route | Area | Phase | File | Status | Responsive | A11y | Functional |
 |---|---|---|---|---|---|---|---|
@@ -13,17 +28,13 @@ Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation ap
 | `/book/[slug]` | Booking | 19 | `web/app/(app)/book/[slug]/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (REG-009 — hand-off, not checkout) |
 | `/certificates` | Certificates | 20C | `web/app/(app)/certificates/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/chats` | Messaging | 20B | `web/app/(app)/chats/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
-| `/chats/[eventId]` | Messaging | 20B | `web/app/(app)/chats/[eventId]/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
+| `/chats/[roomId]` | Messaging | 20B | `web/app/(app)/chats/[roomId]/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (renamed from `[eventId]`, D-264 — a room is no longer event-bound) |
 | `/contact` | Public marketing | 13A · 25 | `web/app/(public)/contact/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/discover` | Discover | 13 | `web/app/(app)/discover/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/e/[slug]` | Event detail | 15 | `web/app/e/[slug]/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/features` | Public marketing | 13A · 25 | `web/app/(public)/features/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/groups` | Groups | 20C | `web/app/(app)/groups/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host` | Host dashboard | 21.1 | `web/app/(app)/host/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
-| `/host/admin/claims` | D-195 orphan candidate | 49 | `web/app/(app)/host/admin/claims/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/host/admin/fraud` | D-195 orphan candidate | 49 | `web/app/(app)/host/admin/fraud/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/host/admin/orgs` | D-195 orphan candidate | 49 | `web/app/(app)/host/admin/orgs/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/host/admin/verifications` | D-195 orphan candidate | 49 | `web/app/(app)/host/admin/verifications/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/host/analytics` | Host top-level | 21 | `web/app/(app)/host/analytics/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/announcements` | Host top-level | 21 | `web/app/(app)/host/announcements/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/attendees` | Host top-level | 21 | `web/app/(app)/host/attendees/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
@@ -53,11 +64,7 @@ Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation ap
 | `/host/representing` | Representation & finance | 21.9 / 24 | `web/app/(app)/host/representing/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/representing/[orgId]/finance` | Representation & finance | 21.9 / 24 | `web/app/(app)/host/representing/[orgId]/finance/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/representing/new` | Representation & finance | 21.9 / 24 | `web/app/(app)/host/representing/new/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
-| `/host/risk` | Host top-level | 21 | `web/app/(app)/host/risk/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (honest unavailable state) |
 | `/host/settings` | Host top-level | 21 | `web/app/(app)/host/settings/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
-| `/host/templates/certificates` | WorkflowPage placeholder | 21 / 49 | `web/app/(app)/host/templates/certificates/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (honest unavailable state) |
-| `/host/templates/editor` | WorkflowPage placeholder | 21 / 49 | `web/app/(app)/host/templates/editor/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (honest unavailable state) |
-| `/host/templates/invites` | WorkflowPage placeholder | 21 / 49 | `web/app/(app)/host/templates/invites/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ (honest unavailable state) |
 | `/host/tickets` | Host top-level | 21 | `web/app/(app)/host/tickets/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/verification` | Host top-level | 21 | `web/app/(app)/host/verification/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/i/[token]` | Invite link | 20D | `web/app/(app)/i/[token]/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
@@ -95,97 +102,38 @@ Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation ap
 | `/workspace` | User events | 20 | `web/app/(app)/workspace/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/workspace/[eventId]` | User events | 20 | `web/app/(app)/workspace/[eventId]/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 
+## Shipped after the Phase 0.1 baseline — not yet assessed
+
+These 13 routes exist in `web/app` and were absent from the table above. They are listed with **no
+status**: nobody has run the redesign/responsive/a11y pass against them, and inventing a value here
+would be worse than an empty cell. `/chats/[roomId]` is the 14th missing route but carries its
+predecessor's assessment, so it stays in the main table.
+
+| Route | Area | File | Status | Responsive | A11y | Functional |
+|---|---|---|---|---|---|---|
+| `/assignments` | Event assignments | `web/app/(app)/assignments/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/categories/[id]` | Discover | `web/app/(app)/categories/[id]/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/id-cards` | ID cards (D-331) | `web/app/(app)/id-cards/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/id-cards/[cardId]` | ID cards (D-331) | `web/app/(app)/id-cards/[cardId]/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/login` | Auth | `web/app/(public)/login/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/org-invitations` | Organizations | `web/app/(app)/org-invitations/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/participations` | User events | `web/app/(app)/participations/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/points` | Gamification | `web/app/(app)/points/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/settings/blocked` | Settings (D-263) | `web/app/(app)/settings/blocked/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/settings/help` | Settings (D-263) | `web/app/(app)/settings/help/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/settings/legal` | Settings (D-263) | `web/app/(app)/settings/legal/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/settings/profile` | Settings (D-263) | `web/app/(app)/settings/profile/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+| `/waitlist` | Waitlist | `web/app/(app)/waitlist/page.tsx` | *Not assessed* | ☐ | ☐ | ☐ |
+
 ## Non-visual route handlers (no UI — excluded from redesign scope)
+
+There are **two**, and only these two are genuinely non-visual. The 90-row list that used to sit
+here was a duplicate of the main table (88 of its rows were `page.tsx`); see the warning at the top.
 
 | Route | File |
 |---|---|
-| `/book/[slug]` | `web/app/(app)/book/[slug]/page.tsx` |
-| `/certificates` | `web/app/(app)/certificates/page.tsx` |
-| `/chats/[eventId]` | `web/app/(app)/chats/[eventId]/page.tsx` |
-| `/chats` | `web/app/(app)/chats/page.tsx` |
-| `/discover` | `web/app/(app)/discover/page.tsx` |
-| `/groups` | `web/app/(app)/groups/page.tsx` |
-| `/host/admin/claims` | `web/app/(app)/host/admin/claims/page.tsx` |
-| `/host/admin/doc/[id]` | `web/app/(app)/host/admin/doc/[id]/route.ts` |
-| `/host/admin/fraud` | `web/app/(app)/host/admin/fraud/page.tsx` |
-| `/host/admin/orgs` | `web/app/(app)/host/admin/orgs/page.tsx` |
-| `/host/admin/verifications` | `web/app/(app)/host/admin/verifications/page.tsx` |
-| `/host/analytics` | `web/app/(app)/host/analytics/page.tsx` |
-| `/host/announcements` | `web/app/(app)/host/announcements/page.tsx` |
-| `/host/attendees` | `web/app/(app)/host/attendees/page.tsx` |
-| `/host/certificates` | `web/app/(app)/host/certificates/page.tsx` |
-| `/host/events/[id]/analytics` | `web/app/(app)/host/events/[id]/analytics/page.tsx` |
-| `/host/events/[id]/announcements` | `web/app/(app)/host/events/[id]/announcements/page.tsx` |
-| `/host/events/[id]/attendees` | `web/app/(app)/host/events/[id]/attendees/page.tsx` |
-| `/host/events/[id]/certificates` | `web/app/(app)/host/events/[id]/certificates/page.tsx` |
-| `/host/events/[id]/chat` | `web/app/(app)/host/events/[id]/chat/page.tsx` |
-| `/host/events/[id]/checkin` | `web/app/(app)/host/events/[id]/checkin/page.tsx` |
-| `/host/events/[id]/details` | `web/app/(app)/host/events/[id]/details/page.tsx` |
-| `/host/events/[id]/invitations` | `web/app/(app)/host/events/[id]/invitations/page.tsx` |
-| `/host/events/[id]/media` | `web/app/(app)/host/events/[id]/media/page.tsx` |
-| `/host/events/[id]` | `web/app/(app)/host/events/[id]/page.tsx` |
-| `/host/events/[id]/people` | `web/app/(app)/host/events/[id]/people/page.tsx` |
-| `/host/events/[id]/readiness` | `web/app/(app)/host/events/[id]/readiness/page.tsx` |
-| `/host/events/[id]/registrations` | `web/app/(app)/host/events/[id]/registrations/page.tsx` |
-| `/host/events/[id]/reviews` | `web/app/(app)/host/events/[id]/reviews/page.tsx` |
-| `/host/events/[id]/schedule` | `web/app/(app)/host/events/[id]/schedule/page.tsx` |
-| `/host/events/[id]/team` | `web/app/(app)/host/events/[id]/team/page.tsx` |
-| `/host/events/[id]/tickets` | `web/app/(app)/host/events/[id]/tickets/page.tsx` |
-| `/host/events/new` | `web/app/(app)/host/events/new/page.tsx` |
-| `/host/forms` | `web/app/(app)/host/forms/page.tsx` |
-| `/host/invitations` | `web/app/(app)/host/invitations/page.tsx` |
-| `/host/notifications` | `web/app/(app)/host/notifications/page.tsx` |
-| `/host` | `web/app/(app)/host/page.tsx` |
-| `/host/payouts` | `web/app/(app)/host/payouts/page.tsx` |
-| `/host/representing/[orgId]/finance` | `web/app/(app)/host/representing/[orgId]/finance/page.tsx` |
-| `/host/representing/new` | `web/app/(app)/host/representing/new/page.tsx` |
-| `/host/representing` | `web/app/(app)/host/representing/page.tsx` |
-| `/host/risk` | `web/app/(app)/host/risk/page.tsx` |
-| `/host/settings` | `web/app/(app)/host/settings/page.tsx` |
-| `/host/templates/certificates` | `web/app/(app)/host/templates/certificates/page.tsx` |
-| `/host/templates/editor` | `web/app/(app)/host/templates/editor/page.tsx` |
-| `/host/templates/invites` | `web/app/(app)/host/templates/invites/page.tsx` |
-| `/host/tickets` | `web/app/(app)/host/tickets/page.tsx` |
-| `/host/verification` | `web/app/(app)/host/verification/page.tsx` |
-| `/i/[token]` | `web/app/(app)/i/[token]/page.tsx` |
-| `/invitations` | `web/app/(app)/invitations/page.tsx` |
-| `/notifications` | `web/app/(app)/notifications/page.tsx` |
-| `/posts/[postId]` | `web/app/(app)/posts/[postId]/page.tsx` |
-| `/posts/event/[eventId]` | `web/app/(app)/posts/event/[eventId]/page.tsx` |
-| `/posts/mine` | `web/app/(app)/posts/mine/page.tsx` |
-| `/posts` | `web/app/(app)/posts/page.tsx` |
-| `/posts/saved` | `web/app/(app)/posts/saved/page.tsx` |
-| `/posts/tag/[tag]` | `web/app/(app)/posts/tag/[tag]/page.tsx` |
-| `/posts/user/[username]` | `web/app/(app)/posts/user/[username]/page.tsx` |
-| `/profile` | `web/app/(app)/profile/page.tsx` |
-| `/saved` | `web/app/(app)/saved/page.tsx` |
-| `/settings/account` | `web/app/(app)/settings/account/page.tsx` |
-| `/settings/identity` | `web/app/(app)/settings/identity/page.tsx` |
-| `/settings/notifications` | `web/app/(app)/settings/notifications/page.tsx` |
-| `/settings` | `web/app/(app)/settings/page.tsx` |
-| `/settings/privacy` | `web/app/(app)/settings/privacy/page.tsx` |
-| `/settings/representing` | `web/app/(app)/settings/representing/page.tsx` |
-| `/settings/security` | `web/app/(app)/settings/security/page.tsx` |
-| `/tickets` | `web/app/(app)/tickets/page.tsx` |
-| `/tickets/refunds` | `web/app/(app)/tickets/refunds/page.tsx` |
-| `/workspace/[eventId]` | `web/app/(app)/workspace/[eventId]/page.tsx` |
-| `/workspace` | `web/app/(app)/workspace/page.tsx` |
-| `/about` | `web/app/(public)/about/page.tsx` |
-| `/blog` | `web/app/(public)/blog/page.tsx` |
-| `/contact` | `web/app/(public)/contact/page.tsx` |
-| `/features` | `web/app/(public)/features/page.tsx` |
-| `/` | `web/app/(public)/page.tsx` |
-| `/pricing` | `web/app/(public)/pricing/page.tsx` |
-| `/privacy` | `web/app/(public)/privacy/page.tsx` |
-| `/support` | `web/app/(public)/support/page.tsx` |
-| `/terms` | `web/app/(public)/terms/page.tsx` |
-| `/allies` | `web/app/(app)/allies/page.tsx` |
 | `/api/realtime-token` | `web/app/api/realtime-token/route.ts` |
-| `/e/[slug]` | `web/app/e/[slug]/page.tsx` |
-| `/o/[slug]` | `web/app/o/[slug]/page.tsx` |
-| `/onboarding` | `web/app/onboarding/page.tsx` |
-| `/recover` | `web/app/recover/page.tsx` |
-| `/register` | `web/app/register/page.tsx` |
-| `/reset` | `web/app/reset/page.tsx` |
-| `/u/[username]` | `web/app/u/[username]/page.tsx` |
-| `/verify/[code]` | `web/app/verify/[code]/page.tsx` |
+| `/api/ticket-qr/[code]` | `web/app/api/ticket-qr/[code]/route.ts` |
+
+*(`/host/admin/doc/[id]/route.ts`, the other handler this section once listed, was removed with the
+rest of `host/admin/*` when D-195 migrated trust/safety to the admin console.)*

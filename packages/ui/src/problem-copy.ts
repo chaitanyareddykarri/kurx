@@ -75,6 +75,12 @@ export const PROBLEM_COPY: Record<string, string> = {
   event_authorization_required:
     "This event needs an authorization letter before it can be published.",
   not_draft: "This event has moved past draft, so that action no longer applies.",
+  // D-363 — the refusal that protects orders, tickets and registrations from a cascade delete. It names
+  // the two things that DO work, because "no" without an alternative reads as a bug.
+  event_has_history:
+    "People have already registered for this event, so it can't be unpublished or deleted. Cancel it instead — everyone is refunded and notified — or close it once it's over.",
+  tickets_already_sold:
+    "This ticket type has already been sold, so it can't be deleted. Stop its sales instead by ending the sale period.",
   event_archived: "This event is archived. Unarchive it before making changes.",
   event_already_started: "This event has already started, so that action no longer applies.",
   invalid_transition: "That action isn't available from this event's current state.",
@@ -90,6 +96,36 @@ export const PROBLEM_COPY: Record<string, string> = {
   missing_online_url: "Add the joining link before publishing this online event.",
   missing_venue_or_url: "Add a venue or a joining link before publishing this event.",
   missing_owner_unit: "This event isn't attached to a team yet. Set one before publishing.",
+  // The V3 §14.2 lifecycle gates. Every one of these is a refusal an organiser can act on in a minute,
+  // and not one had copy anywhere — so `open_registration` on an event with no ticket type reached them
+  // as "Something went wrong. Please try again." on all three surfaces.
+  // D-367 — the `teams` capability, enforced by the domain rather than only described. Both name the
+  // fix, because "not supported" without a next step reads as a platform limitation the organiser can do
+  // nothing about — when in fact choosing a different event type is exactly the answer.
+  teams_not_supported:
+    "This kind of event doesn't support team entry. Choose an event type that does, or register people individually.",
+  type_conflicts_with_team_ticket:
+    "This event has a team registration, and the type you picked doesn't support teams. Change the registration to individual first, or choose a different type.",
+  // D-366 — team-size price bands. Each names the specific rule that failed: "invalid pricing" would
+  // leave an organiser comparing four rules against a table they thought was right.
+  overlapping_price_tiers:
+    "Two price rules cover the same team size. Each size can have only one price — narrow one of the rules.",
+  price_tier_gap:
+    "Some allowed team sizes have no price. Cover every size from the smallest team to the largest, with no gaps.",
+  price_tier_outside_group_size:
+    "A price rule covers a team size this event doesn't allow. Keep every rule inside your smallest and largest team size.",
+  invalid_price_tier: "A price rule is incomplete — each needs a team size range and a price above zero.",
+  price_tiers_require_group: "Price-by-team-size only applies to team registration.",
+  price_tiers_require_group_size: "Set the smallest and largest team size before pricing by team size.",
+  no_price_for_team_size:
+    "There's no price set for a team of this size. Ask the organiser to add one, or change your team size.",
+  ambiguous_price_rule:
+    "This event has two prices for a team of your size, so we can't charge you. We've told the organiser.",
+  no_pass: "Add at least one ticket type before opening registration — there is nothing for anyone to book yet.",
+  no_inventory_pool: "This event has no ticket inventory yet. Set a quantity on a ticket type, then open registration.",
+  no_currency: "This event has no settlement currency set, so it can't sell anything yet.",
+  no_staff_assigned: "Assign at least one staff member who has accepted before taking this event live.",
+  results_not_published: "Publish the results before marking this event completed.",
   checklist_incomplete: "Work through the review checklist before approving this event.",
   claimed_by_another_reviewer: "Another reviewer is working on this one. They need to finish or release it first.",
   notes_required: "Add a note explaining this decision.",

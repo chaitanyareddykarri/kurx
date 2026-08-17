@@ -12,8 +12,12 @@ import { awaitingReview, hostWorkspaceOpen, OPEN_HOST_STATES } from "@/lib/works
 /// here is the same bug twice, and neither would look broken.
 
 describe("hostWorkspaceOpen", () => {
-  it("opens only after the event has been approved and published onward", () => {
-    for (const s of ["published", "scheduled", "live", "completed", "closed"]) {
+  it("opens from approval onward", () => {
+    // D-362 — `approved` is the FIRST state in this list, not an omission from it. Approval is what
+    // opens the workspace; the header above already named getting this wrong as a real failure
+    // ("too strict tells them to wait for an approval that already happened") and the set then did
+    // exactly that, drawing "Opens after approval" on an approved event.
+    for (const s of ["approved", "published", "scheduled", "live", "completed", "closed"]) {
       expect(hostWorkspaceOpen(s)).toBe(true);
     }
   });
@@ -21,9 +25,16 @@ describe("hostWorkspaceOpen", () => {
   it("stays shut for everything before approval", () => {
     // A draft or an event under review is not a working workspace. Presenting one would be the same
     // lie as a decorative QR: a surface that looks operational over nothing.
-    for (const s of ["draft", "pendingreview", "underreview", "approved", "rejected", "changesrequested"]) {
+    for (const s of ["draft", "pendingreview", "underreview", "rejected", "changesrequested"]) {
       expect(hostWorkspaceOpen(s)).toBe(false);
     }
+  });
+
+  it("opening the workspace is not the same as being public", () => {
+    // The two questions this pair of bugs confused. An approved event is one its host may WORK on and
+    // one the public cannot SEE; conflating them in either direction is D-362.
+    expect(hostWorkspaceOpen("approved")).toBe(true);
+    expect(awaitingReview("approved")).toBe(false);
   });
 
   it("stays shut for cancelled and archived events", () => {
@@ -55,10 +66,10 @@ describe("awaitingReview", () => {
 });
 
 describe("the open-host set itself", () => {
-  it("contains exactly the five approved-onward states", () => {
+  it("contains exactly the six approved-onward states", () => {
     // Pinned as a set, not just probed: silently ADDING a state here is how a workspace opens early.
     expect([...OPEN_HOST_STATES].sort()).toEqual(
-      ["closed", "completed", "live", "published", "scheduled"]
+      ["approved", "closed", "completed", "live", "published", "scheduled"]
     );
   });
 });

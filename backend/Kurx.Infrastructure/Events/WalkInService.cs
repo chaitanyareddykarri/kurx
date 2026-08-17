@@ -26,6 +26,11 @@ public class WalkInService(KurxDbContext db, TokenService tokens, IInventoryServ
         if (!await IsStaffAsync(staffUserId, eventId, isAdmin, ct)) return ServiceResult<WalkInView>.Fail("forbidden");
         var tt = await db.TicketTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == input.TicketTypeId && t.EventId == eventId, ct);
         if (tt is null) return ServiceResult<WalkInView>.Fail("invalid_ticket_type");
+        // D-369 — a team ticket cannot be sold at the gate. This channel takes no team size and mints one
+        // seat, so a `Group` type here produces a team of nobody; since D-366 it would also charge
+        // `PricePaise`, which on a banded ticket is only the CHEAPEST band. Refused, not repriced: the size
+        // that decides the price is not a thing the gate is ever told.
+        if (tt.RegistrationMode == RegistrationMode.Group) return ServiceResult<WalkInView>.Fail("group_ticket_not_supported");
         var walkInPool = await db.InventoryPools.FirstOrDefaultAsync(p => p.TicketTypeId == tt.Id && p.Segment == InventorySegment.WalkIn, ct);
         if (walkInPool is null) return ServiceResult<WalkInView>.Fail("no_walkin_pool");   // §7.6 draws from segment=walk_in
 

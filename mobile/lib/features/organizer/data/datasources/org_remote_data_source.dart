@@ -128,6 +128,21 @@ class EventManageRemoteDataSource {
         endpoint: 'POST /v1/orgs/{orgId}/events/{eventId}/transition',
       );
 
+  /// Discards a draft — `DELETE /v1/orgs/{orgId}/events/{eventId}`.
+  ///
+  /// The app could create an event and then never get rid of it: web and the admin console both had
+  /// this call, mobile had delete for speakers, sponsors, sessions, ticket types and media but none for
+  /// the event itself. So a draft started on a phone stayed in that person's list forever.
+  ///
+  /// **Soft (D-364).** The row is retained with `DeletedAt` set and a global query filter takes it out
+  /// of every read; nothing cascades. The server refuses `not_draft` past Draft and `event_has_history`
+  /// if the event ever carried an order, ticket or registration (D-363 §3) — both are refusals this
+  /// screen has copy for, so the app offers the button and lets the server decide.
+  Future<void> deleteEvent(String orgId, String eventId) => guard(
+        () => _dio.delete('/v1/orgs/$orgId/events/$eventId'),
+        endpoint: 'DELETE /v1/orgs/{orgId}/events/{eventId}',
+      );
+
   /// Registrations for an event — the shadow of Order/Ticket, which is what an organiser triages
   /// when approval is manual. Distinct from `attendees`, which lists issued admissions.
   Future<List<RegistrationDto>> registrations(String orgId, String eventId) =>

@@ -106,6 +106,7 @@ public class KurxDbContext : DbContext
 
     // ── Ticketing ────────────────────────────────────────────────────────────
     public DbSet<TicketType> TicketTypes => Set<TicketType>();
+    public DbSet<TicketPriceTier> TicketPriceTiers => Set<TicketPriceTier>();   // D-366
     public DbSet<EventArchetype> EventArchetypes => Set<EventArchetype>();   // D-266 M1
     public DbSet<ArchetypeCapabilityDefault> ArchetypeCapabilityDefaults => Set<ArchetypeCapabilityDefault>();
     public DbSet<EventAuthorization> EventAuthorizations => Set<EventAuthorization>();   // D-266 M5
@@ -886,8 +887,24 @@ public class KurxDbContext : DbContext
         b.Entity<Event>(e =>
         {
             e.ToTable("events", t => t.HasCheckConstraint("ck_events_status", StateVocabulary<EventStatus>("Status")));
-            e.HasIndex(x => x.Slug).IsUnique();
-            e.HasIndex(x => x.ShortCode).IsUnique();
+
+            /*
+             * D-364 — D-025 says events are soft-deleted via `DeletedAt`. Until now they were not: the
+             * column existed, `EventExposure` filtered on it, and NOTHING ever wrote it, while
+             * `DeleteDraftAsync` did a hard `db.Events.Remove` that cascaded through 46 tables.
+             *
+             * This is the filter rather than 169 hand-written `DeletedAt == null` clauses. That count is
+             * the argument: a soft delete enforced per-caller is a soft delete until the first caller
+             * forgets, and the deleted event reappears on exactly one surface with no pattern to it.
+             * The single site that must see deleted rows says so out loud with `IgnoreQueryFilters()`.
+             */
+            e.HasQueryFilter(x => x.DeletedAt == null);
+
+            // Partial, because a soft-deleted row keeps its slug. Without the filter, deleting an event
+            // and recreating it under the same title collides on a row nobody can see — a unique-violation
+            // 500 with no visible cause. D-025's own note specifies partial indexes for exactly this.
+            e.HasIndex(x => x.Slug).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(x => x.ShortCode).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
             // D-325: admin search is `Title ILIKE '%term%'`, which no btree can serve. Measured on 200k
             // events: sequential scan 138ms → bitmap index scan 1.8ms. The index is only reachable because
             // the predicate was split into independently-filterable branches in ListForAdminAsync — a
@@ -1254,6 +1271,22 @@ public class KurxDbContext : DbContext
                 .HasDatabaseName("ix_ticket_types_event_active")
                 .HasFilter("\"DeletedAt\" IS NULL");
             e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId);
+        });
+
+        // D-366 — the price bands of a team ticket. The exclusion constraint that makes overlap
+        // impossible is raw SQL in the migration: EF cannot express `EXCLUDE USING gist`, and expressing
+        // it in application code only would leave the guarantee one concurrent write away from failing.
+        b.Entity<TicketPriceTier>(e =>
+        {
+            e.ToTable("ticket_price_tiers", t =>
+            {
+                t.HasCheckConstraint("ck_ticket_price_tiers_size", "\"MinSize\" >= 1 AND \"MaxSize\" >= \"MinSize\"");
+                // Zero is refused, not just negatives: a free band is the absence of a price, and D-366
+                // keeps "is this event paid?" answerable from prices alone.
+                t.HasCheckConstraint("ck_ticket_price_tiers_price", "\"PricePaise\" > 0");
+            });
+            e.HasIndex(x => x.TicketTypeId).HasDatabaseName("ix_ticket_price_tiers_ticket_type");
+            e.HasOne<TicketType>().WithMany().HasForeignKey(x => x.TicketTypeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<FormField>(e =>

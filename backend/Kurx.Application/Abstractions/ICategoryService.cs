@@ -11,7 +11,19 @@ public record CategoryView(Guid Id, Guid? ParentId, string Level, string Name, s
     /// <para>This is the PUBLIC projection and the one `/v1/categories` actually serves. The richer
     /// <see cref="AdminCategoryView"/> carries it too; putting it only there is a mistake that ships a
     /// field no client can see.</para></summary>
-    string? ProductClass = null);
+    string? ProductClass = null,
+    /// <summary>The behaviour archetype this Type derives, or null on Category/Audience nodes and on an
+    /// unclassified Type (D-357).
+    ///
+    /// <para><b>Why a client needs it.</b> `Event.ArchetypeSlug` is snapshotted from this column at create
+    /// (D-266 M1), and the archetype is what decides — through
+    /// <c>GET /v1/archetypes/{slug}/capabilities</c> — whether the event supports <c>teams</c>. Without it
+    /// on the wire, a client wanting to offer team entry would have to re-implement the Type→archetype map,
+    /// which is the duplication D-357 exists to prevent.</para>
+    ///
+    /// <para>Exactly the same omission as <c>ProductClass</c> before D-326: the column was on the row and
+    /// absent from the projection, so <c>/v1/categories</c> served it to nobody.</para></summary>
+    string? ArchetypeSlug = null);
 
 /// <summary>D-188 (Platform Taxonomy Management) — the admin-only, richer projection of a taxonomy node:
 /// everything <see cref="CategoryView"/> has, plus lifecycle/metadata/audit fields and a real usage count.

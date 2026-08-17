@@ -26,7 +26,8 @@ public class SearchIndexService(KurxDbContext db) : ISearchIndexService
         // Canonical exposure rule (D-266 M3): anything not publicly visible is de-indexed. Using the shared
         // predicate rather than an inline comparison is what stops this drifting from the query-side guards
         // — the drift the Step 4 audit found, where an event was hidden from search and shown on profiles.
-        if (ev is null || ev.Status != EventStatus.Published || !EventExposure.IsPubliclyVisible(ev)
+        // D-362 — the status check moved INTO `IsPubliclyVisible`, where every caller inherits it.
+        if (ev is null || !EventExposure.IsPubliclyVisible(ev)
             || ev.IsSuspended || ev.IsHidden)
         {
             await db.EventSearchDocuments.Where(d => d.EventId == eventId).ExecuteDeleteAsync(ct);
@@ -98,8 +99,8 @@ public class SearchIndexService(KurxDbContext db) : ISearchIndexService
     public async Task<int> BackfillAsync(CancellationToken ct = default)
     {
         var ids = await db.Events
-            .Where(e => e.Status == EventStatus.Published && e.Product == EventProduct.Public && e.Visibility == EventVisibility.Listed && e.DeletedAt == null
-                && !db.EventSearchDocuments.Any(d => d.EventId == e.Id))
+            .Where(EventExposure.PubliclyVisible)
+            .Where(e => !db.EventSearchDocuments.Any(d => d.EventId == e.Id))
             .Select(e => e.Id).ToListAsync(ct);
         foreach (var id in ids) await ProjectAsync(id, ct);
         return ids.Count;

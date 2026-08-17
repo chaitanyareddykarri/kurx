@@ -34,6 +34,12 @@ mixin _$EventCategoryDto {
   @JsonKey(name: 'product_class')
   String? get productClass => throw _privateConstructorUsedError;
 
+  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
+  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  @JsonKey(name: 'archetype_slug')
+  String? get archetypeSlug => throw _privateConstructorUsedError;
+
   /// Serializes this EventCategoryDto to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
@@ -58,6 +64,7 @@ abstract class $EventCategoryDtoCopyWith<$Res> {
     @JsonKey(name: 'parent_id') String? parentId,
     @JsonKey(name: 'is_visible') bool isVisible,
     @JsonKey(name: 'product_class') String? productClass,
+    @JsonKey(name: 'archetype_slug') String? archetypeSlug,
   });
 }
 
@@ -82,6 +89,7 @@ class _$EventCategoryDtoCopyWithImpl<$Res, $Val extends EventCategoryDto>
     Object? parentId = freezed,
     Object? isVisible = null,
     Object? productClass = freezed,
+    Object? archetypeSlug = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -109,6 +117,10 @@ class _$EventCategoryDtoCopyWithImpl<$Res, $Val extends EventCategoryDto>
                 ? _value.productClass
                 : productClass // ignore: cast_nullable_to_non_nullable
                       as String?,
+            archetypeSlug: freezed == archetypeSlug
+                ? _value.archetypeSlug
+                : archetypeSlug // ignore: cast_nullable_to_non_nullable
+                      as String?,
           )
           as $Val,
     );
@@ -131,6 +143,7 @@ abstract class _$$EventCategoryDtoImplCopyWith<$Res>
     @JsonKey(name: 'parent_id') String? parentId,
     @JsonKey(name: 'is_visible') bool isVisible,
     @JsonKey(name: 'product_class') String? productClass,
+    @JsonKey(name: 'archetype_slug') String? archetypeSlug,
   });
 }
 
@@ -154,6 +167,7 @@ class __$$EventCategoryDtoImplCopyWithImpl<$Res>
     Object? parentId = freezed,
     Object? isVisible = null,
     Object? productClass = freezed,
+    Object? archetypeSlug = freezed,
   }) {
     return _then(
       _$EventCategoryDtoImpl(
@@ -181,6 +195,10 @@ class __$$EventCategoryDtoImplCopyWithImpl<$Res>
             ? _value.productClass
             : productClass // ignore: cast_nullable_to_non_nullable
                   as String?,
+        archetypeSlug: freezed == archetypeSlug
+            ? _value.archetypeSlug
+            : archetypeSlug // ignore: cast_nullable_to_non_nullable
+                  as String?,
       ),
     );
   }
@@ -196,6 +214,7 @@ class _$EventCategoryDtoImpl extends _EventCategoryDto {
     @JsonKey(name: 'parent_id') this.parentId,
     @JsonKey(name: 'is_visible') this.isVisible = true,
     @JsonKey(name: 'product_class') this.productClass,
+    @JsonKey(name: 'archetype_slug') this.archetypeSlug,
   }) : super._();
 
   factory _$EventCategoryDtoImpl.fromJson(Map<String, dynamic> json) =>
@@ -221,9 +240,16 @@ class _$EventCategoryDtoImpl extends _EventCategoryDto {
   @JsonKey(name: 'product_class')
   final String? productClass;
 
+  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
+  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  @override
+  @JsonKey(name: 'archetype_slug')
+  final String? archetypeSlug;
+
   @override
   String toString() {
-    return 'EventCategoryDto(id: $id, name: $name, level: $level, parentId: $parentId, isVisible: $isVisible, productClass: $productClass)';
+    return 'EventCategoryDto(id: $id, name: $name, level: $level, parentId: $parentId, isVisible: $isVisible, productClass: $productClass, archetypeSlug: $archetypeSlug)';
   }
 
   @override
@@ -239,7 +265,9 @@ class _$EventCategoryDtoImpl extends _EventCategoryDto {
             (identical(other.isVisible, isVisible) ||
                 other.isVisible == isVisible) &&
             (identical(other.productClass, productClass) ||
-                other.productClass == productClass));
+                other.productClass == productClass) &&
+            (identical(other.archetypeSlug, archetypeSlug) ||
+                other.archetypeSlug == archetypeSlug));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -252,6 +280,7 @@ class _$EventCategoryDtoImpl extends _EventCategoryDto {
     parentId,
     isVisible,
     productClass,
+    archetypeSlug,
   );
 
   /// Create a copy of EventCategoryDto
@@ -279,6 +308,7 @@ abstract class _EventCategoryDto extends EventCategoryDto {
     @JsonKey(name: 'parent_id') final String? parentId,
     @JsonKey(name: 'is_visible') final bool isVisible,
     @JsonKey(name: 'product_class') final String? productClass,
+    @JsonKey(name: 'archetype_slug') final String? archetypeSlug,
   }) = _$EventCategoryDtoImpl;
   const _EventCategoryDto._() : super._();
 
@@ -303,6 +333,13 @@ abstract class _EventCategoryDto extends EventCategoryDto {
   @override
   @JsonKey(name: 'product_class')
   String? get productClass;
+
+  /// D-357/D-366 — the archetype behind a Type node, which is what the capability engine is asked
+  /// about. Without it this app cannot know whether an event may have TEAMS, and the registration
+  /// step would have to guess from the type's name — exactly what D-357 forbids.
+  @override
+  @JsonKey(name: 'archetype_slug')
+  String? get archetypeSlug;
 
   /// Create a copy of EventCategoryDto
   /// with the given fields replaced by the non-null parameter values.

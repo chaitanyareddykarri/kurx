@@ -243,7 +243,9 @@ public class ApprovalService(KurxDbContext db, IEventAuthority authority, IAudit
     {
         ApprovalCondition.Always => true,
         ApprovalCondition.IfPaid => await db.TicketTypes.AnyAsync(t => t.EventId == ev.Id && t.PricePaise > 0, ct),
-        ApprovalCondition.IfExternal => EventExposure.IsPubliclyVisible(ev),   // external guests == publicly exposed
+        // D-362 — the pre-publication question, deliberately: this runs while the event is still in
+            // review, so it asks whether the event WILL face an external audience, not whether it is live.
+            ApprovalCondition.IfExternal => EventExposure.IsExternallyExposed(ev),
         ApprovalCondition.IfBudgetGt => (await db.TicketTypes.Where(t => t.EventId == ev.Id).Select(t => (long?)((long)t.PricePaise * t.Quantity)).MaxAsync(ct) ?? 0) > (step.ConditionParamPaise ?? 0),
         ApprovalCondition.IfMinors => ev.AudienceLevelId is { } al && await db.EventCategories.AnyAsync(c => c.Id == al && (c.Slug.Contains("minor") || c.Slug.Contains("school") || c.Slug.Contains("child")), ct),
         _ => false,

@@ -529,6 +529,127 @@ export const adminEventSchema = z.object({
 });
 export type AdminEvent = z.infer<typeof adminEventSchema>;
 
+/*
+ * The full event, as a reviewer needs to read it.
+ *
+ * `adminEventSchema` above is a LIST row — 29 fields, and not one of them is the event's description.
+ * A reviewer deciding whether a public event may carry Kurx's name into discovery was shown a title, a
+ * category, a city, a venue name, a capacity and a date. Everything a review is actually about — the
+ * description, the rules, the terms and consent text, the eligibility gates, the registration windows,
+ * the online/hybrid join details — was collected by the Create Event wizard, stored, and then read by
+ * nobody before approval.
+ *
+ * No new endpoint and no new backend DTO: `GET /v1/events/{id}` already returns all of it, and
+ * `CanViewAsync` already admits `kurx_admin` **and** `VerificationReviewer` to an event in any status
+ * (D-191). The mapping simply stopped at the console. This is that missing leg.
+ *
+ * Deliberately `.passthrough()`-free and `.nullable()`-heavy: every group is optional on the wire
+ * (D-265 made them additive), so a strict schema here would 500 the review queue for an event created
+ * before they existed.
+ */
+const reviewGroupSchemas = {
+  content: z.object({
+    tagline: z.string().nullable(), short_description: z.string().nullable(),
+    rules: z.string().nullable(), faq_json: z.string().nullable(),
+    logo_url: z.string().nullable().optional(), thumbnail_url: z.string().nullable().optional(),
+    promo_video_url: z.string().nullable().optional()
+  }).partial().nullable().optional(),
+  legal: z.object({
+    terms_url: z.string().nullable(), terms_text: z.string().nullable(),
+    code_of_conduct: z.string().nullable(), refund_policy: z.string().nullable(),
+    cancellation_policy: z.string().nullable(), requires_consent: z.boolean(),
+    consent_text: z.string().nullable()
+  }).partial().nullable().optional(),
+  schedule: z.object({
+    registration_opens_at: z.string().nullable(), registration_closes_at: z.string().nullable(),
+    checkin_opens_at: z.string().nullable(), checkin_closes_at: z.string().nullable(),
+    result_date: z.string().nullable(), certificate_release_at: z.string().nullable(),
+    auto_close: z.boolean()
+  }).partial().nullable().optional(),
+  location_detail: z.object({
+    building: z.string().nullable(), floor: z.string().nullable(), room: z.string().nullable(),
+    google_maps_url: z.string().nullable(), meeting_platform: z.string().nullable()
+    // `meeting_password` is deliberately NOT read: it is shown only to confirmed registrants, and a
+    // reviewer has no decision that depends on it.
+  }).partial().nullable().optional(),
+  eligibility: z.object({
+    min_age: z.number().nullable(), max_age: z.number().nullable(),
+    gender_restriction: z.string().nullable(), max_teams: z.number().nullable()
+  }).partial().nullable().optional(),
+  representing: z.object({
+    org_id: z.string(), name: z.string(), slug: z.string(),
+    logo_key: z.string().nullable(), is_verified: z.boolean()
+  }).partial().nullable().optional()
+};
+
+export const reviewEventSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  subtitle: z.string(),
+  description: z.string(),
+  status: z.string(),
+  visibility: z.string(),
+  starts_at: z.string(),
+  ends_at: z.string(),
+  timezone: z.string(),
+  capacity: z.number().nullable(),
+  event_mode: z.string(),
+  online_url: z.string().nullable(),
+  contact_email: z.string(),
+  contact_phone: z.string(),
+  website: z.string(),
+  language: z.string(),
+  settlement_currency: z.string(),
+  venue: z.object({
+    name: z.string().nullable(), address: z.string().nullable(), city: z.string().nullable()
+  }).partial().nullable().optional(),
+  banner_url: z.string().nullable().optional(),
+  ...reviewGroupSchemas
+});
+export type ReviewEvent = z.infer<typeof reviewEventSchema>;
+
+/** The reviewer's read of one event. Same route every organiser uses — the server decides who may see it. */
+export async function getEventForReview(accessToken: string, eventId: string) {
+  const { data } = await api.get(`/v1/events/${eventId}`, auth(accessToken));
+  return reviewEventSchema.parse(data);
+}
+
+/*
+ * The event's registration options, as a reviewer must read them (D-357).
+ *
+ * "Price ₹2,000, Quantity 50" is ambiguous: ₹2,000 for a team or for one of its members, and 50 teams
+ * or 50 people. `pricing_unit`, `registration_mode` and the group bounds are what disambiguate it, and
+ * they have been on this public route since D-020.
+ */
+export const reviewTicketTypeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  price_paise: z.number(),
+  currency: z.string().nullable().optional(),
+  pricing_unit: z.string().nullable().optional(),
+  registration_mode: z.string().nullable().optional(),
+  group_min: z.number().nullable().optional(),
+  group_max: z.number().nullable().optional(),
+  /// D-366 — the price bands of a team ticket. A reviewer approving a price has to see the price they
+  /// are approving: on a banded ticket `price_paise` is only the cheapest band, so showing it alone
+  /// would put a reviewer's name against a fee structure they never read.
+  price_tiers: z.array(z.object({
+    min_size: z.number(),
+    max_size: z.number(),
+    price_paise: z.number()
+  })).nullable().optional(),
+  quantity: z.number().nullable().optional(),
+  sold: z.number().nullable().optional(),
+  is_competition: z.boolean().nullable().optional()
+});
+export type ReviewTicketType = z.infer<typeof reviewTicketTypeSchema>;
+
+export async function getEventTicketTypesForReview(accessToken: string, eventId: string) {
+  const { data } = await api.get(`/v1/events/${eventId}/ticket-types`, auth(accessToken));
+  return z.array(reviewTicketTypeSchema).parse(data);
+}
+
 /** Every axis the Event Management workspace's list/filter bar can send — all optional, mirrors
  *  `AdminEventListFilter` on the backend 1:1 so a new filter never needs a translation layer here. */
 export type AdminEventListParams = {

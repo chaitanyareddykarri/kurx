@@ -64,6 +64,22 @@ public class CertificateTests : IClassFixture<KurxApiFactory>
         return client;
     }
 
+    /// Moves an event into the past directly, because the API refuses to create one there.
+    ///
+    /// Every other finished-event fixture in the suite already seeds its dates this way; only this one
+    /// went through `POST /v1/events` with a past `startsAt`, which `CreateEventBodyValidator` now
+    /// rejects. Written straight to the row rather than through `PATCH`, so the guard being tested
+    /// elsewhere is not the thing under test here.
+    private void BackdateEvent(Guid eventId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var ev = db.Events.First(e => e.Id == eventId);
+        ev.StartsAt = DateTime.UtcNow.AddDays(-1);
+        ev.EndsAt = DateTime.UtcNow.AddHours(-1);
+        db.SaveChanges();
+    }
+
     private async Task<(Guid EventId, Guid TicketCode)> PublishedEventWithTicketAsync(string title)
     {
         var ev = await Json(await _owner.CreateEventAsync(_orgId, new
@@ -74,10 +90,16 @@ public class CertificateTests : IClassFixture<KurxApiFactory>
             venueName = "Cert Hall",
             venueAddress = "1 Main St",
             city = "Bengaluru",
-            startsAt = DateTime.UtcNow.AddDays(-1),
-            endsAt = DateTime.UtcNow.AddHours(-1),
+            // Created in the future because `CreateEventBodyValidator` refuses a start before today,
+            // then backdated below — the same create-then-backdate every other finished-event fixture
+            // uses. The subject here is certificates, not the date rule.
+            startsAt = DateTime.UtcNow.AddDays(1),
+            endsAt = DateTime.UtcNow.AddDays(1).AddHours(2),
         }));
         var eventId = ev.GetProperty("id").GetGuid();
+        // A certificate is issued for an event that has FINISHED, which is the state this fixture needs
+        // and the API will no longer create directly.
+        BackdateEvent(eventId);
         // D-266 M5: a Public event representing a non-personal org needs an approved institutional
         // authorization before it can publish. This fixture's subject is certificates, not that rule.
         _factory.SeedApprovedEventAuthorization(eventId);

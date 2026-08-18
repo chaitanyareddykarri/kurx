@@ -24,9 +24,30 @@ namespace (so `localhost:5432` resolves the way `KurxApiFactory` hard-codes it).
 SDK container with clamd up, 23m27s, on a tree carrying the in-flight D-378→D-386 work. **Zero is the
 standard — a red test is a defect, not "the environment."**
 
+> **A 54-failure run later that day was real, and was still not a baseline regression.** A concurrent
+> workstream's edit lock (D-388 — a live Public event's ticket types, audience rules and content edits are
+> frozen behind an approved change request) landed mid-session, and 54 tests across 12 classes failed on
+> their **setup**: fixtures that publish first and configure after, because the thing they test
+> (ordering, registration, transfers, indexing) only happens on a live event. Not one failure was in the
+> subject of its own test.
+>
+> The repair is `LiveStatusSuspension.WithLiveStatusSuspendedAsync` — put the event back in `Draft` for
+> the duration of the fixture write, restore it after, and let the **real endpoint** run so its
+> authorization, validation and side effects stay under test. Seeding rows directly would have thrown
+> exactly what those suites exist to catch. A test whose subject IS the live-edit rule must never use it:
+> assert `change_request_required`, or drive the change-request flow. The 16 affected classes ran
+> **207/207** after the fix; a clean full-suite number is still owed, because that workstream is still
+> landing. **Attribute before you believe** — the first instinct on a red run of this size is to assume
+> your own change did it, and here that would have been wrong twice over.
+
 > All four suites measured in one sitting on 2026-08-18, one at a time on an otherwise idle box:
 > backend **2439 pass / 1 skip / 0 fail** (2440), web **953 pass / 1 skip / 0 fail** (62 files),
 > admin **45 pass** (7 files), mobile **526 pass** with `flutter analyze --no-fatal-infos` clean.
+>
+> **Re-measured later the same day, after D-389 + D-390:** web **961 pass / 1 skip** (62 files), mobile
+> **531 pass**, admin **45 pass**. The +8 web are the rewritten representation guards (the workspace
+> Representing page they used to pin is deleted); the +5 mobile are the representing-step and
+> account-picker tests. The backend was **not** cleanly re-measured — see the note below.
 >
 > The backend number moved 2379 → 2394 (D-378 + D-379) → 2415 → **2440**; every step is concurrent
 > badge/gate/representation work, not new coverage of the baseline itself. The single skip is

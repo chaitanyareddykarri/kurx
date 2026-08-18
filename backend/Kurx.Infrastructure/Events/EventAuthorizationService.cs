@@ -237,6 +237,28 @@ public class EventAuthorizationService(
         row.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
         row.UpdatedAt = DateTime.UtcNow;
 
+        /*
+         * D-379 security review — a retracted verdict must take the event back with it.
+         *
+         * `PolicyResolver` reads whether a letter EXISTS, not what its status says, because the letter is
+         * evidence inside the ONE event review rather than a second approval gate. That is correct, and it
+         * left this path doing less than its name implies: a reviewer who discovered a forged letter after
+         * approval could set it to Rejected/ChangesRequested and the event would still publish, because a
+         * letter still existed.
+         *
+         * Re-opening the event is the same remedy the RESUBMISSION path already uses a few lines above,
+         * and it keeps one decision: the event goes back to the queue and is decided again, rather than
+         * gaining a separate authorization gate.
+         */
+        if (status is EventAuthorizationStatus.Rejected or EventAuthorizationStatus.ChangesRequested)
+        {
+            var ev = await db.Events.AsNoTracking().Where(e => e.Id == eventId)
+                .Select(e => new { e.Status }).FirstOrDefaultAsync(ct);
+            if (ev is not null)
+                await EventReviewReopen.IfApprovedAsync(db, eventId, ev.Status, reviewerId,
+                    "the authorization letter", ct);
+        }
+
         // D-266 M5 — tell the organiser. A verdict they are never told about is one they can only find by
         // reopening the page and noticing a badge changed; on a rejection that means the event silently
         // cannot publish, and the reviewer's reason — the one thing that makes it fixable — is never

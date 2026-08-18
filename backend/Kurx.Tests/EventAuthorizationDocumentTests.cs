@@ -142,6 +142,41 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
     }
 
     /*
+     * D-379 security review — a retracted verdict takes the event back to the queue.
+     *
+     * `PolicyResolver` reads whether a letter EXISTS, not its status, so rejecting the letter alone no
+     * longer blocks publication. Without re-opening the event, a reviewer who discovered a forged letter
+     * after approval could reject it and watch the event publish anyway.
+     */
+    [Fact]
+    public async Task Rejecting_the_letter_after_approval_takes_the_event_back_to_the_queue()
+    {
+        var (owner, orgId) = await LoginOrgAsync("9702000009", "Retraction College");
+        var reviewer = await _factory.ReviewerClientAsync();
+        var id = await CreateEventAsync(owner, orgId);
+
+        Assert.Equal(HttpStatusCode.OK, (await Submit(owner, id)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Review(reviewer, id, "approve")).StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            var ev = await db.Events.FirstAsync(e => e.Id == id);
+            ev.Status = EventStatus.Approved;
+            await db.SaveChangesAsync();
+        }
+
+        // The reviewer retracts the letter's verdict on its own endpoint.
+        Assert.Equal(HttpStatusCode.OK,
+            (await Review(reviewer, id, "reject", reasonCode: "Incomplete")).StatusCode);
+
+        using var check = _factory.Services.CreateScope();
+        var db2 = check.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var after = await db2.Events.AsNoTracking().FirstAsync(e => e.Id == id);
+        Assert.NotEqual(EventStatus.Approved, after.Status);
+    }
+
+    /*
      * D-379 — this test's premise is retired, and the assertion is inverted rather than deleted.
      *
      * It used to prove that a self-represented event needs no authorization, because it names no

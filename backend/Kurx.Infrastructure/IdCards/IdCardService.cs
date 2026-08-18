@@ -56,9 +56,7 @@ public class IdCardService(
             .FirstAsync(ct);
         var header = new EventHeader(ev.Title, ev.StartsAt.ToString("dd MMM yyyy"));
 
-        var existing = await db.IdCards
-            .Where(c => c.EventId == eventId)
-            .ToDictionaryAsync(c => c.UserId, ct);
+        var existing = OldestPerHolder(await db.IdCards.Where(c => c.EventId == eventId).ToListAsync(ct));
 
         var spec = await SpecAsync(eventId, ct);
         // Read once for the whole run rather than per badge: the artwork cannot change mid-print, and a
@@ -98,13 +96,13 @@ public class IdCardService(
                 regenerated++;
             }
 
-            var doc = BadgeLayout.Build(r, size, spec, artwork);
             var data = await RenderDataAsync(r, header, card, spec, ct);
+            var doc = BadgeLayout.Build(r, size, spec, artwork, data.Values);
             var pdf = await renderer.RenderPdfAsync(doc, data, ct);
             var png = await renderer.RenderPngAsync(doc, data, PrintDpi, ct);
 
-            card.PdfKey = IdCardStorageKeys.Pdf(eventId, card.Id);
-            card.PngKey = IdCardStorageKeys.Png(eventId, card.Id);
+            card.PdfKey = IdCardStorageKeys.Pdf(eventId, card.Id, size.Key);
+            card.PngKey = IdCardStorageKeys.Png(eventId, card.Id, size.Key);
             await storage.PutAsync(card.PdfKey, pdf, "application/pdf", ct);
             await storage.PutAsync(card.PngKey, png, "image/png", ct);
 
@@ -123,8 +121,25 @@ public class IdCardService(
         return ServiceResult<BadgeIssueReport>.Success(new BadgeIssueReport(issued, regenerated));
     }
 
-    /// <summary>Which rendering layout a recipient's card uses. Derived from what they are at this event;
-    /// the editor will later let an organizer override it per card via <c>IdCard.Template</c>.</summary>
+    /// <summary>One card per holder, oldest first (D-386).
+    ///
+    /// <para>Until the unique index landed, two concurrent <c>generate</c> calls could each see no
+    /// existing card and create one. `ToDictionaryAsync(c =&gt; c.UserId)` then threw on the duplicate key,
+    /// and because the roster read it too, the badge page failed permanently for that event — a transient
+    /// race turned into a dead surface. The index prevents new duplicates; this keeps any row already
+    /// written from taking the page down, and picks the <b>oldest</b> so the card number people are
+    /// holding stays the authoritative one.</para></summary>
+    private static Dictionary<Guid, IdCard> OldestPerHolder(IEnumerable<IdCard> cards) =>
+        cards.GroupBy(c => c.UserId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).First());
+
+    /// <summary>What kind of card this is, recorded on the row. Derived from what the holder is at this
+    /// event.
+    ///
+    /// <para><b>It does not choose the layout</b> (D-386 — the old comment here said it did). Since D-362
+    /// the rendered design comes from the event's <c>DesignTemplate</c> via <c>SpecAsync</c>, and
+    /// <see cref="BadgeLayout"/> never consults this value. It is written and kept because it records what
+    /// was issued — useful on a roster and in an audit — and read as anything more it would be wrong.</para></summary>
     private static IdCardTemplate TemplateFor(BadgeRecipient r) =>
         r.Kind == BadgeKind.Attendee ? IdCardTemplate.EventParticipant
         : r.AccessLevel == "Volunteer" ? IdCardTemplate.Volunteer
@@ -144,9 +159,8 @@ public class IdCardService(
     private async Task<IReadOnlyList<BadgeRecipient>> AttachIssuedCardsAsync(
         Guid eventId, IReadOnlyList<BadgeRecipient> recipients, CancellationToken ct)
     {
-        var cards = await db.IdCards.AsNoTracking()
-            .Where(c => c.EventId == eventId)
-            .ToDictionaryAsync(c => c.UserId, ct);
+        var cards = OldestPerHolder(
+            await db.IdCards.AsNoTracking().Where(c => c.EventId == eventId).ToListAsync(ct));
 
         return recipients.Select(r => cards.TryGetValue(r.UserId, out var c)
             ? r with
@@ -157,6 +171,48 @@ public class IdCardService(
                     c.IsRevoked, c.GeneratedAt),
             }
             : r).ToList();
+    }
+
+    public async Task<ServiceResult<IssuedCard>> RevokeAsync(
+        Guid eventId, Guid actorId, bool isAdmin, Guid recipientUserId, string? reason,
+        CancellationToken ct = default)
+    {
+        var gate = await RequireManagerAsync(eventId, actorId, isAdmin, ct);
+        if (gate is not null) return ServiceResult<IssuedCard>.Fail(gate);
+
+        // Ordered rather than a bare FirstOrDefault: it must revoke the same card the roster shows.
+        var card = await db.IdCards
+            .Where(c => c.EventId == eventId && c.UserId == recipientUserId)
+            .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
+            .FirstOrDefaultAsync(ct);
+        // Nothing was issued, so there is nothing to revoke — distinct from an already-revoked card, and
+        // the console shows the two as different states.
+        if (card is null) return ServiceResult<IssuedCard>.Fail("card_not_issued");
+        if (card.IsRevoked) return ServiceResult<IssuedCard>.Fail("already_revoked");
+
+        var now = DateTime.UtcNow;
+        card.IsRevoked = true;
+        card.Status = IdCardStatus.Revoked;
+        // Trimmed to what the column and a verification page can carry; a null reason is allowed because
+        // "revoked" is the fact and the why is often operational.
+        card.RevokedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()[..Math.Min(reason.Trim().Length, 500)];
+        card.RevokedAt = now;
+        card.RevokedBy = actorId;
+        card.UpdatedAt = now;
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorType = "user", ActorId = actorId,
+            Action = "idcard.revoke", Entity = "id_cards", EntityId = card.Id,
+            DetailsJson = $"{{\"event_id\":\"{eventId}\",\"user_id\":\"{recipientUserId}\"}}",
+        });
+
+        await db.SaveChangesAsync(ct);
+
+        return ServiceResult<IssuedCard>.Success(new IssuedCard(
+            card.Id, card.CardNumber, card.VerifyCode,
+            card.EffectiveStatus(DateOnly.FromDateTime(now)).ToString(),
+            card.IsRevoked, card.GeneratedAt));
     }
 
     public async Task<ServiceResult<byte[]>> RenderOneAsync(
@@ -175,16 +231,23 @@ public class IdCardService(
         var card = await db.IdCards.AsNoTracking()
             .FirstOrDefaultAsync(c => c.EventId == eventId && c.UserId == recipientUserId, ct);
 
-        // Serve the issued artefact when one exists: what the organizer downloads must be the same bytes
-        // the card was issued as, not a fresh render that could differ after a template change.
-        if (card?.PdfKey is { } key && await storage.ExistsAsync(key, ct))
-            return ServiceResult<byte[]>.Success(await storage.GetAsync(key, ct));
+        // Serve the issued artefact when one exists AT THIS SIZE: what the organizer downloads must be the
+        // same bytes the card was issued as, not a fresh render that could differ after a template change.
+        // The size is in the key (D-385), so a request for a size this card was never issued at misses and
+        // renders fresh rather than serving a raster of the wrong physical shape.
+        if (card is not null)
+        {
+            var key = IdCardStorageKeys.Pdf(eventId, card.Id, size.Key);
+            if (await storage.ExistsAsync(key, ct))
+                return ServiceResult<byte[]>.Success(await storage.GetAsync(key, ct));
+        }
 
         var header = await EventHeaderAsync(eventId, ct);
         var spec = await SpecAsync(eventId, ct);
+        var data = await RenderDataAsync(recipient, header, card, spec, ct);
         var pdf = await renderer.RenderPdfAsync(
-            BadgeLayout.Build(recipient, size, spec, await TryReadAsync(spec.BackgroundKey, ct)),
-            await RenderDataAsync(recipient, header, card, spec, ct), ct);
+            BadgeLayout.Build(recipient, size, spec, await TryReadAsync(spec.BackgroundKey, ct), data.Values),
+            data, ct);
 
         return ServiceResult<byte[]>.Success(pdf);
     }
@@ -203,9 +266,8 @@ public class IdCardService(
         var recipients = Filter(await LoadRecipientsAsync(eventId, ct), request.Kinds, request.UserIds);
         if (recipients.Count == 0) return ServiceResult<byte[]>.Fail("no_recipients");
 
-        var cards = await db.IdCards.AsNoTracking()
-            .Where(c => c.EventId == eventId)
-            .ToDictionaryAsync(c => c.UserId, ct);
+        var cards = OldestPerHolder(
+            await db.IdCards.AsNoTracking().Where(c => c.EventId == eventId).ToListAsync(ct));
 
         var header = await EventHeaderAsync(eventId, ct);
         var spec = await SpecAsync(eventId, ct);
@@ -216,17 +278,22 @@ public class IdCardService(
             cards.TryGetValue(r.UserId, out var card);
 
             // An issued card prints from its stored raster, so the sheet and the individual download are
-            // the same artefact. Anything not yet issued still previews, which is what makes the page
-            // usable before the organizer commits to issuing.
-            if (card?.PngKey is { } key && await storage.ExistsAsync(key, ct))
+            // the same artefact — but only the raster issued AT THIS SIZE (D-385). Anything not yet issued,
+            // or issued at another size, still renders, which is what makes the page usable before the
+            // organizer commits to issuing and what keeps the size selector honest afterwards.
+            if (card is not null)
             {
-                pngs.Add(await storage.GetAsync(key, ct));
-                continue;
+                var key = IdCardStorageKeys.Png(eventId, card.Id, size.Key);
+                if (await storage.ExistsAsync(key, ct))
+                {
+                    pngs.Add(await storage.GetAsync(key, ct));
+                    continue;
+                }
             }
 
             var data = await RenderDataAsync(r, header, card, spec, ct);
             pngs.Add(await renderer.RenderPngAsync(
-                BadgeLayout.Build(r, size, spec, artwork), data, PrintDpi, ct));
+                BadgeLayout.Build(r, size, spec, artwork, data.Values), data, PrintDpi, ct));
         }
 
         return ServiceResult<byte[]>.Success(
@@ -266,7 +333,7 @@ public class IdCardService(
             .Where(a => a.EventId == eventId && a.Status == AssignmentStatus.Accepted)
             .Join(db.Users.AsNoTracking(), a => a.UserId, u => u.Id, (a, u) => new
             {
-                a.Id, a.UserId, a.Role, a.CustomRole, u.Name, u.AvatarKey,
+                a.Id, a.UserId, a.Role, a.CustomRole, u.Name, u.Username, u.AvatarKey,
             })
             .ToListAsync(ct);
 
@@ -276,7 +343,7 @@ public class IdCardService(
                 ? s.CustomRole!
                 : s.Role;
             return new BadgeRecipient(
-                s.UserId, s.Name, BadgeKind.Staff, role, AccessLevelFor(role), s.AvatarKey,
+                s.UserId, DisplayName(s.Name, s.Username), BadgeKind.Staff, role, StaffAccess.LevelFor(role), s.AvatarKey,
                 // The signature is recomputed at the gate from the assignment id, so the badge carries
                 // both and needs no stored column (D-362).
                 $"staff:{s.Id}:{tokens.SignStaffPass(s.Id)}");
@@ -286,11 +353,11 @@ public class IdCardService(
 
         var attendees = await db.Tickets.AsNoTracking()
             .Where(t => t.EventId == eventId && t.UserId != null && t.State != TicketState.Void)
-            .Join(db.Users.AsNoTracking(), t => t.UserId, u => u.Id, (t, u) => new { t.Code, t.UserId, t.OrderItemId, u.Name, u.AvatarKey })
+            .Join(db.Users.AsNoTracking(), t => t.UserId, u => u.Id, (t, u) => new { t.Code, t.UserId, t.OrderItemId, u.Name, u.Username, u.AvatarKey })
             .Join(db.OrderItems.AsNoTracking(), t => t.OrderItemId, oi => oi.Id, (t, oi) => new { t, oi.TicketTypeId })
             .Join(db.TicketTypes.AsNoTracking(), x => x.TicketTypeId, tt => tt.Id, (x, tt) => new
             {
-                x.t.Code, x.t.UserId, x.t.Name, x.t.AvatarKey, Tier = tt.Name,
+                x.t.Code, x.t.UserId, x.t.Name, x.t.Username, x.t.AvatarKey, Tier = tt.Name,
             })
             .ToListAsync(ct);
 
@@ -300,7 +367,7 @@ public class IdCardService(
             .GroupBy(a => a.UserId!.Value)
             .Select(g => g.First())
             .Select(a => new BadgeRecipient(
-                a.UserId!.Value, a.Name, BadgeKind.Attendee, a.Tier, null, a.AvatarKey,
+                a.UserId!.Value, DisplayName(a.Name, a.Username), BadgeKind.Attendee, a.Tier, null, a.AvatarKey,
                 // Exactly what TicketQrEndpoints encodes, so the existing gate scan resolves a printed
                 // badge with no change at all.
                 a.Code.ToString()))
@@ -309,17 +376,14 @@ public class IdCardService(
         return [.. staffCards.OrderBy(s => s.Name), .. attendeeCards.OrderBy(a => a.Name)];
     }
 
-    /// <summary>What a staff role authorises on site. Derived from the role rather than stored, because
-    /// <c>EventAssignment</c> has no access-level column and inventing one would put a second, drifting
-    /// answer next to the role that already decides this.</summary>
-    private static string AccessLevelFor(string role) => role.Trim().ToLowerInvariant() switch
-    {
-        "owner" or "manager" or "organizer" => "All Access",
-        "speaker" or "judge" or "performer" => "Backstage",
-        "sponsor" or "vendor" or "exhibitor" => "Vendor",
-        "volunteer" => "Volunteer",
-        _ => "Staff",
-    };
+    /// <summary>The name a badge prints. An account whose display name was never filled in falls back to
+    /// its public handle, which is real data rather than an invented one; when there is neither, the empty
+    /// string travels on and <see cref="BadgeLayout"/> drops the field rather than printing a placeholder
+    /// (D-385). What must never happen is a printed badge reading <c>{holder_name}</c>.</summary>
+    private static string DisplayName(string? name, string? username) =>
+        !string.IsNullOrWhiteSpace(name) ? name
+        : !string.IsNullOrWhiteSpace(username) ? username
+        : "";
 
     /// <summary>The event's saved card design, or the shipped default when the editor has never been
     /// opened (D-362). Read once per operation rather than per badge: a print run renders hundreds, and

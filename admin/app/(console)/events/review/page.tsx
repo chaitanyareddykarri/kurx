@@ -140,8 +140,29 @@ export default async function EventReviewConsolePage({
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-muted">
-                      {e.org_name} · starts {new Date(e.starts_at).toLocaleDateString("en-IN")}
+                      {/* D-381 — a legacy self-representation row is NAMED as legacy, never printed as
+                          if it were an institution: that would show a reviewer a person's name under
+                          "representing organization", the one thing they must not be shown. */}
+                      {e.org_is_personal ? "Legacy personal representation" : e.org_name} · starts{" "}
+                      {new Date(e.starts_at).toLocaleDateString("en-IN")}
                     </p>
+                    {/*
+                      The ORGANIZATION's own registry standing, beside the event awaiting a decision.
+
+                      An event can now reach this queue while the institution behind it is still
+                      PendingReview — a representation registered during event creation stages the
+                      organization and lets the draft proceed, because creation and publication are
+                      different gates. Approving such an event is legitimate and does NOT make it
+                      publishable: `pending_org_verification` still refuses the transition until the
+                      organization is verified. Without this line a reviewer approves, the organiser
+                      cannot publish, and neither of them can see why.
+                    */}
+                    {e.org_verification !== "Verified" ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded border border-warning/40 bg-warning/5 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                        Organization: {e.org_verification} — this event can be approved, but it can&apos;t
+                        publish until the organization is verified
+                      </p>
+                    ) : null}
 
                     {/* A reviewer must never be asked to approve an event they cannot inspect. This used
                         to deep-link to the 9-tab event workspace INSTEAD of showing the event — but that
@@ -187,11 +208,26 @@ export default async function EventReviewConsolePage({
                       </details>
                     ) : null}
 
-                    {/* D-266 M7 — shown only while a reviewer actually holds the item. Before a claim
-                        there is nothing to work through, and after a decision the ticks are history. */}
+                    {/*
+                      D-382 — the authorization is EVIDENCE, and evidence is readable before the claim.
+
+                      This whole block was gated on `underreview`, which put the event's details in the
+                      queue and the one document the decision turns on behind a claim: deciding whether
+                      to pick an item up meant deciding blind, and finding out whether an authorization
+                      had even been filed meant taking the event into your own name first. The panel
+                      renders for every row now, `readOnly` until the item is held — reading is not
+                      deciding, and the verdict buttons still require the claim.
+
+                      D-266 M7 stands for the two panels below it: a checklist is work-in-progress, not
+                      evidence, and there is nothing to tick on an event nobody is working.
+                    */}
+                    <AuthorizationPanel
+                      eventId={e.event_id}
+                      authorization={authorizations[i]}
+                      readOnly={e.status.toLowerCase() !== "underreview"}
+                    />
                     {e.status.toLowerCase() === "underreview" ? (
                       <>
-                        <AuthorizationPanel eventId={e.event_id} authorization={authorizations[i]} />
                         {/* Shown only when the POLICY ENGINE says this event needs it — never inferred
                             here from "is it paid", which would be the console re-deriving a server rule
                             and getting it wrong (a concert takes more money and needs no such review). */}

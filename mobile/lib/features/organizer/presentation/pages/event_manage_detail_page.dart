@@ -123,6 +123,11 @@ class EventManageDetailPage extends ConsumerWidget {
                         child: const Text('Manage'),
                       ),
                     ),
+                    // There is no Representing tile. Representation is answered once, inside Create
+                    // Event, and the only thing that re-opens it is a reviewer asking for changes —
+                    // which is an edit of the event, reached from Event Status where that verdict is
+                    // shown. A standing entry here is what made organisers believe creation had not
+                    // finished and go looking for a second form to fill in.
                     ListTile(
                       leading: const Icon(Icons.verified_outlined),
                       title: const Text('Payment Readiness'),

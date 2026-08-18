@@ -1668,26 +1668,6 @@ export async function deleteMyReview(accessToken: string, eventId: string) {
   await api.delete(`/v1/events/${eventId}/reviews/mine`, authHeaders(accessToken));
 }
 
-export const certificateVerifySchema = z.object({
-  verify_code: z.string(),
-  status: z.string(),
-  is_revoked: z.boolean().optional(),
-  issued_to: z.string(),
-  event_title: z.string(),
-  event_slug: z.string(),
-  organizer: z.string(),
-  org_slug: z.string(),
-  issued_at: z.string(),
-  // The API returns a presigned download URL (pdf_url), not the storage key.
-  pdf_url: z.string().nullable(),
-});
-export type CertificateVerify = z.infer<typeof certificateVerifySchema>;
-
-export async function verifyCertificate(code: string) {
-  const { data } = await api.get(`/v1/certificates/${code}`);
-  return certificateVerifySchema.parse(data);
-}
-
 // GET /v1/orders returns ORDERS (ToOrderJson), not a flat ticket projection. This schema previously
 // required `order_id`, which that payload has never contained — so zod threw on every non-empty
 // response and the caller's `.catch(() => [])` turned it into "No tickets yet". Buyers with tickets
@@ -2098,10 +2078,9 @@ export async function updateOrg(accessToken: string, orgId: string, body: Record
 }
 
 // Organization types (D-043). Backend OrganizationType, parsed case-insensitively; unknown → Other.
-export const organizationTypes = [
-  "college", "school", "university", "company", "startup",
-  "ngo", "club", "community", "government", "other"
-] as const;
+// Re-exported from a leaf module (`lib/org-types.ts`) so a client component can read the vocabulary
+// without importing this file — see the comment there.
+export { organizationTypes } from "@/lib/org-types";
 
 // No client creates an organization. Institutions go through `submitRepresentationRequest` (an admin
 // approves them), and representing yourself creates nothing at all — it is `Representing = Personal`,
@@ -2243,32 +2222,10 @@ export async function revokeInvitation(accessToken: string, invitationId: string
   await api.delete(`/v1/invitations/${invitationId}`, authHeaders(accessToken));
 }
 
-// Certificates (D-035) — bulk generate for an event's eligible tickets. Owner/Manager/Admin.
-export async function generateCertificates(accessToken: string, eventId: string) {
-  const { data } = await api.post(`/v1/events/${eventId}/certificates/generate`, {}, authHeaders(accessToken));
-  return data as { generated: number };
-}
-
-// Certificate roster for an event (D-064) — list who has one + revoke. Owner/Manager/Admin.
-export const eventCertificateSchema = z.object({
-  id: z.string(),
-  event_id: z.string(),
-  verify_code: z.string(),
-  user_id: z.string().nullable().optional(),
-  holder_name: z.string().nullable(),
-  kind: z.string(),
-  status: z.string(),
-  is_revoked: z.boolean(),
-  revoked_reason: z.string().nullable(),
-  issued_at: z.string()
-});
-export type EventCertificate = z.infer<typeof eventCertificateSchema>;
-
-export async function listEventCertificates(accessToken: string, eventId: string) {
-  const { data } = await api.get(`/v1/events/${eventId}/certificates`, authHeaders(accessToken));
-  return z.array(eventCertificateSchema).parse(data);
-}
-
+// Certificate revocation (D-064). The roster/generate pair that used to sit here called
+// `/v1/events/{id}/certificates` and `/certificates/generate` — routes the backend has never had;
+// issuing goes through `certificate-batches`. Both were unreachable, so they were deleted rather
+// than repointed (D-381 audit).
 export async function revokeCertificate(accessToken: string, certificateId: string, reason: string) {
   await api.post(`/v1/certificates/${certificateId}/revoke`, { reason }, authHeaders(accessToken));
 }

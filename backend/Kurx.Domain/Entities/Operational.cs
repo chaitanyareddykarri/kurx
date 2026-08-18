@@ -56,3 +56,30 @@ public class GateEntry
     public string? DeviceInfo { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;  // scan time
 }
+
+/// <summary>A staff member's arrival, recorded when their badge's signed pass is scanned (D-385).
+///
+/// <para><b>Its own table, not a nullable column on <see cref="GateEntry"/>.</b> That row's
+/// <c>TicketId</c> is non-nullable and every attendance figure on the platform counts it, so admitting
+/// staff through it would inflate attendee check-in counts with people who never bought anything. Staff
+/// arrivals and attendee admissions are two different measurements; D-362 named this table as the
+/// remaining step and deferred it only because another session held an uncommitted migration.</para>
+///
+/// <para>Keyed on the <see cref="EventAssignment"/> rather than the user: the assignment is what the badge
+/// encodes, what carries the role the badge prints, and what revocation acts on.</para></summary>
+public class StaffGateEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>The accepted <c>EventAssignment</c> the scanned pass resolved to.</summary>
+    public Guid AssignmentId { get; set; }
+
+    /// <summary>The event the scan happened at. Equal to the assignment's own event by the time a row is
+    /// written — the scan is refused otherwise — but stored so the arrivals list for an event is one index
+    /// away rather than a join.</summary>
+    public Guid EventId { get; set; }
+
+    public Guid ScannedBy { get; set; }
+    public string? DeviceInfo { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

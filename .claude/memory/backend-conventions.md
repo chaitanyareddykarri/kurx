@@ -454,3 +454,24 @@ Three things to keep if you touch this:
 
 Adding a second enforced capability needs its own decision entry and the same justification: that
 ignoring it leaves persisted state describing something the event cannot do.
+
+## A positional response record grows at the END, never in the middle (D-381)
+
+`AdminEventResponse` is a positional `record` and `ToAdminJson` constructs it **positionally** — 32
+bare `e.Field` arguments, no names. A member inserted or removed anywhere but the end silently
+re-points every argument after it, and the symptom is the worst kind: a well-formed payload carrying
+the wrong values in the right-looking keys. It has already happened once — `OrgName` was written out
+of the record while the query still selected it, so `org_name` stopped existing on the wire and the
+console fell back to whatever else was to hand.
+
+So: **append additive fields last, with defaults**, and treat the middle as frozen.
+
+`AdminEventManagementTests.Admin_event_rows_carry_the_org_name` is the guard, and it is the right place
+to extend when you add a field — it already knows how this contract breaks. It now also pins
+`creator_name` (a string), `creator_id` (non-empty) and `org_is_personal`, because the D-381 bug was the
+console printing a PERSON under "Representing organization": the assertion that matters is that creator
+and organization are two distinct keys, both present, never one standing in for the other.
+
+A named-argument constructor would remove the hazard outright. Not done here — it is a 32-line rewrite of
+a mapper that works, and the guard test is cheaper. If you are already editing `ToAdminJson` for another
+reason, converting it is a genuine improvement.

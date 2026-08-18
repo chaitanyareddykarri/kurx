@@ -751,11 +751,10 @@ public class EventBadgeTests : IClassFixture<KurxApiFactory>
         Assert.True(second.IsDuplicate);
     }
 
-    /// <summary>The deferred half of D-362, pinned so it cannot regress into something worse than
-    /// "unsupported". A staff pass is structurally not a ticket code, so it can never be mistaken for one
-    /// by a scanner that parses a bare Guid — the gate refuses it rather than resolving it to some other
-    /// event's ticket. When <c>staff_gate_entries</c> lands, this test is what gets replaced by an
-    /// admission assertion.</summary>
+    /// <summary>A staff pass is structurally not a ticket code, so a scanner parsing a bare Guid can never
+    /// mistake one for the other and resolve it against some other event's ticket. This was D-362's only
+    /// safety net while the staff gate was deferred; it stays because keeping the two schemes disjoint is
+    /// still what makes two routes safe (D-385).</summary>
     [Fact]
     public async Task A_staff_pass_cannot_be_scanned_as_a_ticket()
     {
@@ -768,6 +767,254 @@ public class EventBadgeTests : IClassFixture<KurxApiFactory>
 
         Assert.False(Guid.TryParse(staffPayload, out _),
             "A staff pass must not parse as a bare ticket code — that is what keeps the two schemes apart.");
+    }
+
+    // ── D-385: the staff gate, which D-362 printed a credential for and could not verify ────────
+    //
+    // Until this landed, `SignStaffPass` had no counterpart anywhere in the platform: the QR was minted,
+    // printed at 27mm on a real lanyard, and understood by nothing. These drive the real
+    // IGateEntryService against a real database, because every check that matters here — is the
+    // assignment still accepted, is it for THIS event — is a live query, not a property of the signature.
+
+    /// <summary>The round-trip that makes the badge a credential: take the payload the badge actually
+    /// prints and hand it to the service a scanner calls.</summary>
+    [Fact]
+    public async Task A_staff_badge_is_admitted_by_the_real_gate()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        var recipients = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        var pass = recipients.First(r => r.UserId == seeded.StaffId).QrPayload;
+
+        var result = await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "staff-scan-test");
+
+        Assert.True(result.Admitted, result.Reason ?? "not admitted");
+        Assert.False(result.IsDuplicate);
+        // The marshal reads these back against the person in front of them.
+        Assert.Equal("Volunteer", result.Role);
+        Assert.Equal("Volunteer", result.AccessLevel);
+        Assert.False(string.IsNullOrWhiteSpace(result.Name));
+    }
+
+    /// <summary>Staff come and go all day, so a repeat scan reports rather than refuses — and still shows
+    /// who they are, which is the whole reason the marshal scanned again.</summary>
+    [Fact]
+    public async Task Scanning_a_staff_badge_twice_reports_the_first_arrival()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        var pass = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).QrPayload;
+
+        await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "first");
+        var second = await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "second");
+
+        Assert.False(second.Admitted);
+        Assert.True(second.IsDuplicate);
+        Assert.NotNull(second.FirstScannedAt);
+        Assert.Equal("Volunteer", second.AccessLevel);
+    }
+
+    /// <summary>The security claim. A genuine signature proves only that Kurx minted the pass — it says
+    /// nothing about whether the holder is still crew, so revocation is read live (D-015). Removing
+    /// someone from the crew must stop the badge already in their pocket.</summary>
+    [Theory]
+    [InlineData(AssignmentStatus.Removed)]
+    [InlineData(AssignmentStatus.Declined)]
+    [InlineData(AssignmentStatus.Invited)]
+    public async Task A_staff_badge_stops_working_when_the_assignment_is_not_accepted(AssignmentStatus status)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        var pass = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).QrPayload;
+
+        var assignment = await db.EventAssignments.FirstAsync(a => a.Id == seeded.AssignmentId);
+        assignment.Status = status;
+        await db.SaveChangesAsync();
+
+        var result = await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "after-removal");
+
+        Assert.False(result.Admitted);
+        Assert.Equal("assignment_not_active", result.Reason);
+    }
+
+    /// <summary>A badge minted for Saturday's event must not open Sunday's door, however genuine its
+    /// signature — the pass names an assignment, and the assignment names exactly one event.</summary>
+    [Fact]
+    public async Task A_staff_badge_from_another_event_is_refused()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var eventA = Seed(scope);
+        var eventB = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        var passForA = (await svc.ListRecipientsAsync(eventA.EventId, eventA.OwnerId, false)).Value!
+            .First(r => r.UserId == eventA.StaffId).QrPayload;
+
+        var result = await gate.ScanStaffAsync(eventB.OwnerId, eventB.EventId, passForA, "wrong-event");
+
+        Assert.False(result.Admitted);
+        Assert.Equal("event_mismatch", result.Reason);
+    }
+
+    /// <summary>Forgery. Each of these is a payload someone could construct without the secret, and every
+    /// one must be refused with the same answer — telling a forger which half they got wrong is free
+    /// help.</summary>
+    [Fact]
+    public async Task A_forged_or_tampered_staff_pass_is_refused()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+        var tokens = scope.ServiceProvider.GetRequiredService<TokenService>();
+
+        var real = tokens.SignStaffPass(seeded.AssignmentId);
+        var forged = new[]
+        {
+            $"staff:{seeded.AssignmentId}:{new string('a', real.Length)}",   // invented signature
+            $"staff:{seeded.AssignmentId}:{real[..^1]}",                     // truncated
+            $"staff:{Guid.NewGuid()}:{real}",                                // real signature, other id
+            $"staff:{seeded.AssignmentId}",                                  // no signature at all
+            $"{seeded.AssignmentId}:{real}",                                 // no scheme prefix
+            seeded.TicketCode.ToString(),                                    // an attendee's ticket code
+            "staff:not-a-guid:deadbeef",
+            "",
+        };
+
+        foreach (var pass in forged)
+        {
+            var result = await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "forgery");
+            Assert.False(result.Admitted, $"admitted a forged pass: {pass}");
+            Assert.Equal("invalid_pass", result.Reason);
+        }
+    }
+
+    /// <summary>Whoever cannot work the attendee gate cannot work the staff one either. A staff scan
+    /// returns a person's name and access level, so an open route would be an attendee-list leak with a
+    /// credential check attached.</summary>
+    [Fact]
+    public async Task A_stranger_cannot_scan_a_staff_badge()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        var pass = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).QrPayload;
+
+        var stranger = SeedUser(scope, "+919000000095");
+        var result = await gate.ScanStaffAsync(stranger, seeded.EventId, pass, "stranger");
+
+        Assert.False(result.Admitted);
+        Assert.Equal("forbidden", result.Reason);
+        // And the refusal happens before the pass is even looked at, so it leaks nothing about the crew.
+        Assert.Null(result.Name);
+    }
+
+    /// <summary>Why <c>staff_gate_entries</c> is its own table rather than a nullable column on
+    /// <c>gate_entries</c>: every attendance figure on the platform counts that row, and admitting staff
+    /// through it would inflate attendee check-ins with people who never bought anything.</summary>
+    [Fact]
+    public async Task A_staff_arrival_is_not_counted_as_an_attendee_check_in()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        var pass = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).QrPayload;
+
+        await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, pass, "staff");
+
+        Assert.Equal(0, await db.GateEntries.CountAsync(g => g.EventId == seeded.EventId));
+        Assert.Equal(1, await db.StaffGateEntries.CountAsync(s => s.EventId == seeded.EventId));
+    }
+
+    /// <summary>An attendee's ticket code is not a staff pass, and a staff pass is not a ticket. Neither
+    /// route resolves the other's credential — which is the point of giving them separate routes.</summary>
+    [Fact]
+    public async Task The_two_credentials_cannot_be_swapped()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        var recipients = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        var staffPass = recipients.First(r => r.UserId == seeded.StaffId).QrPayload;
+        var ticketCode = Guid.Parse(recipients.First(r => r.UserId == seeded.AttendeeId).QrPayload);
+
+        // A ticket code down the staff route.
+        var asStaff = await gate.ScanStaffAsync(seeded.OwnerId, seeded.EventId, ticketCode.ToString(), "swap");
+        Assert.False(asStaff.Admitted);
+
+        // And a staff pass cannot even be expressed as the ticket route's argument, which is the
+        // structural half of the guarantee.
+        Assert.False(Guid.TryParse(staffPass, out _));
+    }
+
+    /// <summary>Over HTTP, because a route that is never mapped fails exactly like one that is
+    /// forbidden.</summary>
+    [Fact]
+    public async Task The_staff_gate_route_is_mapped_and_authenticated()
+    {
+        var anonymous = _factory.CreateClient();
+        var res = await anonymous.PostAsJsonAsync(
+            $"/v1/gate/{Guid.NewGuid()}/scan-staff", new { pass = "staff:x:y" });
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, res.StatusCode);
+
+        var (client, ownerId) = await AuthedClientAsync();
+        Seeded seeded;
+        using (var scope = _factory.Services.CreateScope())
+            seeded = Seed(scope, ownerId);
+
+        string pass;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+            pass = (await svc.ListRecipientsAsync(seeded.EventId, ownerId, false)).Value!
+                .First(r => r.UserId == seeded.StaffId).QrPayload;
+        }
+
+        var ok = await client.PostAsJsonAsync(
+            $"/v1/gate/{seeded.EventId}/scan-staff", new { pass, deviceInfo = "http-test" });
+        Assert.Equal(System.Net.HttpStatusCode.OK, ok.StatusCode);
+
+        var body = await ok.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.True(body.GetProperty("admitted").GetBoolean());
+        Assert.Equal("Volunteer", body.GetProperty("access_level").GetString());
+    }
+
+    /// <summary>The signature is verified in fixed time and only ever accepts the one it minted.</summary>
+    [Fact]
+    public void A_staff_pass_verifies_only_its_own_signature()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var tokens = scope.ServiceProvider.GetRequiredService<TokenService>();
+        var id = Guid.NewGuid();
+
+        Assert.Equal(id, tokens.VerifyStaffPass($"staff:{id}:{tokens.SignStaffPass(id)}"));
+        // Case is normalised, because a scanner or a QR library may hand back either.
+        Assert.Equal(id, tokens.VerifyStaffPass($"staff:{id}:{tokens.SignStaffPass(id).ToUpperInvariant()}"));
+        Assert.Null(tokens.VerifyStaffPass($"staff:{id}:{tokens.SignStaffPass(Guid.NewGuid())}"));
+        Assert.Null(tokens.VerifyStaffPass(null));
+        // A ticket signature must never stand in for a staff one — that is what the domain prefix buys.
+        Assert.Null(tokens.VerifyStaffPass($"staff:{id}:{tokens.SignTicketCode(id)}"));
     }
 
     // ── The routes themselves ───────────────────────────────────────────────────────────────────
@@ -905,6 +1152,419 @@ public class EventBadgeTests : IClassFixture<KurxApiFactory>
         // snake_case reaches nested records too — font_size_pt, not fontSizePt.
         Assert.True(field.TryGetProperty("font_size_pt", out _));
         Assert.True(field.TryGetProperty("z_order", out _));
+    }
+
+    // ── D-385: what a badge prints when the data behind a field is missing ──────────────────────
+    //
+    // The renderer is shared with certificates and draws "{holder_name}" for an empty value. On a
+    // certificate that is the right prompt — the issuing path refuses to issue with a required value
+    // missing, so it is only ever seen in a design preview. The badge path has no such refusal, so the
+    // placeholder reached real printed cards. These pin the fix at the layout, where it is exact.
+
+    /// <summary>Proven against a real issued card before the fix: an account with no display name printed
+    /// a lanyard reading <c>{holder_name}</c>. A blank line is a bad badge; a badge that says
+    /// <c>{holder_name}</c> is a broken one, and both are discovered at the guillotine.</summary>
+    [Fact]
+    public void A_field_with_no_value_is_dropped_rather_than_printed_as_its_own_key()
+    {
+        var nameless = new BadgeRecipient(
+            Guid.NewGuid(), "", BadgeKind.Attendee, "General Admission", null, null, Guid.NewGuid().ToString());
+
+        var values = new Dictionary<string, string>
+        {
+            [BadgeLayout.FieldName] = "",
+            [BadgeLayout.FieldSubtitle] = "General Admission",
+            [BadgeLayout.FieldEvent] = "Sample Hackathon 2026",
+            [BadgeLayout.FieldEventDate] = "01 Oct 2026",
+            [BadgeLayout.FieldCardNumber] = "KRX-00001",
+        };
+
+        var doc = BadgeLayout.Build(nameless, BadgeSize.Lanyard, IdCardTemplateSpec.Default, null, values);
+
+        Assert.DoesNotContain(doc.Elements, e => e.FieldKey == BadgeLayout.FieldName);
+        // The rest of the card is untouched: one missing value must not blank a badge.
+        Assert.Contains(doc.Elements, e => e.FieldKey == BadgeLayout.FieldSubtitle);
+        Assert.Contains(doc.Elements, e => e.Kind == "qrcode");
+    }
+
+    [Fact]
+    public void A_field_with_a_value_still_renders()
+    {
+        var r = Attendee();
+        var doc = BadgeLayout.Build(r, BadgeSize.Lanyard, IdCardTemplateSpec.Default, null, DataFor(r).Values);
+
+        Assert.Contains(doc.Elements, e => e.FieldKey == BadgeLayout.FieldName);
+        Assert.Contains(doc.Elements, e => e.FieldKey == BadgeLayout.FieldCardNumber);
+    }
+
+    /// <summary>The preview path passes no values and keeps the placeholder, which is what makes an
+    /// unmapped field visible to the organiser while they are designing.</summary>
+    [Fact]
+    public void Without_values_the_layout_keeps_every_field()
+    {
+        var doc = BadgeLayout.Build(Attendee(), BadgeSize.Lanyard, IdCardTemplateSpec.Default);
+        Assert.Contains(doc.Elements, e => e.FieldKey == BadgeLayout.FieldName);
+    }
+
+    /// <summary>An account with no name but a handle prints the handle. Real data rather than an invented
+    /// "Guest", and better than a blank lanyard.</summary>
+    [Fact]
+    public async Task A_nameless_account_falls_back_to_its_handle()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        var attendee = await db.Users.FirstAsync(u => u.Id == seeded.AttendeeId);
+        attendee.Name = "";
+        attendee.Username = "asha_m";
+        await db.SaveChangesAsync();
+
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var recipients = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+
+        Assert.Equal("asha_m", recipients.First(r => r.UserId == seeded.AttendeeId).Name);
+    }
+
+    // ── D-385: a stored artefact belongs to the size it was rendered at ─────────────────────────
+
+    /// <summary>Proven on a real print sheet before the fix: cards issued at <c>lanyard</c> and then
+    /// printed at <c>card</c> reused the lanyard raster, which QuestPDF fitted into the CR80 slot at
+    /// 34.4×54mm instead of 85.6×54mm — and the QR shrank below the point a scanner could read it. The
+    /// size selector silently stopped working the moment anything was issued.</summary>
+    [Fact]
+    public void An_artefact_key_is_specific_to_its_size()
+    {
+        var eventId = Guid.NewGuid();
+        var cardId = Guid.NewGuid();
+
+        Assert.NotEqual(
+            IdCardStorageKeys.Pdf(eventId, cardId, BadgeSize.Lanyard.Key),
+            IdCardStorageKeys.Pdf(eventId, cardId, BadgeSize.Card.Key));
+        Assert.NotEqual(
+            IdCardStorageKeys.Png(eventId, cardId, BadgeSize.Lanyard.Key),
+            IdCardStorageKeys.Png(eventId, cardId, BadgeSize.Card.Key));
+
+        // Still under the event, so the asset-key confinement checks elsewhere continue to hold.
+        Assert.StartsWith($"events/{eventId}/id-cards/", IdCardStorageKeys.Pdf(eventId, cardId, "lanyard"));
+    }
+
+    [Fact]
+    public async Task Printing_at_another_size_re_renders_rather_than_reusing_the_issued_raster()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+
+        var asIssued = await svc.RenderOneAsync(
+            seeded.EventId, seeded.OwnerId, false, seeded.StaffId, BadgeSize.Lanyard.Key);
+        var atCr80 = await svc.RenderOneAsync(
+            seeded.EventId, seeded.OwnerId, false, seeded.StaffId, BadgeSize.Card.Key);
+
+        Assert.True(asIssued.Ok, asIssued.Error);
+        Assert.True(atCr80.Ok, atCr80.Error);
+        // Same card, two physical sizes, therefore two different documents. Identical bytes would mean
+        // the CR80 request had been served the lanyard artefact.
+        Assert.NotEqual(asIssued.Value!, atCr80.Value!);
+    }
+
+    /// <summary>The built-in layout is now served, because the editor needs it to open on the card the
+    /// server would actually print rather than on an empty one (D-385).</summary>
+    [Fact]
+    public async Task The_built_in_layout_is_served_over_http()
+    {
+        var (client, ownerId) = await AuthedClientAsync();
+
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+            eventId = Seed(scope, ownerId).EventId;
+
+        var res = await client.GetAsync($"/v1/events/{eventId}/badges/template/defaults?size=lanyard&kind=staff");
+        Assert.Equal(System.Net.HttpStatusCode.OK, res.StatusCode);
+
+        var fields = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var keys = fields.EnumerateArray().Select(f => f.GetProperty("key").GetString()).ToList();
+
+        // The QR above all: a layout seeded without it would let an organiser print badges that scan
+        // nowhere, which is the failure the empty canvas actually caused.
+        Assert.Contains("qr", keys);
+        Assert.Contains("holder_name", keys);
+        Assert.Contains("access_level", keys);
+        // snake_case for nested records, exactly as the saved design is served.
+        Assert.True(fields[0].TryGetProperty("z_order", out _));
+    }
+
+    [Fact]
+    public async Task The_landscape_card_gets_its_own_layout()
+    {
+        var (client, ownerId) = await AuthedClientAsync();
+
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+            eventId = Seed(scope, ownerId).EventId;
+
+        var portrait = await (await client.GetAsync($"/v1/events/{eventId}/badges/template/defaults?size=lanyard&kind=staff"))
+            .Content.ReadAsStringAsync();
+        var landscape = await (await client.GetAsync($"/v1/events/{eventId}/badges/template/defaults?size=card&kind=staff"))
+            .Content.ReadAsStringAsync();
+
+        // CR80 is wider than tall and cannot carry the stacked portrait arrangement legibly.
+        Assert.NotEqual(portrait, landscape);
+    }
+
+    // ── D-386: the four gaps D-385 recorded rather than closed ─────────────────────────────────
+
+    /// <summary>Every role the platform can actually issue maps to a band. The first version of this
+    /// switch named roles <c>ValidRoles</c> cannot produce, so thirteen of fourteen printed "Staff" and
+    /// the colour a marshal reads across a room never varied.</summary>
+    [Theory]
+    [InlineData("Stage Manager", "All Access")]
+    [InlineData("Host", "All Access")]
+    [InlineData("Security", "All Access")]
+    [InlineData("Judge", "Backstage")]
+    [InlineData("Moderator", "Backstage")]
+    [InlineData("Speaker Coordinator", "Backstage")]
+    [InlineData("Photographer", "Backstage")]
+    [InlineData("Videographer", "Backstage")]
+    [InlineData("Media Team", "Backstage")]
+    [InlineData("Technical Team", "Backstage")]
+    [InlineData("Volunteer", "Volunteer")]
+    [InlineData("Registration Desk", "Staff")]
+    [InlineData("Support Team", "Staff")]
+    public void Every_assignable_role_gets_an_access_band(string role, string expected)
+        => Assert.Equal(expected, StaffAccess.LevelFor(role));
+
+    /// <summary>An unrecognised role gets the narrowest band, not the widest. Defaulting the other way
+    /// would let a typo in a CustomRole print an all-access lanyard.</summary>
+    [Theory]
+    [InlineData("Chief Vibes Officer")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_unknown_role_falls_to_the_narrowest_band(string role)
+        => Assert.Equal("Staff", StaffAccess.LevelFor(role));
+
+    /// <summary>Proven on a real badge before the fix: "Ananya Krishnamurthy-Venkataraghavan" printed as
+    /// "Ananya Krishnamurthy-" — the name wrapped and the second line fell outside a box only tall enough
+    /// for one. The render must not clip it now.</summary>
+    [Fact]
+    public async Task A_very_long_name_is_shrunk_rather_than_clipped()
+    {
+        var shortName = Attendee("Jo Roy");
+        var longName = Attendee("Ananya Krishnamurthy-Venkataraghavan");
+
+        var a = await Png(shortName, BadgeSize.Lanyard);
+        var b = await Png(longName, BadgeSize.Lanyard);
+
+        // Both render, and they differ — the long one is drawn, not dropped.
+        Assert.NotEmpty(a);
+        Assert.NotEmpty(b);
+        Assert.NotEqual(a, b);
+    }
+
+    /// <summary>The shrink only ever reduces, and only for a box that cannot hold two lines. A tall box is
+    /// left alone: wrapping is what a certificate's body paragraph is for.</summary>
+    [Fact]
+    public async Task Type_is_only_ever_shrunk_to_fit_never_grown()
+    {
+        // Named throughout: CertificateRenderElement is positional and twenty-odd fields wide, and a
+        // positional call is trivially shifted by one.
+        var singleLineBox = new CertificateDocument("custom", null,
+        [
+            new(Kind: "dynamicfield", FieldKey: BadgeLayout.FieldName, StaticText: null,
+                X: 4, Y: 42, Width: 92, Height: 8, Rotation: 0, ZOrder: 1, IsMasking: false,
+                BackgroundColor: null, ImageKey: null, FontFamily: null, FontSizePt: 16,
+                FontWeight: "bold", Color: "#111827",
+                HorizontalAlignment: "center", VerticalAlignment: "middle"),
+        ], 88.9, 139.7);
+
+        var shortValue = new CertificateRenderData(
+            new Dictionary<string, string> { [BadgeLayout.FieldName] = "Jo" },
+            new Dictionary<string, byte[]>(), "x");
+        var longValue = new CertificateRenderData(
+            new Dictionary<string, string> { [BadgeLayout.FieldName] = new string('M', 120) },
+            new Dictionary<string, byte[]>(), "x");
+
+        // A value that already fits and one that cannot must both render — the long one at a smaller size
+        // rather than spilling out of the card.
+        Assert.NotEmpty(await Renderer.RenderPngAsync(singleLineBox, shortValue, 96));
+        Assert.NotEmpty(await Renderer.RenderPngAsync(singleLineBox, longValue, 96));
+    }
+
+    [Fact]
+    public async Task An_issued_badge_can_be_revoked()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+
+        var result = await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.StaffId, "lost lanyard");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.True(result.Value!.IsRevoked);
+        Assert.Equal("Revoked", result.Value.Status);
+
+        // And the roster reports it, which is what the console renders the chip from.
+        var roster = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!;
+        Assert.True(roster.First(r => r.UserId == seeded.StaffId).Card!.IsRevoked);
+    }
+
+    /// <summary>A revoked card stays resolvable rather than disappearing (D-331): a verifier must be able
+    /// to tell a revoked badge from one that never existed.</summary>
+    [Fact]
+    public async Task A_revoked_card_keeps_its_number_and_stays_on_the_roster()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+        var before = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).Card!;
+
+        await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.StaffId, null);
+        var after = (await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false)).Value!
+            .First(r => r.UserId == seeded.StaffId).Card!;
+
+        Assert.Equal(before.CardNumber, after.CardNumber);
+        Assert.Equal(before.VerifyCode, after.VerifyCode);
+        Assert.True(after.IsRevoked);
+    }
+
+    [Fact]
+    public async Task Revoking_is_refused_when_there_is_nothing_issued_or_it_is_already_revoked()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        // Nothing issued yet — a different state from issued-and-revoked, and reported as one.
+        Assert.Equal("card_not_issued",
+            (await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.StaffId, null)).Error);
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+        await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.StaffId, null);
+
+        Assert.Equal("already_revoked",
+            (await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.StaffId, null)).Error);
+    }
+
+    /// <summary>Revocation mints nothing and closes nothing — it marks a document. Whoever cannot manage
+    /// the event cannot mark it.</summary>
+    [Fact]
+    public async Task A_stranger_cannot_revoke_a_badge()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+
+        var stranger = SeedUser(scope, "+919000000094");
+        var result = await svc.RevokeAsync(seeded.EventId, stranger, false, seeded.StaffId, null);
+
+        Assert.False(result.Ok);
+        Assert.Equal("not_found", result.Error);
+    }
+
+    /// <summary>Revoking the card must not quietly stop the holder entering — an attendee's entry
+    /// credential is their ticket, and pretending otherwise is the dangerous reading of this feature.
+    /// If admission ever becomes conditional on the card, this test is what should be rewritten to say
+    /// so, deliberately.</summary>
+    [Fact]
+    public async Task Revoking_a_badge_does_not_by_itself_close_the_gate()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+        var gate = scope.ServiceProvider.GetRequiredService<IGateEntryService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Attendee]));
+        await svc.RevokeAsync(seeded.EventId, seeded.OwnerId, false, seeded.AttendeeId, "printed in error");
+
+        var result = await gate.ScanAsync(seeded.OwnerId, seeded.EventId, seeded.TicketCode, "after-revoke");
+
+        Assert.True(result.Admitted, result.RejectionReason ?? "not admitted");
+    }
+
+    /// <summary>The duplicate that used to kill the page, now refused by the database (D-386).
+    ///
+    /// <para>Two rows for one holder made `ToDictionaryAsync(c =&gt; c.UserId)` throw, so the roster — and
+    /// every later generate — failed permanently for that event: a transient race became a dead surface.
+    /// `GenerateAsync` is idempotent in code, but two concurrent calls could each read "no card" and write
+    /// one, and only the database can make that check atomic.</para>
+    ///
+    /// <para>This inserts straight past EF's tracking, the way the losing request would have. It must be
+    /// <b>refused</b>. `IdCardService.OldestPerHolder` still tolerates a duplicate on read, for rows
+    /// written before the index existed — that belt cannot be exercised here precisely because this
+    /// assertion passes.</para></summary>
+    [Fact]
+    public async Task A_second_card_for_the_same_holder_is_refused_by_the_database()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var svc = scope.ServiceProvider.GetRequiredService<IIdCardService>();
+
+        await svc.GenerateAsync(seeded.EventId, seeded.OwnerId, false,
+            new BadgeIssueRequest(BadgeSize.Lanyard.Key, [BadgeKind.Staff]));
+
+        var first = await db.IdCards.AsNoTracking()
+            .FirstAsync(c => c.EventId == seeded.EventId && c.UserId == seeded.StaffId);
+
+        object[] values =
+        [
+            Guid.NewGuid(), first.OrgId, first.UserId, first.EventId!,
+            IdCardCodes.NewVerifyCode(), first.CardNumber + "-DUP", (int)first.Template,
+            (int)IdCardStatus.Active, first.IssuedBy, DateTime.UtcNow.AddMinutes(5),
+        ];
+
+        var duplicate = () => db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO id_cards ("Id","OrgId","UserId","EventId","VerifyCode","CardNumber","Template",
+                                  "ShowMealInfo","Status","IsPublic","IsRevoked","IssuedBy","CreatedAt","UpdatedAt")
+            VALUES ({0},{1},{2},{3},{4},{5},{6},false,{7},true,false,{8},{9},{9})
+            """, values);
+
+        await Assert.ThrowsAsync<Npgsql.PostgresException>(duplicate);
+
+        // And the surface is untouched: one card, the original number.
+        var roster = await svc.ListRecipientsAsync(seeded.EventId, seeded.OwnerId, false);
+        Assert.True(roster.Ok, roster.Error);
+        Assert.Equal(first.CardNumber, roster.Value!.First(r => r.UserId == seeded.StaffId).Card!.CardNumber);
+    }
+
+    /// <summary>A college ID (D-331) carries no event, and many share the null — so the uniqueness is
+    /// filtered on <c>EventId IS NOT NULL</c> and must not collide across them.</summary>
+    [Fact]
+    public async Task The_uniqueness_does_not_apply_to_event_less_cards()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var seeded = Seed(scope);
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+
+        for (var i = 0; i < 2; i++)
+        {
+            db.IdCards.Add(new IdCard
+            {
+                OrgId = seeded.OrgId, UserId = seeded.StaffId, EventId = null,
+                VerifyCode = IdCardCodes.NewVerifyCode(), CardNumber = $"COLLEGE-{Guid.NewGuid():N}"[..20],
+                IssuedBy = seeded.OwnerId, Status = IdCardStatus.Active,
+            });
+        }
+
+        // Two college IDs for one person is legitimate — a reissue after a loss is exactly that.
+        await db.SaveChangesAsync();
+        Assert.Equal(2, await db.IdCards.CountAsync(c => c.UserId == seeded.StaffId && c.EventId == null));
     }
 
     private async Task<(HttpClient Client, Guid UserId)> AuthedClientAsync()

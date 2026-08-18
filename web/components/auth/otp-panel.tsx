@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getMe } from "@/lib/api";
 import { loginPassword } from "@/lib/auth-api";
 import { saveSession } from "@/lib/session";
 import { Button, toE164Identifier } from "@kurx/ui";
+import { Field, Input } from "@/components/ui/field";
 import { PasskeySignIn } from "@/components/auth/passkey-sign-in";
 import { LoginWaiting } from "@/components/auth/login-waiting";
 import { SecondFactorPanel } from "@/components/auth/second-factor-panel";
@@ -13,11 +15,6 @@ import type { SecondFactorMethod } from "@/lib/auth-api";
 
 type DeviceApproval = { challengeId: string; pollToken: string; matchNumber: number; expiresAt: string };
 type SecondFactor = { challengeId: string; pollToken: string; methods: SecondFactorMethod[] };
-
-// Kept for the two identifier/password fields below, now on the control-boundary
-// token and the touch floor. `border` is 1.30:1 and cannot identify a control.
-const inputCls =
-  "min-h-11 w-full rounded-md border border-border-strong bg-background px-3 text-body text-text placeholder:text-muted transition duration-fast focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30";
 
 /**
  * Password-first sign-in (Phase 2B / D-182). Factor 1 is the password; factor 2 is a trusted-browser
@@ -51,7 +48,7 @@ export function OtpPanel() {
   if (approval) {
     return (
       <div id="login" className="scroll-mt-20 rounded-lg border border-border bg-surface p-5">
-        <h2 className="text-lg font-semibold">Approve on your phone</h2>
+        <h2 className="text-h3 text-text">Approve on your phone</h2>
         <div className="mt-4">
           <LoginWaiting
             challengeId={approval.challengeId}
@@ -70,7 +67,7 @@ export function OtpPanel() {
   if (secondFactor) {
     return (
       <div id="login" className="scroll-mt-20 rounded-lg border border-border bg-surface p-5">
-        <h2 className="text-lg font-semibold">One more step</h2>
+        <h2 className="text-h3 text-text">One more step</h2>
         <div className="mt-4">
           <SecondFactorPanel
             challengeId={secondFactor.challengeId}
@@ -116,37 +113,60 @@ export function OtpPanel() {
 
   return (
     <div id="login" className="scroll-mt-20 rounded-lg border border-border bg-surface p-5">
-      <h2 className="text-lg font-semibold">Sign in</h2>
-      <div className="mt-4 space-y-3">
-        <input
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
-          placeholder="Phone, email, or username"
-          aria-label="Phone, email, or username"
-          autoComplete="username"
-          className={inputCls}
-        />
-        <input
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && identifier && password && !pending) signIn();
-          }}
-          type="password"
-          placeholder="Password"
-          aria-label="Password"
-          autoComplete="current-password"
-          className={inputCls}
-        />
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+      <h2 className="text-h3 text-text">Sign in</h2>
+      <div className="mt-5 space-y-4">
+        {/*
+          `Field` + `Input`, not the local `inputCls` this used to hand-roll.
+          
+          Both fields carried a `placeholder` and an `aria-label` and no visible `<label>`, so the
+          name of each control vanished the moment somebody typed into it. `test/auth-otp.test.tsx`
+          already asserts the rule — "has a real label, not a placeholder standing in for one" — but
+          it asserts it against the shared primitive, so the sign-in screen was free to keep the
+          defect while the rule stayed green. `field.tsx` was written to end exactly this pattern;
+          its own comment counts the twenty copied `inputClass` constants it replaced, and this was
+          the twenty-first. Using it also brings `aria-describedby`, `aria-invalid` and the focus
+          ring for free (D-384 §3).
+        */}
+        <Field label="Phone, email, or username">
+          <Input
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            autoComplete="username"
+          />
+        </Field>
+        <Field label="Password">
+          <Input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && identifier && password && !pending) signIn();
+            }}
+            type="password"
+            autoComplete="current-password"
+          />
+        </Field>
+
+        {/*
+          The checkbox was a bare native control — roughly 13px, against a 44px floor, and the only
+          thing on this card the design system did not draw. The input keeps its native semantics and
+          keyboard behaviour; the label around it supplies the target size, so the whole row is the
+          hit area rather than a 13px square beside some text.
+        */}
+        <label className="-mx-2 flex min-h-11 cursor-pointer select-none items-center gap-2.5 rounded-md px-2 text-body text-muted transition-colors duration-fast hover:text-text">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+            className="h-4 w-4 shrink-0 cursor-pointer accent-accent"
+          />
           Remember this browser
         </label>
-        <Button type="button" onClick={signIn} disabled={pending || !identifier || !password}>
+
+        <Button type="button" onClick={signIn} disabled={pending || !identifier || !password} className="w-full justify-center">
           {pending ? "Signing in…" : "Sign in"}
         </Button>
         {error ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         ) : null}
@@ -165,20 +185,25 @@ export function OtpPanel() {
           still runs on a code — through /register below, where it is unavoidable — and a returning
           user who cannot use their password goes through "Forgot password?".
         */}
-        <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-muted">
-          <a
+        <div className="flex flex-wrap items-center justify-end gap-2 text-body text-muted">
+          <Link
             href="/reset"
             className="inline-flex min-h-11 items-center rounded-md underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             Forgot password?
-          </a>
+          </Link>
         </div>
 
-        <p className="pt-1 text-sm text-muted">
+        {/*
+          `Link`, not `<a href>`. Both of this card's internal destinations were full document
+          navigations — a white flash and a fresh download of the app shell to reach two routes that
+          are already in the bundle.
+        */}
+        <p className="border-t border-border pt-4 text-body text-muted">
           New to Kurx?{" "}
-          <a href="/register" className="underline">
+          <Link href="/register" className="font-medium text-accent-text underline underline-offset-2">
             Create an account
-          </a>
+          </Link>
         </p>
       </div>
     </div>

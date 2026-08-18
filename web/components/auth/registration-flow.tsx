@@ -129,8 +129,8 @@ function Panel({ title, subtitle, children }: { title: string; subtitle?: string
   return (
     <div className="space-y-4 rounded-lg border border-border bg-surface p-5">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text">{title}</h2>
-        {subtitle ? <p className="text-sm text-muted">{subtitle}</p> : null}
+        <h2 className="text-h3 text-text">{title}</h2>
+        {subtitle ? <p className="text-body text-muted">{subtitle}</p> : null}
       </div>
       {children}
     </div>
@@ -165,9 +165,22 @@ function SignupStep({ onSignedUp }: { onSignedUp: () => Promise<void> }) {
   }
 
   return (
-    <Panel title="Create your account" subtitle="We'll send a one-time code to your phone to get started.">
+    /*
+      "Verify your phone", not "Create your account". Every other panel in this wizard names its own
+      step — "Verify your email", "You're all set!" — and this one named the whole ceremony, which is
+      what the page's `h1` already says. Side by side in the two-column shell (D-384) that read as the
+      same sentence printed twice. It also matches the checklist above it, which calls this step
+      "Phone verified".
+    */
+    <Panel title="Verify your phone" subtitle="We'll send a one-time code to your phone to get started.">
       <div className="space-y-3">
+        {/*
+          `label`, like every other `PhoneField` call site in the app. Without it the control's only
+          name was its placeholder, which disappears the moment somebody types — the same defect the
+          sign-in fields carried (D-384 §3), on the very first field of signup.
+        */}
         <PhoneField
+          label="Phone number"
           value={phone}
           onChange={(e164, valid) => {
             setPhone(e164);
@@ -178,13 +191,26 @@ function SignupStep({ onSignedUp }: { onSignedUp: () => Promise<void> }) {
         />
         {stage === "code" ? (
           <Field label="Verification code" helper={`Sent to ${phone}`}>
+            {/*
+              `autoComplete="one-time-code"` is what makes iOS and Android offer the code from the
+              SMS they just received. `test/auth-otp.test.tsx` spells out why it matters — "without
+              it every user retypes the code by hand on the highest-friction step" — but asserts it
+              against the shared primitive, so this field, the one real signup actually uses, never
+              declared it (D-384 §3).
+
+              The `aria-label="One-time code"` that used to sit here is gone. `aria-label` overrides
+              the `<label>` `Field` renders, so the control was announced as "One-time code" while
+              the words above it read "Verification code" — a name a speech-input user cannot say and
+              a screen-reader user cannot match to the screen (WCAG 2.5.3). The visible label is now
+              the accessible name, which is the whole contract `Field` exists to provide.
+            */}
             <Input
               value={code}
               onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
               inputMode="numeric"
+              autoComplete="one-time-code"
               maxLength={6}
               placeholder="6-digit code"
-              aria-label="One-time code"
             />
           </Field>
         ) : null}

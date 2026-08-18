@@ -9,9 +9,20 @@ import { FilterSection } from "@/components/ui/filter-section";
 /// the page exists for below two screens of pills — so what is worth pinning is the open/shut contract
 /// itself: a regression here does not throw, it just quietly dumps 34 options back onto arrival.
 
+/*
+ * `next/link` stub. The `onClick` is not decoration: the real `Link` intercepts the click and routes
+ * client-side, so a bare `<a href>` here is LESS faithful than it looks — jsdom cannot navigate, and
+ * a click on one schedules a navigation that surfaces later as an unhandled
+ * "Not implemented: navigation (except hash changes)". That error is attributed to no test, and it
+ * exits the runner non-zero on a suite where every assertion passed (seen 2026-08-18). Preventing the
+ * default is what the real component does; any handler passed in still runs first.
+ */
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...rest }: { children: React.ReactNode; href: string }) => (
-    <a href={href} {...rest}>
+  default: ({ children, href, onClick, ...rest }: {
+    children: React.ReactNode; href: string;
+    onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  }) => (
+    <a href={href} {...rest} onClick={(e) => { onClick?.(e); e.preventDefault(); }}>
       {children}
     </a>
   )

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../../core/network/api_guard.dart';
+import '../models/event_content_dto.dart';
 import '../models/event_manage_dto.dart';
 import '../models/org_dto.dart';
 
@@ -26,6 +27,36 @@ class OrgRemoteDataSource {
   // `POST /v1/orgs` had exactly one caller: the create-organization page, deleted with the org-first
   // workflow (D-267). Users do not mint organizations — they submit a representation request an admin
   // verifies (D-074/D-075) — and self-representation is resolved server-side, never posted from here.
+
+  // ── D-074/D-075 · representing an institution that is not on Kurx yet ──────
+  // D-382 — both of these existed on web and on neither Flutter screen, which closed a loop: the
+  // wizard told an organiser with no representation to request one "from your profile", and the
+  // profile's Representing page told them they are asked during event creation. Since D-379 an event
+  // cannot be created without a verified organization, so that loop was the end of the road.
+
+  /// Presigns the proof of affiliation. **User-scoped**: the institution does not exist yet, so there
+  /// is no orgId to scope it to — unlike every other org document presign.
+  Future<PresignDto> presignRepresentationDoc(String contentType, int maxBytes) => guard(
+        () async {
+          final res = await _dio.post(
+            '/v1/orgs/representation-requests/media/presign',
+            data: {'contentType': contentType, 'maxBytes': maxBytes},
+          );
+          return PresignDto.fromJson((res.data as Map).cast<String, dynamic>());
+        },
+        endpoint: 'POST /v1/orgs/representation-requests/media/presign',
+      );
+
+  /// Stages a HIDDEN `PendingReview` organization plus its evidence. The caller becomes a *pending*
+  /// representative — never an owner, because organizations have no account — and an admin verifies
+  /// the institution before it joins the registry or can back an event.
+  Future<OrgDto> submitRepresentationRequest(Map<String, dynamic> body) => guard(
+        () async {
+          final res = await _dio.post('/v1/orgs/representation-requests', data: body);
+          return OrgDto.fromJson((res.data as Map).cast<String, dynamic>());
+        },
+        endpoint: 'POST /v1/orgs/representation-requests',
+      );
 
   Future<WalletDto> wallet(String orgId) => guard(() async {
         final res = await _dio.get('/v1/orgs/$orgId/wallet');

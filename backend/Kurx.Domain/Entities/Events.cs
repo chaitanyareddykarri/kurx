@@ -344,6 +344,19 @@ public class Event
     // root). Snapshot-applied at creation, so a later template edit never mutates this event.
     public int? CreatedFromTemplateVersion { get; set; }
 
+    /// <summary>D-388 — the content version, incremented by the one-and-only apply path
+    /// (<c>EventService.ApplyUpdateAsync</c>) on every change to the event row.
+    ///
+    /// <para>Exists so an <see cref="EventChangeRequest"/> can name the state it was authored against and
+    /// be refused if the event has moved since. <see cref="UpdatedAt"/> could not serve: it is bumped by
+    /// writes that change no content — the D-363 §4 review reopen sets it — so a pending request would go
+    /// stale for a reason its author could not see.</para>
+    ///
+    /// <para>Not an EF concurrency token. It counts <i>content</i> changes for the approval workflow to
+    /// reason about; making it <c>IsConcurrencyToken</c> would additionally fail unrelated concurrent
+    /// writes across ~169 query sites, which is a different (and unrequested) change.</para></summary>
+    public int Version { get; set; } = 1;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? PublishedAt { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

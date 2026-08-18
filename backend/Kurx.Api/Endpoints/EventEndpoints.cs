@@ -46,6 +46,25 @@ public record UpdateEventBody(string? Title, string? Subtitle, string? Descripti
 public record TransitionEventBody(string Action, string? ReasonCode = null, string? Notes = null);
 public record CloneEventBody(string? Title);
 
+/// <summary>D-388 — a host's proposed edit to a LIVE event. The field set is <see cref="UpdateEventBody"/>'s
+/// exactly, because the values a host proposes are the values that will be applied: a separate shape would
+/// be a second definition of "an event edit" and would drift from the apply path the first time a field was
+/// added to one and not the other. <c>Reason</c> is the host's note to the reviewer.</summary>
+public record EventChangeRequestBody(string? Title, string? Subtitle, string? Description,
+    Guid? CategoryId, Guid? TypeId, Guid? AudienceLevelId, Guid? TemplateId,
+    Guid? VenueId, string? VenueName, string? VenueAddress, string? City, double? Lat, double? Lng,
+    DateTime? StartsAt, DateTime? EndsAt, string? Timezone,
+    int? Capacity, string? Visibility,
+    string? EventMode = null, string? OnlineUrl = null,
+    EventLegalInput? Legal = null, EventLocationInput? Location = null,
+    EventEligibilityInput? Eligibility = null, EventCommerceInput? Commerce = null,
+    string? Reason = null);
+
+/// <summary>D-388 — a reviewer's verdict on a change request. <c>ReasonCode</c> is an
+/// <see cref="Kurx.Domain.Enums.EventReviewReason"/> name and is required on a rejection; the same closed
+/// vocabulary the event review itself uses.</summary>
+public record ChangeRequestDecisionBody(bool Approve, string? ReasonCode = null, string? Notes = null);
+
 /// <summary>D-266 M5 — document fields are storage <b>keys</b> handed back from
 /// <c>POST …/authorization/presign</c>, never file bytes and never URLs.</summary>
 /// <summary>D-266 M8 — the wizard's in-progress form. <c>PayloadJson</c> is stored verbatim and never
@@ -104,6 +123,44 @@ public static class EventEndpoints
             var result = await svc.TransitionAsync(UserId(principal), eventId, IsAdmin(principal), IsReviewer(principal), body.Action, body.ReasonCode, body.Notes, ct);
             return result.Ok ? Results.Ok(ToEventJson(result.Value!)) : Fail(result.Error);
         }).WithValidation<TransitionEventBody>().Produces<EventDetailResponse>();
+
+        /*
+         * D-388 — change requests on a LIVE event.
+         *
+         * Org-scoped, on the same group as the event's own routes, for the reason REVIEW_LIFECYCLE.md
+         * already states about reviewer actions: there is no admin-side workflow route. A duplicate admin
+         * endpoint doing the same thing is how two workflows drift apart. A reviewer drives the decision
+         * leg here on any org's event, exactly as they drive `transition`.
+         */
+        events.MapPost("/{eventId:guid}/change-requests", async (Guid eventId, EventChangeRequestBody body,
+            ClaimsPrincipal principal, IEventService svc, CancellationToken ct) =>
+        {
+            var result = await svc.CreateChangeRequestAsync(UserId(principal), eventId, ToUpdateInput(body), body.Reason, ct);
+            return result.Ok ? Results.Ok(result.Value) : Fail(result.Error);
+        }).WithValidation<EventChangeRequestBody>().Produces<EventChangeRequestView>();
+
+        events.MapGet("/{eventId:guid}/change-requests", async (Guid eventId, ClaimsPrincipal principal,
+            IEventService svc, CancellationToken ct) =>
+        {
+            var result = await svc.ListChangeRequestsAsync(UserId(principal), eventId, IsAdmin(principal), IsReviewer(principal), ct);
+            return result.Ok ? Results.Ok(result.Value) : Fail(result.Error);
+        }).Produces<IReadOnlyList<EventChangeRequestView>>();
+
+        events.MapDelete("/{eventId:guid}/change-requests/{changeRequestId:guid}", async (Guid eventId,
+            Guid changeRequestId, ClaimsPrincipal principal, IEventService svc, CancellationToken ct) =>
+        {
+            var result = await svc.WithdrawChangeRequestAsync(UserId(principal), eventId, changeRequestId, ct);
+            return result.Ok ? Results.Ok(result.Value) : Fail(result.Error);
+        }).Produces<EventChangeRequestView>();
+
+        events.MapPost("/{eventId:guid}/change-requests/{changeRequestId:guid}/decision", async (Guid eventId,
+            Guid changeRequestId, ChangeRequestDecisionBody body, ClaimsPrincipal principal, IEventService svc,
+            CancellationToken ct) =>
+        {
+            var result = await svc.DecideChangeRequestAsync(UserId(principal), eventId, changeRequestId,
+                body.Approve, body.ReasonCode, body.Notes, IsAdmin(principal), IsReviewer(principal), ct);
+            return result.Ok ? Results.Ok(result.Value) : Fail(result.Error);
+        }).WithValidation<ChangeRequestDecisionBody>().Produces<EventChangeRequestView>();
 
         // D-101 (M7): duplicate an event as a fresh Draft — content is copied (ticket types with Sold reset,
         // form fields, media, speakers, sponsors, sessions, tags), runtime state never is.
@@ -389,6 +446,19 @@ public static class EventEndpoints
     private static bool IsReviewer(ClaimsPrincipal principal)
         => principal.HasClaim("kurx_admin", "true") || principal.HasClaim("platform_role", "VerificationReviewer");
 
+    /// <summary>D-388 — the proposal body onto the shared update input. Positional, following
+    /// <c>UpdateEventBody</c>'s own mapping directly above; the fields absent from
+    /// <see cref="EventChangeRequestBody"/> (tags, language, contact, website, socials, banner, featured,
+    /// listed-standalone, the content and schedule groups) are the OPERATIONAL ones a host edits directly
+    /// on a live event, so a proposal never carries them.</summary>
+    private static UpdateEventInput ToUpdateInput(EventChangeRequestBody b) => new(
+        b.Title, b.Subtitle, b.Description, b.CategoryId, b.TypeId, b.AudienceLevelId, b.TemplateId,
+        null, b.VenueId, b.VenueName, b.VenueAddress, b.City, b.Lat, b.Lng,
+        b.StartsAt, b.EndsAt, b.Timezone, b.Capacity, b.Visibility,
+        null, null, null, null, null, null, null,
+        b.EventMode, b.OnlineUrl, null,
+        null, b.Legal, null, b.Location, b.Eligibility, b.Commerce);
+
     private static IResult Fail(string? error) => error switch
     {
         // "reviewer_required" is an authorization outcome, not a malformed request: the caller may manage
@@ -410,6 +480,16 @@ public static class EventEndpoints
         // lock above. A 400 would tell a client to fix its payload, and there is nothing in the payload
         // to fix.
         "event_authorization_required" or "representation_required"
+            => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
+        // D-388. `cannot_review_own_request` and `requester_no_longer_authorized` are authorization
+        // outcomes; the rest are well-formed requests the state forbids, which is the same 409 shape as
+        // the edit lock above. `change_request_required` in particular must NOT be a 400: the payload is
+        // perfectly valid, and telling a client to fix it would send them looking for a fault that is not
+        // there. The route they want is POST .../change-requests.
+        "cannot_review_own_request" or "requester_no_longer_authorized"
+            => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
+        "change_request_required" or "not_live_protected" or "change_request_decided"
+            or "version_conflict" or "no_changes"
             => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };

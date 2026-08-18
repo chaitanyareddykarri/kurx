@@ -45,7 +45,13 @@ public sealed record AdminEventResponse(
     int CheckedIn,
     int RegistrationsCount,
     long RevenuePaise,
-    string Currency);
+    string Currency,
+    /// <summary>D-381 — the user who owns the event. Additive: a client that predates it binds exactly as
+    /// before.</summary>
+    Guid CreatorId = default,
+    string? CreatorName = null,
+    /// <summary>The represented organization is a legacy self-representation row (D-268/D-379).</summary>
+    bool OrgIsPersonal = false);
 
 /// <summary>Wire shape of <see cref="BlacklistEntryView"/> as <c>ToJson</c> has always emitted it.</summary>
 public sealed record BlacklistEntryResponse(

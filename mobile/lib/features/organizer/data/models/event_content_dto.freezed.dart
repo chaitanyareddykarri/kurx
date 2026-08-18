@@ -2803,3 +2803,517 @@ abstract class _MembershipClaimDto implements MembershipClaimDto {
   _$$MembershipClaimDtoImplCopyWith<_$MembershipClaimDtoImpl> get copyWith =>
       throw _privateConstructorUsedError;
 }
+
+EventAuthorizationDto _$EventAuthorizationDtoFromJson(
+  Map<String, dynamic> json,
+) {
+  return _EventAuthorizationDto.fromJson(json);
+}
+
+/// @nodoc
+mixin _$EventAuthorizationDto {
+  @JsonKey(name: 'event_id')
+  String get eventId => throw _privateConstructorUsedError;
+  @JsonKey(name: 'head_name')
+  String get headName => throw _privateConstructorUsedError;
+  @JsonKey(name: 'head_designation')
+  String get headDesignation => throw _privateConstructorUsedError;
+  @JsonKey(name: 'official_email')
+  String get officialEmail => throw _privateConstructorUsedError;
+  @JsonKey(name: 'official_phone')
+  String? get officialPhone => throw _privateConstructorUsedError;
+  @JsonKey(name: 'representative_role')
+  String get representativeRole => throw _privateConstructorUsedError;
+  @JsonKey(name: 'representative_role_other')
+  String? get representativeRoleOther => throw _privateConstructorUsedError;
+  @JsonKey(name: 'representative_username')
+  String? get representativeUsername => throw _privateConstructorUsedError;
+  @JsonKey(name: 'reviewer_name')
+  String? get reviewerName => throw _privateConstructorUsedError;
+
+  /// A short-lived presigned URL, never a storage key.
+  @JsonKey(name: 'letterhead_url')
+  String? get letterheadUrl => throw _privateConstructorUsedError;
+
+  /// `Submitted` / `Approved` / `Rejected` / `ChangesRequested`.
+  String get status => throw _privateConstructorUsedError;
+  @JsonKey(name: 'reason_code')
+  String? get reasonCode => throw _privateConstructorUsedError;
+  String? get notes => throw _privateConstructorUsedError;
+  @JsonKey(name: 'updated_at')
+  DateTime? get updatedAt => throw _privateConstructorUsedError;
+
+  /// Serializes this EventAuthorizationDto to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of EventAuthorizationDto
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $EventAuthorizationDtoCopyWith<EventAuthorizationDto> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $EventAuthorizationDtoCopyWith<$Res> {
+  factory $EventAuthorizationDtoCopyWith(
+    EventAuthorizationDto value,
+    $Res Function(EventAuthorizationDto) then,
+  ) = _$EventAuthorizationDtoCopyWithImpl<$Res, EventAuthorizationDto>;
+  @useResult
+  $Res call({
+    @JsonKey(name: 'event_id') String eventId,
+    @JsonKey(name: 'head_name') String headName,
+    @JsonKey(name: 'head_designation') String headDesignation,
+    @JsonKey(name: 'official_email') String officialEmail,
+    @JsonKey(name: 'official_phone') String? officialPhone,
+    @JsonKey(name: 'representative_role') String representativeRole,
+    @JsonKey(name: 'representative_role_other') String? representativeRoleOther,
+    @JsonKey(name: 'representative_username') String? representativeUsername,
+    @JsonKey(name: 'reviewer_name') String? reviewerName,
+    @JsonKey(name: 'letterhead_url') String? letterheadUrl,
+    String status,
+    @JsonKey(name: 'reason_code') String? reasonCode,
+    String? notes,
+    @JsonKey(name: 'updated_at') DateTime? updatedAt,
+  });
+}
+
+/// @nodoc
+class _$EventAuthorizationDtoCopyWithImpl<
+  $Res,
+  $Val extends EventAuthorizationDto
+>
+    implements $EventAuthorizationDtoCopyWith<$Res> {
+  _$EventAuthorizationDtoCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of EventAuthorizationDto
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? eventId = null,
+    Object? headName = null,
+    Object? headDesignation = null,
+    Object? officialEmail = null,
+    Object? officialPhone = freezed,
+    Object? representativeRole = null,
+    Object? representativeRoleOther = freezed,
+    Object? representativeUsername = freezed,
+    Object? reviewerName = freezed,
+    Object? letterheadUrl = freezed,
+    Object? status = null,
+    Object? reasonCode = freezed,
+    Object? notes = freezed,
+    Object? updatedAt = freezed,
+  }) {
+    return _then(
+      _value.copyWith(
+            eventId: null == eventId
+                ? _value.eventId
+                : eventId // ignore: cast_nullable_to_non_nullable
+                      as String,
+            headName: null == headName
+                ? _value.headName
+                : headName // ignore: cast_nullable_to_non_nullable
+                      as String,
+            headDesignation: null == headDesignation
+                ? _value.headDesignation
+                : headDesignation // ignore: cast_nullable_to_non_nullable
+                      as String,
+            officialEmail: null == officialEmail
+                ? _value.officialEmail
+                : officialEmail // ignore: cast_nullable_to_non_nullable
+                      as String,
+            officialPhone: freezed == officialPhone
+                ? _value.officialPhone
+                : officialPhone // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            representativeRole: null == representativeRole
+                ? _value.representativeRole
+                : representativeRole // ignore: cast_nullable_to_non_nullable
+                      as String,
+            representativeRoleOther: freezed == representativeRoleOther
+                ? _value.representativeRoleOther
+                : representativeRoleOther // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            representativeUsername: freezed == representativeUsername
+                ? _value.representativeUsername
+                : representativeUsername // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            reviewerName: freezed == reviewerName
+                ? _value.reviewerName
+                : reviewerName // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            letterheadUrl: freezed == letterheadUrl
+                ? _value.letterheadUrl
+                : letterheadUrl // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            status: null == status
+                ? _value.status
+                : status // ignore: cast_nullable_to_non_nullable
+                      as String,
+            reasonCode: freezed == reasonCode
+                ? _value.reasonCode
+                : reasonCode // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            notes: freezed == notes
+                ? _value.notes
+                : notes // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            updatedAt: freezed == updatedAt
+                ? _value.updatedAt
+                : updatedAt // ignore: cast_nullable_to_non_nullable
+                      as DateTime?,
+          )
+          as $Val,
+    );
+  }
+}
+
+/// @nodoc
+abstract class _$$EventAuthorizationDtoImplCopyWith<$Res>
+    implements $EventAuthorizationDtoCopyWith<$Res> {
+  factory _$$EventAuthorizationDtoImplCopyWith(
+    _$EventAuthorizationDtoImpl value,
+    $Res Function(_$EventAuthorizationDtoImpl) then,
+  ) = __$$EventAuthorizationDtoImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call({
+    @JsonKey(name: 'event_id') String eventId,
+    @JsonKey(name: 'head_name') String headName,
+    @JsonKey(name: 'head_designation') String headDesignation,
+    @JsonKey(name: 'official_email') String officialEmail,
+    @JsonKey(name: 'official_phone') String? officialPhone,
+    @JsonKey(name: 'representative_role') String representativeRole,
+    @JsonKey(name: 'representative_role_other') String? representativeRoleOther,
+    @JsonKey(name: 'representative_username') String? representativeUsername,
+    @JsonKey(name: 'reviewer_name') String? reviewerName,
+    @JsonKey(name: 'letterhead_url') String? letterheadUrl,
+    String status,
+    @JsonKey(name: 'reason_code') String? reasonCode,
+    String? notes,
+    @JsonKey(name: 'updated_at') DateTime? updatedAt,
+  });
+}
+
+/// @nodoc
+class __$$EventAuthorizationDtoImplCopyWithImpl<$Res>
+    extends
+        _$EventAuthorizationDtoCopyWithImpl<$Res, _$EventAuthorizationDtoImpl>
+    implements _$$EventAuthorizationDtoImplCopyWith<$Res> {
+  __$$EventAuthorizationDtoImplCopyWithImpl(
+    _$EventAuthorizationDtoImpl _value,
+    $Res Function(_$EventAuthorizationDtoImpl) _then,
+  ) : super(_value, _then);
+
+  /// Create a copy of EventAuthorizationDto
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? eventId = null,
+    Object? headName = null,
+    Object? headDesignation = null,
+    Object? officialEmail = null,
+    Object? officialPhone = freezed,
+    Object? representativeRole = null,
+    Object? representativeRoleOther = freezed,
+    Object? representativeUsername = freezed,
+    Object? reviewerName = freezed,
+    Object? letterheadUrl = freezed,
+    Object? status = null,
+    Object? reasonCode = freezed,
+    Object? notes = freezed,
+    Object? updatedAt = freezed,
+  }) {
+    return _then(
+      _$EventAuthorizationDtoImpl(
+        eventId: null == eventId
+            ? _value.eventId
+            : eventId // ignore: cast_nullable_to_non_nullable
+                  as String,
+        headName: null == headName
+            ? _value.headName
+            : headName // ignore: cast_nullable_to_non_nullable
+                  as String,
+        headDesignation: null == headDesignation
+            ? _value.headDesignation
+            : headDesignation // ignore: cast_nullable_to_non_nullable
+                  as String,
+        officialEmail: null == officialEmail
+            ? _value.officialEmail
+            : officialEmail // ignore: cast_nullable_to_non_nullable
+                  as String,
+        officialPhone: freezed == officialPhone
+            ? _value.officialPhone
+            : officialPhone // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        representativeRole: null == representativeRole
+            ? _value.representativeRole
+            : representativeRole // ignore: cast_nullable_to_non_nullable
+                  as String,
+        representativeRoleOther: freezed == representativeRoleOther
+            ? _value.representativeRoleOther
+            : representativeRoleOther // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        representativeUsername: freezed == representativeUsername
+            ? _value.representativeUsername
+            : representativeUsername // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        reviewerName: freezed == reviewerName
+            ? _value.reviewerName
+            : reviewerName // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        letterheadUrl: freezed == letterheadUrl
+            ? _value.letterheadUrl
+            : letterheadUrl // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        status: null == status
+            ? _value.status
+            : status // ignore: cast_nullable_to_non_nullable
+                  as String,
+        reasonCode: freezed == reasonCode
+            ? _value.reasonCode
+            : reasonCode // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        notes: freezed == notes
+            ? _value.notes
+            : notes // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        updatedAt: freezed == updatedAt
+            ? _value.updatedAt
+            : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as DateTime?,
+      ),
+    );
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$EventAuthorizationDtoImpl implements _EventAuthorizationDto {
+  const _$EventAuthorizationDtoImpl({
+    @JsonKey(name: 'event_id') required this.eventId,
+    @JsonKey(name: 'head_name') this.headName = '',
+    @JsonKey(name: 'head_designation') this.headDesignation = '',
+    @JsonKey(name: 'official_email') this.officialEmail = '',
+    @JsonKey(name: 'official_phone') this.officialPhone,
+    @JsonKey(name: 'representative_role') this.representativeRole = '',
+    @JsonKey(name: 'representative_role_other') this.representativeRoleOther,
+    @JsonKey(name: 'representative_username') this.representativeUsername,
+    @JsonKey(name: 'reviewer_name') this.reviewerName,
+    @JsonKey(name: 'letterhead_url') this.letterheadUrl,
+    this.status = 'Submitted',
+    @JsonKey(name: 'reason_code') this.reasonCode,
+    this.notes,
+    @JsonKey(name: 'updated_at') this.updatedAt,
+  });
+
+  factory _$EventAuthorizationDtoImpl.fromJson(Map<String, dynamic> json) =>
+      _$$EventAuthorizationDtoImplFromJson(json);
+
+  @override
+  @JsonKey(name: 'event_id')
+  final String eventId;
+  @override
+  @JsonKey(name: 'head_name')
+  final String headName;
+  @override
+  @JsonKey(name: 'head_designation')
+  final String headDesignation;
+  @override
+  @JsonKey(name: 'official_email')
+  final String officialEmail;
+  @override
+  @JsonKey(name: 'official_phone')
+  final String? officialPhone;
+  @override
+  @JsonKey(name: 'representative_role')
+  final String representativeRole;
+  @override
+  @JsonKey(name: 'representative_role_other')
+  final String? representativeRoleOther;
+  @override
+  @JsonKey(name: 'representative_username')
+  final String? representativeUsername;
+  @override
+  @JsonKey(name: 'reviewer_name')
+  final String? reviewerName;
+
+  /// A short-lived presigned URL, never a storage key.
+  @override
+  @JsonKey(name: 'letterhead_url')
+  final String? letterheadUrl;
+
+  /// `Submitted` / `Approved` / `Rejected` / `ChangesRequested`.
+  @override
+  @JsonKey()
+  final String status;
+  @override
+  @JsonKey(name: 'reason_code')
+  final String? reasonCode;
+  @override
+  final String? notes;
+  @override
+  @JsonKey(name: 'updated_at')
+  final DateTime? updatedAt;
+
+  @override
+  String toString() {
+    return 'EventAuthorizationDto(eventId: $eventId, headName: $headName, headDesignation: $headDesignation, officialEmail: $officialEmail, officialPhone: $officialPhone, representativeRole: $representativeRole, representativeRoleOther: $representativeRoleOther, representativeUsername: $representativeUsername, reviewerName: $reviewerName, letterheadUrl: $letterheadUrl, status: $status, reasonCode: $reasonCode, notes: $notes, updatedAt: $updatedAt)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$EventAuthorizationDtoImpl &&
+            (identical(other.eventId, eventId) || other.eventId == eventId) &&
+            (identical(other.headName, headName) ||
+                other.headName == headName) &&
+            (identical(other.headDesignation, headDesignation) ||
+                other.headDesignation == headDesignation) &&
+            (identical(other.officialEmail, officialEmail) ||
+                other.officialEmail == officialEmail) &&
+            (identical(other.officialPhone, officialPhone) ||
+                other.officialPhone == officialPhone) &&
+            (identical(other.representativeRole, representativeRole) ||
+                other.representativeRole == representativeRole) &&
+            (identical(
+                  other.representativeRoleOther,
+                  representativeRoleOther,
+                ) ||
+                other.representativeRoleOther == representativeRoleOther) &&
+            (identical(other.representativeUsername, representativeUsername) ||
+                other.representativeUsername == representativeUsername) &&
+            (identical(other.reviewerName, reviewerName) ||
+                other.reviewerName == reviewerName) &&
+            (identical(other.letterheadUrl, letterheadUrl) ||
+                other.letterheadUrl == letterheadUrl) &&
+            (identical(other.status, status) || other.status == status) &&
+            (identical(other.reasonCode, reasonCode) ||
+                other.reasonCode == reasonCode) &&
+            (identical(other.notes, notes) || other.notes == notes) &&
+            (identical(other.updatedAt, updatedAt) ||
+                other.updatedAt == updatedAt));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+    runtimeType,
+    eventId,
+    headName,
+    headDesignation,
+    officialEmail,
+    officialPhone,
+    representativeRole,
+    representativeRoleOther,
+    representativeUsername,
+    reviewerName,
+    letterheadUrl,
+    status,
+    reasonCode,
+    notes,
+    updatedAt,
+  );
+
+  /// Create a copy of EventAuthorizationDto
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$EventAuthorizationDtoImplCopyWith<_$EventAuthorizationDtoImpl>
+  get copyWith =>
+      __$$EventAuthorizationDtoImplCopyWithImpl<_$EventAuthorizationDtoImpl>(
+        this,
+        _$identity,
+      );
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$EventAuthorizationDtoImplToJson(this);
+  }
+}
+
+abstract class _EventAuthorizationDto implements EventAuthorizationDto {
+  const factory _EventAuthorizationDto({
+    @JsonKey(name: 'event_id') required final String eventId,
+    @JsonKey(name: 'head_name') final String headName,
+    @JsonKey(name: 'head_designation') final String headDesignation,
+    @JsonKey(name: 'official_email') final String officialEmail,
+    @JsonKey(name: 'official_phone') final String? officialPhone,
+    @JsonKey(name: 'representative_role') final String representativeRole,
+    @JsonKey(name: 'representative_role_other')
+    final String? representativeRoleOther,
+    @JsonKey(name: 'representative_username')
+    final String? representativeUsername,
+    @JsonKey(name: 'reviewer_name') final String? reviewerName,
+    @JsonKey(name: 'letterhead_url') final String? letterheadUrl,
+    final String status,
+    @JsonKey(name: 'reason_code') final String? reasonCode,
+    final String? notes,
+    @JsonKey(name: 'updated_at') final DateTime? updatedAt,
+  }) = _$EventAuthorizationDtoImpl;
+
+  factory _EventAuthorizationDto.fromJson(Map<String, dynamic> json) =
+      _$EventAuthorizationDtoImpl.fromJson;
+
+  @override
+  @JsonKey(name: 'event_id')
+  String get eventId;
+  @override
+  @JsonKey(name: 'head_name')
+  String get headName;
+  @override
+  @JsonKey(name: 'head_designation')
+  String get headDesignation;
+  @override
+  @JsonKey(name: 'official_email')
+  String get officialEmail;
+  @override
+  @JsonKey(name: 'official_phone')
+  String? get officialPhone;
+  @override
+  @JsonKey(name: 'representative_role')
+  String get representativeRole;
+  @override
+  @JsonKey(name: 'representative_role_other')
+  String? get representativeRoleOther;
+  @override
+  @JsonKey(name: 'representative_username')
+  String? get representativeUsername;
+  @override
+  @JsonKey(name: 'reviewer_name')
+  String? get reviewerName;
+
+  /// A short-lived presigned URL, never a storage key.
+  @override
+  @JsonKey(name: 'letterhead_url')
+  String? get letterheadUrl;
+
+  /// `Submitted` / `Approved` / `Rejected` / `ChangesRequested`.
+  @override
+  String get status;
+  @override
+  @JsonKey(name: 'reason_code')
+  String? get reasonCode;
+  @override
+  String? get notes;
+  @override
+  @JsonKey(name: 'updated_at')
+  DateTime? get updatedAt;
+
+  /// Create a copy of EventAuthorizationDto
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$EventAuthorizationDtoImplCopyWith<_$EventAuthorizationDtoImpl>
+  get copyWith => throw _privateConstructorUsedError;
+}

@@ -147,6 +147,40 @@ export async function getIdCardTemplate(accessToken: string, eventId: string) {
   return fromWire(data);
 }
 
+/**
+ * The built-in placements for a size (D-385).
+ *
+ * `getIdCardTemplate` answers `fields: null` for an event whose design has never been saved. That means
+ * "the server will use its built-in layout" — it does **not** mean the card is empty. An editor that
+ * renders it as no fields shows a blank card the server would never print, and the first checkbox tick
+ * then sends a one-field layout that *replaces* the whole default. So the defaults are fetched and
+ * seeded rather than guessed.
+ */
+export async function getBadgeFieldDefaults(
+  accessToken: string,
+  eventId: string,
+  sizeKey: string,
+  kind: "attendee" | "staff"
+): Promise<BadgeField[]> {
+  const { data } = await api.get(`/v1/events/${eventId}/badges/template/defaults`, {
+    ...authHeaders(accessToken),
+    params: { size: sizeKey, kind }
+  });
+  return z.array(badgeFieldWireSchema).parse(data).map((f) => ({
+    key: f.key as BadgeFieldKey,
+    x: f.x,
+    y: f.y,
+    width: f.width,
+    height: f.height,
+    fontSizePt: f.font_size_pt,
+    color: f.color,
+    align: f.align,
+    weight: f.weight,
+    zOrder: f.z_order,
+    enabled: f.enabled
+  }));
+}
+
 export async function saveIdCardTemplate(accessToken: string, eventId: string, spec: IdCardTemplate) {
   // Sent camelCase — request binding is camelCase, only responses are rewritten.
   const { data } = await api.put(`/v1/events/${eventId}/badges/template`, spec, authHeaders(accessToken));
@@ -219,6 +253,49 @@ export async function downloadBadgeSheet(
 ): Promise<Blob> {
   const { data } = await api.post(`/v1/events/${eventId}/badges/sheet`, body, {
     ...authHeaders(accessToken),
+    responseType: "blob"
+  });
+  return data as Blob;
+}
+
+/**
+ * Revokes an issued badge (D-386).
+ *
+ * **Marks the card, does not close a door.** The verification lookup stops reporting it current, but an
+ * attendee's entry credential is their ticket and a staff member's is their assignment — stopping someone
+ * entering means voiding one of those. The UI says so at the point of the click, because the opposite
+ * assumption is the dangerous one.
+ */
+export async function revokeBadge(
+  accessToken: string,
+  eventId: string,
+  recipientUserId: string,
+  reason?: string
+) {
+  const { data } = await api.post(
+    `/v1/events/${eventId}/badges/${recipientUserId}/revoke`,
+    { reason: reason ?? null },
+    authHeaders(accessToken)
+  );
+  return issuedCardSchema.parse(data);
+}
+
+/**
+ * One person's badge as its own PDF (D-385).
+ *
+ * The route has existed since D-362 but nothing called it, so a reprint for the one person whose
+ * lanyard was lost meant regenerating the entire sheet. Blob rather than an href for the same reason as
+ * the sheet: the endpoint is authenticated and a navigation carries no bearer token.
+ */
+export async function downloadOneBadge(
+  accessToken: string,
+  eventId: string,
+  recipientUserId: string,
+  sizeKey: string
+): Promise<Blob> {
+  const { data } = await api.get(`/v1/events/${eventId}/badges/${recipientUserId}.pdf`, {
+    ...authHeaders(accessToken),
+    params: { size: sizeKey },
     responseType: "blob"
   });
   return data as Blob;

@@ -231,3 +231,43 @@ Map<String, dynamic> _$$MembershipClaimDtoImplToJson(
   'notes': instance.notes,
   'created_at': instance.createdAt?.toIso8601String(),
 };
+
+_$EventAuthorizationDtoImpl _$$EventAuthorizationDtoImplFromJson(
+  Map<String, dynamic> json,
+) => _$EventAuthorizationDtoImpl(
+  eventId: json['event_id'] as String,
+  headName: json['head_name'] as String? ?? '',
+  headDesignation: json['head_designation'] as String? ?? '',
+  officialEmail: json['official_email'] as String? ?? '',
+  officialPhone: json['official_phone'] as String?,
+  representativeRole: json['representative_role'] as String? ?? '',
+  representativeRoleOther: json['representative_role_other'] as String?,
+  representativeUsername: json['representative_username'] as String?,
+  reviewerName: json['reviewer_name'] as String?,
+  letterheadUrl: json['letterhead_url'] as String?,
+  status: json['status'] as String? ?? 'Submitted',
+  reasonCode: json['reason_code'] as String?,
+  notes: json['notes'] as String?,
+  updatedAt: json['updated_at'] == null
+      ? null
+      : DateTime.parse(json['updated_at'] as String),
+);
+
+Map<String, dynamic> _$$EventAuthorizationDtoImplToJson(
+  _$EventAuthorizationDtoImpl instance,
+) => <String, dynamic>{
+  'event_id': instance.eventId,
+  'head_name': instance.headName,
+  'head_designation': instance.headDesignation,
+  'official_email': instance.officialEmail,
+  'official_phone': instance.officialPhone,
+  'representative_role': instance.representativeRole,
+  'representative_role_other': instance.representativeRoleOther,
+  'representative_username': instance.representativeUsername,
+  'reviewer_name': instance.reviewerName,
+  'letterhead_url': instance.letterheadUrl,
+  'status': instance.status,
+  'reason_code': instance.reasonCode,
+  'notes': instance.notes,
+  'updated_at': instance.updatedAt?.toIso8601String(),
+};

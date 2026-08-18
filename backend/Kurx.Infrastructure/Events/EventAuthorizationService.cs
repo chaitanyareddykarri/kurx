@@ -38,6 +38,12 @@ public class EventAuthorizationService(
         if (EventStatusWorkflow.IsEditLocked(ev!.Status))
             return ServiceResult<EventAuthorizationView>.Fail("event_under_review");
 
+        // D-388 — the same reasoning one state further on. This letter is the evidence a reviewer approved
+        // the event's right to represent that organization; replacing it after the event is live would
+        // change what the approval was granted against, with nobody reading the new one.
+        if (EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status))
+            return ServiceResult<EventAuthorizationView>.Fail("change_request_required");
+
         var head = input.HeadName?.Trim();
         var designation = input.HeadDesignation?.Trim();
         var email = input.OfficialEmail?.Trim();

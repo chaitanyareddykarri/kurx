@@ -239,3 +239,12 @@ class EventContentActions {
 }
 
 final eventContentActionsProvider = Provider((ref) => EventContentActions(ref));
+
+/// D-382 — the event's own institutional authorization, or null when nothing is filed yet.
+///
+/// Read by the event's **Representing** screen, which is the single place the organiser app shows or
+/// collects representation. `autoDispose` for the same reason as every list here: a reviewer's verdict
+/// can land between two visits, and a cached "Submitted" would tell the organiser nothing has happened.
+final eventAuthorizationProvider =
+    FutureProvider.autoDispose.family<EventAuthorizationDto?, String>(
+        (ref, eventId) => ref.watch(eventContentSourceProvider).eventAuthorization(eventId));

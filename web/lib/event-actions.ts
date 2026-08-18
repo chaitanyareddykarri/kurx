@@ -247,10 +247,12 @@ export async function updateEventAction(orgId: string, eventId: string, _: unkno
 /// generic "something went wrong", so an unexpected refusal is still diagnosable.
 const TRANSITION_ERRORS: Record<string, string> = {
   // D-266 M5 — the two representation rules.
+  // D-382 — both refusals name the ONE surface that fixes them. "Add it under Authorization" pointed at
+  // a panel on Readiness that no longer exists; representation is entered on the Representing tab.
   event_authorization_required:
-    "This event represents an organization, so it needs that organization's signed authorization before it can go live. Add it under Authorization, then publish.",
+    "This event represents an organization, so it needs that organization's signed authorization before it can go live. File it on the event's Representing tab, then publish.",
   representation_required:
-    "This type of event has to be run on behalf of an organization. Choose who you're representing, then publish.",
+    "This type of event has to be run on behalf of an organization. See the event's Representing tab, then publish.",
   // The event moved between this page loading and the button being pressed — usually a reviewer acting on
   // it at the same moment. Refreshing shows what it is now; retrying blind would decide about a state that
   // no longer exists.

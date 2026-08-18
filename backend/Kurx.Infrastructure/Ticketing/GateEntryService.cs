@@ -17,23 +17,8 @@ public class GateEntryService(KurxDbContext db, TokenService tokens, IAudienceSe
         if (scanEvent is null)
             return new CheckInResult(false, false, "event_not_found", null, null);
 
-        // Authorization: caller must be an org member (any role) OR have an accepted
-        // EventAssignment for this specific event. Any org member can operate a gate;
-        // external assignees (Security, Registration Desk, Volunteer, etc.) may scan
-        // only for events they were explicitly assigned to and accepted.
-        var isOrgMember = await db.Memberships.AnyAsync(
-            m => m.OrgId == scanEvent.RepresentingOrgId && m.UserId == scannedByUserId, ct);
-
-        if (!isOrgMember)
-        {
-            var hasAcceptedAssignment = await db.EventAssignments.AnyAsync(
-                a => a.EventId == scanEventId
-                     && a.UserId == scannedByUserId
-                     && a.Status == AssignmentStatus.Accepted, ct);
-
-            if (!hasAcceptedAssignment)
-                return new CheckInResult(false, false, "forbidden", null, null);
-        }
+        if (!await MayOperateGateAsync(scannedByUserId, scanEvent, ct))
+            return new CheckInResult(false, false, "forbidden", null, null);
 
         var ticket = await db.Tickets.FirstOrDefaultAsync(t => t.Code == ticketCode, ct);
         if (ticket is null)
@@ -128,5 +113,94 @@ public class GateEntryService(KurxDbContext db, TokenService tokens, IAudienceSe
         catch { /* live dashboard tick only — the check-in itself already committed above */ }
 
         return new CheckInResult(true, false, null, null, null, eligibilityFlag);
+    }
+
+    /// <summary>Admits a staff member from the signed pass on their badge (D-385).</summary>
+    public async Task<StaffCheckInResult> ScanStaffAsync(
+        Guid scannedByUserId, Guid scanEventId, string pass, string? deviceInfo, CancellationToken ct = default)
+    {
+        var scanEvent = await db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == scanEventId, ct);
+        if (scanEvent is null) return new StaffCheckInResult(false, false, "event_not_found");
+
+        if (!await MayOperateGateAsync(scannedByUserId, scanEvent, ct))
+            return new StaffCheckInResult(false, false, "forbidden");
+
+        // The signature proves only that Kurx minted this pass. Everything that decides whether the door
+        // opens is asked below, live.
+        if (tokens.VerifyStaffPass(pass) is not { } assignmentId)
+            return new StaffCheckInResult(false, false, "invalid_pass");
+
+        var assignment = await db.EventAssignments.AsNoTracking()
+            .Where(a => a.Id == assignmentId)
+            .Join(db.Users.AsNoTracking(), a => a.UserId, u => u.Id, (a, u) => new
+            {
+                a.Id, a.EventId, a.Status, a.Role, a.CustomRole, u.Name, u.Username,
+            })
+            .FirstOrDefaultAsync(ct);
+
+        // A pass whose assignment has been deleted is indistinguishable from a forged one, and is told
+        // apart from a *revoked* one only in that there is nothing left to report.
+        if (assignment is null) return new StaffCheckInResult(false, false, "invalid_pass");
+
+        // A badge minted for another event must not open this door, however genuine its signature.
+        if (assignment.EventId != scanEventId)
+            return new StaffCheckInResult(false, false, "event_mismatch");
+
+        // Revocation lives on the assignment's own Status (D-362) and is read per scan (D-015): removing
+        // someone from the crew stops their already-printed badge working immediately.
+        if (assignment.Status != AssignmentStatus.Accepted)
+            return new StaffCheckInResult(false, false, "assignment_not_active");
+
+        var role = string.Equals(assignment.Role, "Custom", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(assignment.CustomRole)
+                ? assignment.CustomRole!
+                : assignment.Role;
+        var name = !string.IsNullOrWhiteSpace(assignment.Name) ? assignment.Name : assignment.Username ?? "";
+        var access = StaffAccess.LevelFor(role);
+
+        var already = await db.StaffGateEntries.AsNoTracking()
+            .Where(s => s.AssignmentId == assignmentId && s.EventId == scanEventId)
+            .Join(db.Users.AsNoTracking(), s => s.ScannedBy, u => u.Id, (s, u) => new { s.CreatedAt, u.Name })
+            .FirstOrDefaultAsync(ct);
+
+        // A staff member legitimately comes and goes all day, so a repeat scan is reported rather than
+        // refused — the marshal still sees who they are and what the badge authorises.
+        if (already is not null)
+            return new StaffCheckInResult(
+                false, true, null, name, role, access, already.CreatedAt, already.Name);
+
+        var now = DateTime.UtcNow;
+        db.StaffGateEntries.Add(new StaffGateEntry
+        {
+            AssignmentId = assignmentId,
+            EventId = scanEventId,
+            ScannedBy = scannedByUserId,
+            DeviceInfo = deviceInfo,
+            CreatedAt = now,
+        });
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorType = "user", ActorId = scannedByUserId,
+            Action = "gate.staff_scan", Entity = "event_assignments", EntityId = assignmentId,
+            DetailsJson = $"{{\"event_id\":\"{scanEventId}\"}}",
+        });
+
+        await db.SaveChangesAsync(ct);
+        return new StaffCheckInResult(true, false, null, name, role, access);
+    }
+
+    /// <summary>Who may work a gate: any member of the organization the event represents, or anyone
+    /// holding an accepted assignment on this specific event. Shared by both scan paths so a marshal who
+    /// can admit an attendee can admit a colleague, and neither path can drift from the other.</summary>
+    private async Task<bool> MayOperateGateAsync(Guid userId, Event scanEvent, CancellationToken ct)
+    {
+        if (await db.Memberships.AnyAsync(m => m.OrgId == scanEvent.RepresentingOrgId && m.UserId == userId, ct))
+            return true;
+
+        // External assignees (Security, Registration Desk, Volunteer, …) may scan only for the events they
+        // were explicitly assigned to and accepted.
+        return await db.EventAssignments.AnyAsync(
+            a => a.EventId == scanEvent.Id && a.UserId == userId && a.Status == AssignmentStatus.Accepted, ct);
     }
 }

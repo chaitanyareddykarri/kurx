@@ -58,7 +58,20 @@ function Submit({ label, tone }: { label: string; tone: "approve" | "reject" | "
  * to being represented by it — reviewed evidence — not who may act on the event. A reviewer approving here
  * is not approving the event; that is the separate review decision below it.
  */
-export function AuthorizationPanel({ eventId, authorization }: { eventId: string; authorization: EventAuthorization | null }) {
+export function AuthorizationPanel({ eventId, authorization, readOnly = false }: {
+  eventId: string;
+  authorization: EventAuthorization | null;
+  /**
+   * D-382 — render the evidence without the verdict buttons.
+   *
+   * The panel used to appear only once a reviewer had CLAIMED the event, which meant the queue showed
+   * an event's details and hid the one document the decision turns on: whether to pick an item up was
+   * decided blind, and a reviewer had to claim an event — taking it out of the queue and into their
+   * name — to find out whether its authorization was even filed. Reading is not deciding. Acting still
+   * requires the claim, which is what this flag preserves.
+   */
+  readOnly?: boolean;
+}) {
   const [state, formAction] = useFormState(reviewEventAuthorizationAction.bind(null, eventId), null);
   const [open, setOpen] = useState<string | null>(null);
   const toast = useToast();
@@ -158,21 +171,29 @@ export function AuthorizationPanel({ eventId, authorization }: { eventId: string
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <form action={formAction} className="inline">
-          <input type="hidden" name="decision" value="approve" />
-          <Submit label="Approve authorization" tone="approve" />
-        </form>
-        {(["reject", "request_changes"] as const).map((d) => (
-          <button key={d} type="button" onClick={() => setOpen(open === d ? null : d)}
-            className={`h-8 rounded-md border px-3 text-xs font-semibold ${
-              d === "reject" ? "border-danger/40 text-danger hover:bg-danger/10" : "border-border text-text hover:bg-elevated"}`}>
-            {d === "reject" ? "Reject" : "Request changes"}
-          </button>
-        ))}
-      </div>
+      {/* No verdict without the claim — the transition endpoints refuse it anyway, so offering the
+          buttons here would only produce a refusal the reviewer cannot act on. */}
+      {readOnly ? (
+        <p className="mt-3 text-[11px] text-muted">
+          Claim this event to approve, reject, or request changes to its authorization.
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <form action={formAction} className="inline">
+            <input type="hidden" name="decision" value="approve" />
+            <Submit label="Approve authorization" tone="approve" />
+          </form>
+          {(["reject", "request_changes"] as const).map((d) => (
+            <button key={d} type="button" onClick={() => setOpen(open === d ? null : d)}
+              className={`h-8 rounded-md border px-3 text-xs font-semibold ${
+                d === "reject" ? "border-danger/40 text-danger hover:bg-danger/10" : "border-border text-text hover:bg-elevated"}`}>
+              {d === "reject" ? "Reject" : "Request changes"}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {needsForm ? (
+      {needsForm && !readOnly ? (
         <form action={formAction} className="mt-2 space-y-2 rounded-md border border-border bg-surface p-3">
           <input type="hidden" name="decision" value={open!} />
           {open === "reject" ? (

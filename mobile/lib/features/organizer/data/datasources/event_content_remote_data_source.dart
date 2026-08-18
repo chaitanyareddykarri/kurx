@@ -293,6 +293,18 @@ class EventContentRemoteDataSource {
         endpoint: 'POST /v1/events/{eventId}/authorization/presign',
       );
 
+  /// What is on file for this event, or null when nothing has been filed yet — the endpoint answers
+  /// 204 for that, which is a state and not an error (D-382). Read by the event's Representing screen
+  /// so an organiser can see the verdict and the reviewer's note without opening the web app.
+  Future<EventAuthorizationDto?> eventAuthorization(String eventId) => guard(
+        () async {
+          final res = await _dio.get('/v1/events/$eventId/authorization');
+          if (res.statusCode == 204 || res.data == null) return null;
+          return EventAuthorizationDto.fromJson(_map(res.data));
+        },
+        endpoint: 'GET /v1/events/{eventId}/authorization',
+      );
+
   /// Files the institution's written consent. `letterheadDocumentKey` is the key a presigned PUT
   /// returned — document bytes never travel through the API.
   Future<void> submitAuthorization(String eventId, Map<String, dynamic> body) => guard(

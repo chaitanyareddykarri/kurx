@@ -12,7 +12,7 @@ import {
   disableCategory, enableCategory, archiveCategory, restoreCategory, setCategoryVisibility,
   duplicateCategory, reorderCategories, getTypeCapabilities, setTypeCapabilities,
   exportTaxonomy, previewImportTaxonomy, applyImportTaxonomy, type TaxonomyExportNode,
-  generateEventCertificates, revokeCertificate, broadcastNotification,
+  revokeCertificate, broadcastNotification,
   createStage, transitionStage, deleteStage, seedFromRegistered, removeStageParticipant,
   computeStageResults, publishStageResults, advanceStage,
   createSpeaker, updateSpeaker, deleteSpeaker, assignSpeakerToEvent, removeSpeakerFromEvent,
@@ -542,19 +542,9 @@ export async function applyImportTaxonomyAction(nodes: TaxonomyExportNode[]) {
   }
 }
 
-// ── Certificates (D-036/D-064) — bulk generate for an event, revoke one ──
-export async function generateCertificatesAction(eventId: string) {
-  const t = await token();
-  if (!t) return { error: "Session expired." };
-  try {
-    const generated = await generateEventCertificates(t, eventId);
-    revalidatePath("/certificates");
-    return { ok: true, generated };
-  } catch (err) {
-    return { error: apiErrorMessage(err) };
-  }
-}
-
+// ── Certificates (D-036/D-064) — revoke one ──
+// `generateCertificatesAction` was deleted with the endpoint it called, which the backend never had
+// (D-381 audit). No UI reached it.
 export async function revokeCertificateAction(certificateId: string, reason: string) {
   const t = await token();
   if (!t) return { error: "Session expired." };

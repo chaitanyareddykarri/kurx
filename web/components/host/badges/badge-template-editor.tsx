@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Field, Select, Spinner } from "@kurx/ui";
 import { BadgeCanvas, FIELD_LABELS } from "@/components/host/badges/badge-canvas";
 import {
-  BADGE_FIELD_KEYS, getIdCardTemplate, idCardAssetUrl, presignIdCardAsset, previewIdCardTemplate,
-  saveIdCardTemplate,
+  BADGE_FIELD_KEYS, getBadgeFieldDefaults, getIdCardTemplate, idCardAssetUrl, presignIdCardAsset,
+  previewIdCardTemplate, saveIdCardTemplate,
   type BadgeField, type BadgeFieldKey, type BadgeSize, type IdCardTemplate
 } from "@/lib/badge-api";
 
@@ -37,6 +37,10 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const previousPreviewUrl = useRef<string | null>(null);
+  // The defaults last seeded onto the canvas, and the size they were for. Changing the card size
+  // re-seeds only while the layout is still untouched: once an organiser has moved something, their
+  // placements are theirs, and percentages carry across sizes by design.
+  const defaultSeed = useRef<{ sizeKey: string; json: string } | null>(null);
   const drag = useRef<{ key: BadgeFieldKey; mode: "move" | "resize"; startX: number; startY: number; field: BadgeField } | null>(null);
 
   const size = sizes.find((s) => s.key === spec?.sizeKey) ?? sizes[0];
@@ -47,10 +51,15 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
     getIdCardTemplate(accessToken, eventId)
       .then(async (loaded) => {
         setSpec(loaded);
-        // A design with no saved fields means "the built-in layout". Previewing once tells us nothing
-        // about where things are, so the server's defaults are fetched by saving nothing and reading the
-        // placements back on first edit — until then the canvas shows what the server would render.
-        setFields(loaded.fields ?? []);
+        // A saved design with no fields means "the built-in layout", so the canvas seeds from the
+        // server's own defaults (D-385). Rendering it as an empty card would show a badge the server
+        // would never print, leave every checkbox unticked against a card that has all of them, and turn
+        // the first tick into a one-field layout that replaces the whole default — silently dropping the
+        // QR, which is the credential.
+        const seeded = loaded.fields
+          ?? await getBadgeFieldDefaults(accessToken, eventId, loaded.sizeKey, "staff").catch(() => []);
+        setFields(seeded);
+        defaultSeed.current = { sizeKey: loaded.sizeKey, json: JSON.stringify(seeded) };
         if (loaded.backgroundKey) {
           setArtworkUrl(await idCardAssetUrl(accessToken, eventId, loaded.backgroundKey).catch(() => null));
         }
@@ -132,6 +141,21 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
 
   const patchField = (key: BadgeFieldKey, patch: Partial<BadgeField>) =>
     setFields((current) => current.map((f) => (f.key === key ? { ...f, ...patch } : f)));
+
+  /**
+   * CR80 is the one landscape size and has its own arrangement, so switching to or from it re-seeds the
+   * canvas from that size's built-in layout — but only while the organiser has not moved anything. Their
+   * own placements are never overwritten by a size change.
+   */
+  async function changeSize(sizeKey: string) {
+    set({ sizeKey });
+    const untouched = defaultSeed.current !== null && defaultSeed.current.json === JSON.stringify(fields);
+    if (!untouched) return;
+    const seeded = await getBadgeFieldDefaults(accessToken, eventId, sizeKey, "staff").catch(() => null);
+    if (!seeded) return;
+    setFields(seeded);
+    defaultSeed.current = { sizeKey, json: JSON.stringify(seeded) };
+  }
 
   function toggleField(key: BadgeFieldKey, on: boolean) {
     setFields((current) => {
@@ -222,8 +246,8 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
             </div>
             {fields.length === 0 && (
               <p className="max-w-[300px] text-xs text-muted">
-                Using the built-in layout. Tick a field to start placing your own — the card keeps printing
-                correctly until you do.
+                The built-in layout couldn&apos;t be loaded, so the card is showing empty. It still prints
+                correctly — the server falls back to its own layout. Reload to try again.
               </p>
             )}
           </div>
@@ -254,7 +278,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
           {/* Controls */}
           <div className="space-y-5">
             <Field label="Card size">
-              <Select value={spec.sizeKey} onChange={(e) => set({ sizeKey: e.target.value })}>
+              <Select value={spec.sizeKey} onChange={(e) => void changeSize(e.target.value)}>
                 {sizes.map((s) => (
                   <option key={s.key} value={s.key}>{s.label}</option>
                 ))}

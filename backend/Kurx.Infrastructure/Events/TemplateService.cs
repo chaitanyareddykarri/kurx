@@ -108,7 +108,8 @@ public class TemplateService(KurxDbContext db, IEventAuthority authority, ICapab
         var authError = await AuthorizeOwnedAsync(userId, isAdmin, t, ct);
         if (authError is not null) return ServiceResult<TemplateView>.Fail(authError);
 
-        // Fail if a Draft already exists for this family — one editable head at a time.
+        // Fail if a Draft already exists for this family — one editable head at a time. This read is the fast path
+        // only; the partial unique index on RootTemplateId WHERE State='Draft' is what actually holds it (D-387).
         if (await db.EventTemplates.AnyAsync(x => x.RootTemplateId == t.RootTemplateId && x.State == TemplateState.Draft && x.DeletedAt == null, ct))
             return ServiceResult<TemplateView>.Fail("draft_exists");
 
@@ -132,8 +133,9 @@ public class TemplateService(KurxDbContext db, IEventAuthority authority, ICapab
         };
         db.EventTemplates.Add(draft);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)   // a concurrent version-creation won the unique (RootTemplateId, Version) index —
-        {                           // the DB constraint stays authoritative; report the same conflict, no 500.
+        catch (DbUpdateException)   // a concurrent version-creation won: same version → the (RootTemplateId, Version)
+        {                           // index, different version → the one-Draft-per-family index (D-387). Either way a
+                                    // clean conflict, never a 500.
             return ServiceResult<TemplateView>.Fail("draft_exists");
         }
         return ServiceResult<TemplateView>.Success(ToView(draft));

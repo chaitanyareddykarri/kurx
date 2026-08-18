@@ -32,6 +32,10 @@ export default async function EventWorkspaceLayout({
           // D-266 M8 — publish blockers, institutional authorization and the capability-driven module
           // list. Gated on canEdit because everything on it is an organiser action.
           { key: "readiness", label: "Readiness", href: `${base}/readiness` },
+          // There is no Representing tab. Representation is answered once, inside Create Event, and the
+          // only thing that ever re-opens it is a reviewer asking for changes — which is an edit of the
+          // event, so it lives on Details (Edit Event) rather than as a standing workspace section.
+          // A second form here is what made organisers believe creation had not finished.
           { key: "details", label: "Details", href: `${base}/details` },
           { key: "schedule", label: "Schedule", href: `${base}/schedule` },
           { key: "people", label: "Speakers & Sponsors", href: `${base}/people` },

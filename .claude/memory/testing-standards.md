@@ -22,8 +22,54 @@ MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
-**Current baseline: 2379 tests — 2378 passing, 1 skipped, 0 failing (2026-08-17).** Measured in the
-SDK container with clamd up. **Zero is the standard now — a red test is a defect, not "the environment."**
+**Current baseline: 2440 tests — 2439 passing, 1 skipped, 0 failing (2026-08-18).** Measured in the
+SDK container with clamd up, 23m27s, on a tree carrying the in-flight D-378→D-386 work. **Zero is the
+standard — a red test is a defect, not "the environment."**
+
+> All four suites measured in one sitting on 2026-08-18, one at a time on an otherwise idle box:
+> backend **2439 pass / 1 skip / 0 fail** (2440), web **953 pass / 1 skip / 0 fail** (62 files),
+> admin **45 pass** (7 files), mobile **526 pass** with `flutter analyze --no-fatal-infos` clean.
+>
+> The backend number moved 2379 → 2394 (D-378 + D-379) → 2415 → **2440**; every step is concurrent
+> badge/gate/representation work, not new coverage of the baseline itself. The single skip is
+> `RefundLedgerTests.Concurrent_refunds_of_the_same_order_reverse_it_only_once`.
+>
+> That run found exactly one defect, and it was a real one, not a flake:
+> `TemplateActivationTests.Parallel_version_creation_yields_one_winner_and_no_500` returned two `200 OK`s.
+> **A concurrency test that has passed for weeks is not proof the invariant holds** — this one needs the
+> two racing reads to straddle a commit. Fixed by a partial unique index (D-387), not by a lock.
+>
+> Before trusting a suite number, spend the two minutes on hygiene: leftover `kurx_test_*` databases from
+> killed runs accumulate (135 of them on 2026-08-18) and stale `bin`/`obj` outlive a branch switch. Drop
+> the databases and delete the build outputs, then measure.
+
+**A starved box fails vitest workers, not assertions.** The web suite reported "8 failed suites" with
+**0 failed tests** — every one was `[vitest-worker]: Timeout calling "snapshotSaved"`, an RPC timeout,
+while a backend suite ran beside it and free RAM sat at ~1.1 GB. `transform` took 1807s against a normal
+~60s. Re-run alone before believing it: the same suite then gave 61/61 files, 947 passing. Read the
+*test* count, not the *file* count, when deciding whether something actually broke.
+
+**That starvation is now bounded, not just diagnosed (D-382).** `web/vitest.config.mts` derives
+`poolOptions.forks.maxForks` from **free memory as well as cores** — roughly one fork per 700 MB, the
+measured peak RSS of a jsdom worker in this suite, never more than the core-derived default and never
+fewer than 2. birpc's 60-second RPC ceiling is not configurable from userland (Vitest constructs it
+without a `timeout`, checked in `resolveConfig`), so the only lever is not starting more forks than the
+box can feed. On CI, with several GB free, it resolves to the same number as before and changes nothing.
+Two traps if you touch it: **`minForks` must be set alongside `maxForks`** — Vitest defaults the minimum
+to the core count independently, so capping only the maximum makes Tinypool refuse to start and the run
+collects *zero* tests — and `freemem()` is read once at config load, so a box that fills up mid-run is
+still contended.
+
+**A test that clicks an anchor must stop the navigation.** jsdom implements neither navigation nor
+`<a download>`, so a click on a real `<a href>` schedules one and reports
+`Not implemented: navigation (except hash changes)` **from a timer, after the test that caused it has
+passed**. Vitest counts that as an unhandled error, attributes it to no test, and exits the runner
+**non-zero on a suite where every assertion passed** — which is exactly how a green suite reads as a
+failure. Four sources were fixed under D-382: three `next/link` stubs that rendered a bare `<a href>`
+(the real `Link` intercepts the click and routes client-side, so the stub was *less* faithful than it
+looked) and `badge-designer`'s download path, where the component clicks a generated
+`<a download href="blob:…">`. Stub `HTMLAnchorElement.prototype.click` as a **spy**, not a no-op, so the
+download stays observable, and restore it in `afterEach` so it cannot leak through the shared prototype.
 
 **Do not run two suites at once on this box.** `web/test/event-creation.test.tsx` drives an
 eleven-step wizard through `userEvent`, and 15 of its cases failed while the admin suite ran beside it —
@@ -210,8 +256,8 @@ Every surface has a suite. Measured 2026-08-09:
 
 | Surface | Command | Files | Cases | Runs in CI? |
 |---|---|---|---|---|
-| `web` | `npm test` (vitest) | 38 | 486 (1 skipped) | ✅ |
-| `admin` | `npm test` (vitest) | 3 | 27 | ✅ |
+| `web` | `npm test` (vitest) | 62 | 954 (1 skipped) | ✅ |
+| `admin` | `npm test` (vitest) | 6 | 41 | ✅ |
 | `mobile` | `flutter test` | 58 | 410 | ✅ |
 | `scripts` | `node --test scripts/contract-check.test.mjs` | 1 | 1 | ❌ CI runs the tool, not its test |
 
@@ -288,3 +334,41 @@ a host `dotnet build` while a container run is the thing you intend to trust —
 Never run two suites at once: every class clones the **shared** `kurx_test_template`, so a second run
 racing the first corrupts both. Killing a run leaves `kurx_test_<guid>` databases behind; drop them before
 the next run.
+
+## A red suite in a shared checkout: read the ERROR before you read the test name (D-381, 2026-08-18)
+
+A full run came back with **291 `[FAIL]`** across classes that had nothing to do with each other —
+authorization, submission readiness, badges, refunds. That pattern looks like "my change broke
+everything". It was one line, and it was nobody's test:
+
+```
+'Microsoft.EntityFrameworkCore.Migrations.PendingModelChangesWarning':
+  The model for context 'KurxDbContext' has pending changes.
+    at Program.<Main>$(...) in Kurx.Api/Program.cs:line 422
+```
+
+A concurrent session had added an entity + `DbSet` to the shared working tree **without generating the
+migration**. `Program.cs` migrates at startup and every integration test boots through
+`WebApplicationFactory<Program>`, so every app-booting class died at construction, before one assertion
+ran. Grep proved it in a second: `291` failures, `340` occurrences of that warning, **`0` failures with
+any other cause**.
+
+**The rule: count the distinct root causes before you count the failures.** One `grep -c` on the error
+text separates "I broke something" from "the tree is unbuildable". 291 failures with one cause is not
+291 problems.
+
+**Verifying your own work while the tree is broken.** Do not `git stash` (see the concurrent-workstreams
+note) and do not fix their files. Use a worktree:
+
+```bash
+git worktree add <tmp> HEAD --detach     # clean HEAD, none of their uncommitted work
+cp <only my changed files> <tmp>/...     # then run the suite with -v "<tmp>:/src"
+```
+
+Their in-flight entity never enters it, so the model matches the migrations and the suite runs. Be
+honest about what that proves: **your changes against `HEAD`, not the combined tree.** It is a way to
+keep working, never a substitute for the real run once the tree is whole again.
+
+**Then say so.** `.claude/HANDOFF-<topic>.md` is the channel — the owning session fixed this one within
+~45 minutes of the note and replied in it. Naming the file, the command, and the blast radius is what
+made that fast.

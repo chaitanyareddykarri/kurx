@@ -1,15 +1,22 @@
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, ScanLine, SlidersHorizontal, Ticket } from "lucide-react";
 
+import { MotionPanel } from "@/components/ui/motion-panel";
+import { Atmosphere } from "./atmosphere";
+import { DEPTH, plane } from "./depth";
+import { Tilt } from "./spatial";
+
 /**
- * The organized feature section (D-291) — structured cards on one grid, which is what Option 4 asks
- * for in place of scattered floating panels.
+ * Scene 5 — the platform, as four objects on one shelf.
  *
- * Every card is one shape: icon tile, title, one sentence, one link. Equal weight is the point; a
- * card that grew a second paragraph or a second action would break the row's rhythm, which is
- * exactly the "random text floating on a white wall" the brief rules out.
+ * The content is untouched: four cards, one shape each — icon, title, one sentence, one link — and
+ * every link still goes to a route that exists. Equal weight is still the point; a card that grew a
+ * second paragraph or a second action would break the row, which is the "random text floating on a
+ * white wall" the original brief ruled out.
  *
- * Copy describes shipped surfaces only — each link goes somewhere that exists.
+ * The change is depth. The icon plinth sits forward of the card face and the copy sits on it, so
+ * turning a card separates the two — the same trick as the category tiles, at a smaller angle
+ * because these carry a paragraph and a link rather than a single word.
  */
 const FEATURES = [
   {
@@ -44,8 +51,10 @@ const FEATURES = [
 
 export function FeatureGrid() {
   return (
-    <section className="border-b border-border bg-background">
-      <div className="container-shell py-16 sm:py-20">
+    <section className="relative border-b border-border bg-background">
+      <Atmosphere />
+
+      <div className="container-shell relative py-16 sm:py-20">
         <p className="text-caption font-semibold text-accent-text">Platform</p>
         <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight text-text sm:text-4xl">
           Everything an event needs, in one place.
@@ -53,22 +62,40 @@ export function FeatureGrid() {
 
         <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map(({ icon: Icon, title, body, href, action }) => (
-            <li
-              key={title}
-              className="flex flex-col rounded-lg border border-border bg-surface p-5 shadow-sm"
-            >
-              <span className="grid h-10 w-10 place-items-center rounded-md border border-border bg-elevated text-accent-text">
-                <Icon size={18} aria-hidden />
-              </span>
-              <h3 className="mt-4 text-h3 text-text">{title}</h3>
-              <p className="mt-2 flex-1 text-body text-muted">{body}</p>
-              <Link
-                href={href}
-                className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-label text-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                {action}
-                <ArrowRight size={14} aria-hidden />
-              </Link>
+            <li key={title} className="[perspective:1100px]">
+              <MotionPanel>
+                <Tilt
+                  max={6}
+                  className="flex h-full flex-col rounded-lg border border-border bg-surface p-5 shadow-sm transition-[border-color,box-shadow] duration-base ease-kurx hover:border-accent/40 hover:shadow-lg"
+                >
+                  <span
+                    className="grid h-11 w-11 place-items-center rounded-md border border-border bg-elevated text-accent-text shadow-md"
+                    style={plane(DEPTH.raised)}
+                  >
+                    <Icon size={18} aria-hidden />
+                  </span>
+                  <h3 className="mt-4 text-h3 text-text" style={plane(DEPTH.base)}>
+                    {title}
+                  </h3>
+                  <p className="mt-2 flex-1 text-body text-muted" style={plane(DEPTH.base)}>
+                    {body}
+                  </p>
+                  {/*
+                    The link keeps its own 44px target and its own focus ring. Depth is applied to the
+                    row it sits in, never to the interactive element itself — a focus outline drawn on
+                    a transformed plane is drawn at an angle, and a keyboard user needs it square.
+                  */}
+                  <span className="mt-4 block" style={plane(DEPTH.raised)}>
+                    <Link
+                      href={href}
+                      className="inline-flex min-h-11 items-center gap-1.5 text-label text-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    >
+                      {action}
+                      <ArrowRight size={14} aria-hidden />
+                    </Link>
+                  </span>
+                </Tilt>
+              </MotionPanel>
             </li>
           ))}
         </ul>

@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { WEB_URL } from "@/lib/site";
+import { ReviewActions } from "@/components/admin/review-actions";
 import { useFormState, useFormStatus } from "react-dom";
 import {
-  Badge, Button, ConfirmDialog, DataTable, Dialog, EmptyState, Field, Input, Sheet, Tabs, Textarea, useToast, type Column
+  Badge, Button, ConfirmDialog, DataTable, Dialog, EmptyState, Field, Input, Menu, Sheet, Tabs, Textarea, useToast,
+  type Column, type MenuItem
 } from "@kurx/ui";
 import {
-  AlertTriangle, Archive, Award, CheckCircle2, Eye, EyeOff, FileText, Image as ImageIcon,
-  MessageSquare, Pencil, Rocket, ScrollText, ShieldAlert, ShieldCheck, Trash2, Users, Wallet as WalletIcon,
+  AlertTriangle, Archive, Award, CheckCircle2, ChevronDown, Eye, EyeOff, FileText, Image as ImageIcon,
+  MessageSquare, MoreHorizontal, Pencil, Rocket, ScrollText, ShieldAlert, ShieldCheck, Trash2, Users,
+  Wallet as WalletIcon,
   XCircle
 } from "lucide-react";
 import {
@@ -52,6 +54,18 @@ const WORKSPACE_TABS = [
   { id: "timeline", label: "Timeline" }
 ];
 
+/*
+ * D-381 — priority navigation. Nine tabs in one strip overflowed the sheet at laptop width, and an
+ * `overflow-x-auto` that scrolls with no affordance reads as a CLIPPED LABEL rather than as more
+ * content, which is how it was reported.
+ *
+ * The split is by how often a reviewer actually opens each section, and it is FIXED rather than
+ * width-measured: a ResizeObserver here buys a smoother breakpoint and a whole class of layout bugs,
+ * and the sheet has one width (`size="xl"`) anyway. Nothing is lost — the other four are one click
+ * away and keep their own labels.
+ */
+const PRIMARY_TAB_IDS = ["overview", "registrations", "tickets", "attendees", "finance"];
+
 function dt(iso: string | null | undefined) {
   return iso ? new Date(iso).toLocaleString("en-IN") : "—";
 }
@@ -89,6 +103,12 @@ export function EventWorkspaceSheet({
 
   const close = () => router.push(closeHref, { scroll: false });
 
+  const overflowTabs = WORKSPACE_TABS.filter((t) => !PRIMARY_TAB_IDS.includes(t.id));
+  // A selected overflow tab joins the strip, so it is visibly the active one. Without this the strip
+  // shows nothing selected while `More` silently owns the section on screen — the user's own
+  // "no clipped labels, no unusable overflow" reading of a nav that has lost track of where it is.
+  const visibleTabs = WORKSPACE_TABS.filter((t) => PRIMARY_TAB_IDS.includes(t.id) || t.id === tab);
+
   return (
     <Sheet
       open
@@ -112,7 +132,21 @@ export function EventWorkspaceSheet({
       }
     >
       <div className="-mt-1 mb-4">
-        <Tabs tabs={WORKSPACE_TABS} value={tab} onChange={setTab} />
+        <Tabs
+          tabs={visibleTabs}
+          value={tab}
+          onChange={setTab}
+          trailing={
+            <Menu
+              trigger={(props) => (
+                <Button variant="ghost" {...props}>
+                  More <ChevronDown size={13} />
+                </Button>
+              )}
+              items={overflowTabs.map((t) => ({ label: t.label, onSelect: () => setTab(t.id) }))}
+            />
+          }
+        />
       </div>
 
       {tab === "overview" ? <OverviewTab event={event} data={data} isSuperAdmin={isSuperAdmin} /> : null}
@@ -149,6 +183,14 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
 function Gap({ children }: { children: ReactNode }) {
   return <p className="text-xs italic text-muted">{children}</p>;
 }
+/// D-381 — the overview is grouped now rather than one flat table, so the groups need names.
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{children}</h3>;
+}
+/// Secondary text inside a Row's value slot — a legacy note, or an absent name.
+function Muted({ children }: { children: ReactNode }) {
+  return <span className="text-xs text-muted">{children}</span>;
+}
 
 // ── Tab 1: Overview ──────────────────────────────────────────────────────
 function OverviewTab({ event: e, data, isSuperAdmin }: { event: AdminEvent; data: WorkspaceData; isSuperAdmin: boolean }) {
@@ -173,25 +215,92 @@ function OverviewTab({ event: e, data, isSuperAdmin }: { event: AdminEvent; data
         <Stat label="View count" value={data.analytics?.view_count ?? "—"} />
       </div>
 
+      {/*
+        D-381 — the event, then who owns it, then what it represents. Three separate facts.
+
+        The old block printed `org_name` under "Representing organization" and explained, citing D-074,
+        that organizer and organization "are the same field in this system". That stopped being true at
+        D-267/D-268: a USER owns the event and the organization is what it REPRESENTS. The practical
+        result was a legacy self-representation row rendering a person's name as an organization, which
+        is the one thing a reviewer must not be shown.
+      */}
       <div className="rounded-lg border border-border">
-        <Row label="Event ID" value={<span className="font-mono text-xs">{e.event_id}</span>} />
-        <Row label="Slug" value={<span className="font-mono text-xs">{e.slug}</span>} />
+        <Row label="Event" value={e.title} />
+        <Row label="Reference" value={<span className="font-mono text-xs">{e.slug}</span>} />
         <Row label="Visibility" value={<Badge tone="neutral">{e.visibility}</Badge>} />
         <Row label="Category" value={e.category ?? "—"} />
         <Row label="Subcategory" value={e.subcategory ?? "—"} />
-        <Row label="Representing organization" value={e.org_name} />
-        <Row label="Organization verification" value={<Badge tone={e.org_verification === "verified" ? "success" : "muted"}>{e.org_verification}</Badge>} />
         <Row label="Created" value={dt(e.created_at)} />
         <Row label="Updated" value={dt(e.updated_at)} />
         <Row label="Published" value={dt(data.publishedAt)} />
       </div>
-      <Gap>
-        &quot;Organizer&quot; and &quot;representing organization&quot; are the same field in this system — Kurx is
-        event-first (D-074): there is no separate organizer-person identity distinct from the org. Approval status
-        beyond the current lifecycle status, and a dedicated approval timeline, aren&apos;t modeled as separate
-        fields — see the Timeline tab for the actual status-change history.
-      </Gap>
+
+      <SectionTitle>Representation</SectionTitle>
+      <div className="rounded-lg border border-border">
+        {/* The user who owns the event (D-268). Never the organization. */}
+        <Row label="Creator" value={e.creator_name?.trim() ? e.creator_name : <Muted>Name not set</Muted>} />
+        {e.org_is_personal ? (
+          <>
+            {/*
+              A pre-D-379 event whose "organization" is a self-representation row minted only to satisfy
+              the non-null FK. Named as legacy rather than dressed up: fabricating an organization here
+              would tell a reviewer this event has institutional backing that nobody ever gave.
+            */}
+            <Row
+              label="Representing organization"
+              value={<Badge tone="warning">Legacy personal representation</Badge>}
+            />
+            <Row
+              label="Legacy record"
+              value={<Muted>Created before every event was required to represent a real organization (D-379). Not migrated, not verified — new events cannot be created this way.</Muted>}
+            />
+          </>
+        ) : (
+          <>
+            <Row label="Representing organization" value={e.org_name} />
+            <Row
+              label="Organization verification"
+              value={<Badge tone={e.org_verification === "verified" ? "success" : "muted"}>{e.org_verification}</Badge>}
+            />
+          </>
+        )}
+      </div>
+
+      {/*
+        D-381 — the raw UUID lives here, not at the top of the overview.
+
+        It was the FIRST row on the page, above the event's own name. It stays available because support
+        and audit genuinely need it, but the readable identifiers are the title and the slug; an internal
+        key is not overview information. No new identifier was invented — Kurx already has `slug`.
+      */}
+      <SectionTitle>Technical details</SectionTitle>
+      <div className="rounded-lg border border-border">
+        <Row label="Event ID" value={<CopyableId value={e.event_id} />} />
+        <Row label="Organization ID" value={<CopyableId value={e.representing_org_id} />} />
+        {e.creator_id ? <Row label="Creator ID" value={<CopyableId value={e.creator_id} />} /> : null}
+      </div>
     </div>
+  );
+}
+
+/// A monospace identifier with a copy control — the reason an admin wants a UUID on screen at all is to
+/// paste it into a query or a ticket, so selecting it by hand is the whole friction.
+function CopyableId({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="inline-flex items-center gap-1.5 rounded px-1 py-0.5 font-mono text-xs text-text hover:bg-elevated"
+      aria-label={`Copy ${value}`}
+    >
+      {value}
+      <span className="not-sr-only text-[10px] uppercase tracking-wide text-muted">{copied ? "copied" : "copy"}</span>
+    </button>
   );
 }
 
@@ -207,6 +316,8 @@ function ActionBar({ event: e, isSuperAdmin }: { event: AdminEvent; isSuperAdmin
   const [deleting, setDeleting] = useState(false);
   const [messaging, setMessaging] = useState<"message" | "warn" | null>(null);
   const [emergencyEditing, setEmergencyEditing] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     if (state && "ok" in state) toast("Action completed.", "success");
@@ -221,70 +332,107 @@ function ActionBar({ event: e, isSuperAdmin }: { event: AdminEvent; isSuperAdmin
   }
 
   const canDelete = e.status === "draft";
+  // Archive is terminal for the event's presence on every listing, so it joins the actions that ask
+  // first. It reached the server on a single unconfirmed click while Delete — which is refused
+  // outright once anyone has registered, and so is the LESS reachable of the two — had a dialog.
+  const canArchive = e.status === "draft" || e.status === "closed"
+    || e.status === "cancelled" || e.status === "completed";
+
+  /* Menu items are plain callbacks, so the form-backed actions dispatch the same FormData their own
+     <form> would have posted — identical server action, identical audit trail, no second code path
+     that could drift from the buttons. */
+  function dispatch(value: string) {
+    const fd = new FormData();
+    fd.set("action", value);
+    action(fd);
+  }
+
+  const moreItems: MenuItem[] = [
+    {
+      label: e.is_featured ? "Unfeature" : "Feature",
+      icon: <Rocket size={14} />,
+      onSelect: () => dispatch(e.is_featured ? "unfeature" : "feature"),
+    },
+    ...(e.is_suspended ? [] : [{
+      label: "Suspend", icon: <ShieldAlert size={14} />,
+      onSelect: () => setReasonDialog("suspend"),
+    }]),
+    ...(e.is_hidden ? [] : [{
+      label: "Hide", icon: <EyeOff size={14} />, onSelect: () => setReasonDialog("hide"),
+    }]),
+    ...(canArchive ? [{
+      label: "Archive", icon: <Archive size={14} />, onSelect: () => setArchiving(true),
+    }] : []),
+    { label: "Issue warning", icon: <AlertTriangle size={14} />, destructive: true, onSelect: () => setMessaging("warn") },
+    { label: "Audit log", icon: <ScrollText size={14} />, onSelect: () => router.push("/audit?entity=events") },
+    { label: "Reports", icon: <FileText size={14} />, onSelect: () => router.push("/reports") },
+    { label: "Org tools", icon: <WalletIcon size={14} />, onSelect: () => router.push("/organizations") },
+    ...(isSuperAdmin ? [{
+      label: "Emergency edit", icon: <Pencil size={14} />, destructive: true,
+      onSelect: () => setEmergencyEditing(true),
+    }] : []),
+    ...(isSuperAdmin && canDelete ? [{
+      label: "Delete draft", icon: <Trash2 size={14} />, destructive: true,
+      onSelect: () => setDeleting(true),
+    }] : []),
+  ];
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-surface p-2.5">
-        {/* D-266 M4: `publish` and `reject` accept both queue states (EventStatusWorkflow.Actions);
-            `inreview` here was retired and matched nothing. Approved publishes too — that is the
-            reviewed door. The full review flow (claim/notes/reason codes) is on /events/review. */}
-        {(e.status === "draft" || REVIEW_QUEUE_STATES.has(e.status) || e.status === "approved") && (
-          <ConfirmSubmit form={action} name="action" value="publish" label="Approve" icon={CheckCircle2} tone="ok" />
-        )}
+        {/*
+          D-381 — the review decision, delegated to the one component that models it.
+
+          This used to render a button labelled "Approve" whose value was `publish`, so a reviewer who
+          approved an event MADE IT PUBLIC in the same click. D-377 is explicit that the two are separate
+          acts — approval grants the permission, the CREATOR decides when to go live — and D-379 keeps
+          the whole review as one decision over the event and its authorization together.
+
+          `ReviewActions` already encodes the real state machine (pendingreview → claim_review;
+          underreview → approve_review / request_changes / reject_review / release_review) with reason
+          codes and notes. A second spelling beside it is how the two drift, and this one had already
+          drifted into publishing.
+        */}
         {REVIEW_QUEUE_STATES.has(e.status) && (
-          <ConfirmSubmit form={action} name="action" value="reject" label="Reject" icon={XCircle} tone="warn" />
+          <ReviewActions orgId={e.representing_org_id} eventId={e.event_id} status={e.status} />
         )}
-        {!e.is_suspended ? (
-     <Button variant="ghost" onClick={() => setReasonDialog("suspend")}>
-            <ShieldAlert size={13} /> Suspend
-          </Button>
-        ) : (
+        {/*
+          D-381 — one primary decision, everything else behind `More`.
+
+          Thirteen equally-weighted controls shared one `flex-wrap`, so Approve sat between Unfeature
+          and Archive at the same size and the bar re-flowed to three rows on a laptop. The ordering
+          here is frequency: a reviewer opens this sheet to DECIDE, occasionally to reach the
+          organizer, and almost never to unfeature. Nothing was removed — every action below is still
+          reachable and still behind the confirmation it always had.
+
+          Restore actions stay in the primary row because they are contextual, not routine: the button
+          only exists while the event is actually suspended or hidden, and that state is the one thing
+          an admin opening the sheet needs to be able to undo without hunting for it.
+        */}
+        {e.is_suspended && (
           <ConfirmSubmit form={action} name="action" value="unsuspend" label="Unsuspend" icon={ShieldCheck} tone="ok" />
         )}
-        {!e.is_hidden ? (
-     <Button variant="ghost" onClick={() => setReasonDialog("hide")}>
-            <EyeOff size={13} /> Hide
-          </Button>
-        ) : (
+        {e.is_hidden && (
           <ConfirmSubmit form={action} name="action" value="unhide" label="Unhide" icon={Eye} tone="ok" />
         )}
-        <ConfirmSubmit form={action} name="action" value={e.is_featured ? "unfeature" : "feature"} label={e.is_featured ? "Unfeature" : "Feature"} icon={Rocket} tone="accent" />
-        {e.status !== "archived" && (e.status === "closed" || e.status === "cancelled" || e.status === "completed" || e.status === "draft") && (
-          <ConfirmSubmit form={action} name="action" value="archive" label="Archive" icon={Archive} tone="neutral" />
-        )}
-        {isSuperAdmin && canDelete && (
-     <Button variant="ghost" className="text-danger hover:bg-danger/10" onClick={() => setDeleting(true)}>
-            <Trash2 size={13} /> Delete
-          </Button>
-        )}
-        {isSuperAdmin && (
-     <Button variant="ghost" className="text-danger hover:bg-danger/10" onClick={() => setEmergencyEditing(true)}>
-            <Pencil size={13} /> Emergency edit
-          </Button>
-        )}
-        <span className="mx-1 h-5 w-px bg-border" />
-    <Button variant="ghost" onClick={() => setMessaging("message")}>
+        <Button variant="ghost" onClick={() => setMessaging("message")}>
           <MessageSquare size={13} /> Message organizer
         </Button>
-    <Button variant="ghost" className="text-danger hover:bg-danger/10" onClick={() => setMessaging("warn")}>
-          <AlertTriangle size={13} /> Issue warning
-        </Button>
-        <span className="mx-1 h-5 w-px bg-border" />
         {/* Absolute, against the PUBLIC site: the event page is served by web, not by this console, so a
             relative /e/{slug} resolves to the console's own origin and 404s — leaving a reviewer asked to
             judge an event they cannot open. */}
         <a href={`${WEB_URL}/e/${e.slug}`} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-muted hover:bg-elevated hover:text-text">
           <Eye size={13} /> View public event
         </a>
-        <Link href={`/audit?entity=events`} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-muted hover:bg-elevated hover:text-text">
-          <ScrollText size={13} /> Audit log
-        </Link>
-        <Link href="/reports" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-muted hover:bg-elevated hover:text-text">
-          <FileText size={13} /> Reports
-        </Link>
-        <Link href={`/organizations`} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold text-muted hover:bg-elevated hover:text-text">
-          <WalletIcon size={13} /> Org tools
-        </Link>
+        <Menu
+          className="ml-auto"
+          trigger={(props) => (
+            <Button variant="ghost" {...props}>
+              <MoreHorizontal size={13} /> More
+            </Button>
+          )}
+          items={moreItems}
+        />
       </div>
 
       {reasonDialog ? (
@@ -302,6 +450,16 @@ function ActionBar({ event: e, isSuperAdmin }: { event: AdminEvent; isSuperAdmin
            to know, because "soft" reads as reversible and there is no restore. */
         description="The event disappears from every surface — its schedule, ticket types, media and registration form go with it — and there is no way to restore it from here. Only available while the event is still Draft, and refused outright once anyone has registered."
         confirmLabel="Delete"
+        tone="danger"
+      />
+
+      <ConfirmDialog
+        open={archiving}
+        onClose={() => setArchiving(false)}
+        onConfirm={() => dispatch("archive")}
+        title="Archive this event?"
+        description="The event leaves every listing, search result and queue, and its organizer can no longer act on it. Its orders, tickets and ledger are kept intact."
+        confirmLabel="Archive"
         tone="danger"
       />
 

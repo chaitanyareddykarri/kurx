@@ -230,18 +230,20 @@ backend/
                         account deletion; the count above the table (§Stack) is the same 18.
     Localization/       SharedResources.cs + SharedResources.resx + SharedResources.hi.resx
     Messaging/          WhatsAppLogService
-    Migrations/         91 EF Core migrations (`ls Kurx.Infrastructure/Migrations/*.cs |
-                        grep -v Designer | grep -v ModelSnapshot | wc -l`, 2026-08-15; the
-                        live database agrees — `SELECT count(*) FROM "__EFMigrationsHistory"`).
+    Migrations/         102 EF Core migrations (`ls Kurx.Infrastructure/Migrations/*.cs |
+                        grep -v Designer | grep -v ModelSnapshot | wc -l`, 2026-08-18). The
+                        live dev database is one behind until the API restarts and applies
+                        AddStaffGateEntries — migrations run at boot (`Program.cs`).
                         Initial → EventManagement → … → the V3 program's ~22 → AddIdCards,
-                        AddEntitlements, AddIdCardMealDisplay. This line said "19", which was
-                        the M0–M13 figure and predates the entire V3 program.
+                        AddEntitlements, AddIdCardMealDisplay, … → AddStaffGateEntries (D-385).
+                        This line said "19", which was the M0–M13 figure and predates the entire
+                        V3 program; it then said "91" (2026-08-15).
     Notifications/      NotificationService — the ONE dispatch point; the D-263 notification-preference
                         gate lives inside NotifyAsync so all callers inherit it
-    Persistence/        KurxDbContext — 162 DbSets (`grep -c 'public DbSet<'
-                        Kurx.Infrastructure/Persistence/KurxDbContext.cs`, 2026-08-15; matches
-                        the 162 `ToTable` calls in the model snapshot and the 162 tables in the
-                        live database). This line said "70". Includes verification_documents /
+    Persistence/        KurxDbContext — 175 DbSets (`grep -c 'public DbSet<'
+                        Kurx.Infrastructure/Persistence/KurxDbContext.cs`, 2026-08-18; matches
+                        the 175 `ToTable` calls in the model snapshot). This line said "70",
+                        then "162" (2026-08-15). Includes verification_documents /
                         verification_reviews trust substrate M0/D-039, platform_roles,
                         user_identity_verifications, membership_claims,
                         org_bank_verifications, organization_aliases,

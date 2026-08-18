@@ -167,6 +167,25 @@ instead of getting through. Reach for this whenever a unique constraint has to s
 a row; the alternatives (a synthetic slot column, an advisory lock, `SERIALIZABLE`) are all cleverer
 and none of them is smaller.
 
+### A unique index the racers can miss by landing on *different* keys (D-387)
+
+The sibling of D-262, and easier to miss because a real unique index is already there. `event_templates`
+had `(RootTemplateId, Version)` UNIQUE and a service that read "does this family have a Draft?", then
+`MAX(Version) + 1`, then inserted. The comment beside it said the constraint was authoritative. It was
+not: two callers whose reads straddle the other's commit compute **2** and **3**, so the index they were
+counting on has nothing to say and both rows land — two editable heads where the model allows one.
+
+**Write the invariant you actually mean, as a filtered index over the key it is about:**
+
+```csharp
+e.HasIndex(x => x.RootTemplateId).IsUnique().HasFilter("\"State\" = 'Draft' AND \"DeletedAt\" IS NULL");
+```
+
+The application check stays as the fast path, and the `DbUpdateException` catch that was already there
+finally has something to catch. When you meet a check-then-insert defended by a unique index, ask whether
+two racers can pass it *with different keys* — if they can, the index is not the constraint you think it
+is.
+
 ## Bulk deletes are batched and database-side, never materialized (D-324)
 
 `ToListAsync()` + `RemoveRange()` + `SaveChangesAsync()` over a retention predicate is the shape to

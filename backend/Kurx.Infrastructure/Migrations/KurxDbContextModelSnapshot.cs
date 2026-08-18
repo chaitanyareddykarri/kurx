@@ -3785,6 +3785,10 @@ namespace Kurx.Infrastructure.Migrations
 
                     b.HasIndex("OrgId");
 
+                    b.HasIndex("RootTemplateId")
+                        .IsUnique()
+                        .HasFilter("\"State\" = 'Draft' AND \"DeletedAt\" IS NULL");
+
                     b.HasIndex("Slug");
 
                     b.HasIndex("RootTemplateId", "Version")
@@ -4311,6 +4315,10 @@ namespace Kurx.Infrastructure.Migrations
 
                     b.HasIndex("VerifyCode")
                         .IsUnique();
+
+                    b.HasIndex("EventId", "UserId")
+                        .IsUnique()
+                        .HasFilter("\"EventId\" IS NOT NULL");
 
                     b.HasIndex("OrgId", "CardNumber")
                         .IsUnique();
@@ -7050,6 +7058,39 @@ namespace Kurx.Infrastructure.Migrations
                         .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.ToTable("sponsors", (string)null);
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.StaffGateEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeviceInfo")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ScannedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScannedBy");
+
+                    b.HasIndex("AssignmentId", "EventId")
+                        .IsUnique();
+
+                    b.HasIndex("EventId", "CreatedAt");
+
+                    b.ToTable("staff_gate_entries", (string)null);
                 });
 
             modelBuilder.Entity("Kurx.Domain.Entities.Stage", b =>
@@ -10409,6 +10450,27 @@ namespace Kurx.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kurx.Domain.Entities.StaffGateEntry", b =>
+                {
+                    b.HasOne("Kurx.Domain.Entities.EventAssignment", null)
+                        .WithMany()
+                        .HasForeignKey("AssignmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Kurx.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ScannedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

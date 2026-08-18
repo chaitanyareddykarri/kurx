@@ -267,7 +267,15 @@ public record AdminEventView(Guid EventId, Guid RepresentingOrgId, string OrgNam
     string? CategoryName, string? SubcategoryName, string Visibility, string City, string VenueName, int? Capacity,
     DateTime EndsAt, bool IsPaid, string OrgVerificationStatus, DateTime UpdatedAt,
     bool IsSuspended, string? SuspendedReason, bool IsHidden, string? HiddenReason, string? BannerKey,
-    int TicketsSold, int CheckedIn, int RegistrationsCount, long RevenuePaise, string Currency)
+    int TicketsSold, int CheckedIn, int RegistrationsCount, long RevenuePaise, string Currency,
+    /// <summary>D-381 — the USER who owns the event (<c>Event.CreatedBy</c>), which is not the
+    /// organization it represents. The console showed only the organization, so a legacy
+    /// self-representation row rendered a person's name under "Representing organization".</summary>
+    Guid CreatorId = default, string? CreatorName = null,
+    /// <summary>The represented organization is a legacy self-representation row (D-268), retired for new
+    /// events by D-379. Sent so the console can name it as legacy rather than fabricate an
+    /// organization — no new event can produce this.</summary>
+    bool OrgIsPersonal = false)
 {
     /// <summary><b>Deprecated (D-273a) — use <c>representing_org_id</c>.</b> See <see cref="EventDetail"/>.</summary>
     [Obsolete("Use RepresentingOrgId. Emitted for pre-D-273a clients; removed in the contract phase.")]
@@ -307,6 +315,26 @@ public record EventAnalytics(
 /// creator owns it (D-268); a Representative or an Owner/Manager seat in the organization it represents
 /// is an additional grant; a platform admin (KurxAdmin claim) outranks both.
 /// </summary>
+/// <summary>D-388 — one changed field, as a reviewer reads it. <paramref name="Current"/> comes from the
+/// LIVE row at render time, not from the snapshot taken when the request was made: a reviewer must decide
+/// against what the event is now, and the two differing is exactly the version conflict that refuses the
+/// approval. Both sides are pre-formatted strings — a reviewer compares a date, not an ISO timestamp, and
+/// the server owns that rendering so three clients cannot format it three ways.</summary>
+public record EventChangeField(string Field, string Label, string? Current, string? Proposed);
+
+/// <summary>D-388 — a proposed edit to a live event, as host and reviewer both see it.</summary>
+/// <param name="BaseVersion">The <c>Event.Version</c> this was authored against.</param>
+/// <param name="CurrentVersion">What the event is on now. Unequal means the proposal is stale and
+/// approving it is refused (<c>version_conflict</c>) rather than allowed to overwrite newer approved
+/// values.</param>
+public record EventChangeRequestView(
+    Guid Id, Guid EventId, string EventTitle, Guid RequestedBy, string? RequestedByName,
+    int BaseVersion, int CurrentVersion, bool Stale,
+    IReadOnlyList<EventChangeField> Changes, string? Reason, string Status,
+    Guid? ReviewedBy, string? ReviewedByName, DateTime? ReviewedAt,
+    string? ReviewReasonCode, string? ReviewNotes,
+    DateTime CreatedAt, DateTime UpdatedAt, DateTime? AppliedAt);
+
 public interface IEventService
 {
     /// <summary>Creates an event owned by <paramref name="userId"/>.
@@ -328,6 +356,43 @@ public interface IEventService
         CancellationToken ct = default);
 
     Task<ServiceResult<EventDetail>> UpdateAsync(Guid userId, Guid eventId, bool isAdmin, UpdateEventInput input, CancellationToken ct = default);
+
+    // ── D-388 · change requests on a LIVE event ──────────────────────────────────────────────────
+    // These live on IEventService rather than in a service of their own because approving a change
+    // request IS an event update: it must run through the same private apply path `UpdateAsync` uses
+    // (D-191's "one and only event-update implementation"), reuse the same authorization helper, and
+    // produce the same reindex, refund window and capability rematerialization. A separate service could
+    // reach none of that without duplicating it, which is the drift D-191 exists to prevent.
+
+    /// <summary>Proposes an edit to a live Public event. Refused with <c>not_live_protected</c> if the
+    /// event is not one — a draft is edited directly and a change request there would be a second way to
+    /// do the same thing. Replaces the event's existing pending request rather than creating a second:
+    /// one pending proposal per event, so "what is waiting for approval" has one answer.</summary>
+    Task<ServiceResult<EventChangeRequestView>> CreateChangeRequestAsync(Guid userId, Guid eventId,
+        UpdateEventInput input, string? reason, CancellationToken ct = default);
+
+    /// <summary>This event's change requests, newest first. Readable by anyone who may manage the event
+    /// and by reviewers/admins — the same audience as the event's review history.</summary>
+    Task<ServiceResult<IReadOnlyList<EventChangeRequestView>>> ListChangeRequestsAsync(Guid userId,
+        Guid eventId, bool isAdmin, bool isReviewer, CancellationToken ct = default);
+
+    /// <summary>The host takes their own pending proposal back. Only from <c>Pending</c>: a decided
+    /// request is a record, not a draft.</summary>
+    Task<ServiceResult<EventChangeRequestView>> WithdrawChangeRequestAsync(Guid userId, Guid eventId,
+        Guid changeRequestId, CancellationToken ct = default);
+
+    /// <summary>A reviewer's verdict. Approving applies every proposed value in ONE transaction — all or
+    /// nothing, never a live event left with a new title and its old date — and only if the event is still
+    /// on the version the request was authored against.</summary>
+    /// <param name="approve">true = apply; false = reject, which requires <paramref name="reasonCode"/>.</param>
+    Task<ServiceResult<EventChangeRequestView>> DecideChangeRequestAsync(Guid reviewerId, Guid eventId,
+        Guid changeRequestId, bool approve, string? reasonCode, string? notes, bool isAdmin, bool isReviewer,
+        CancellationToken ct = default);
+
+    /// <summary>The platform-wide queue of pending change requests, oldest first — the admin console's
+    /// counterpart to <c>GET /v1/admin/events/pending</c>.</summary>
+    Task<ServiceResult<IReadOnlyList<EventChangeRequestView>>> ListPendingChangeRequestsAsync(int limit,
+        CancellationToken ct = default);
 
     /// <summary>D-191: Super Admin only, exceptional path over the same update core <see cref="UpdateAsync"/>
     /// uses — never a second update implementation. <paramref name="reason"/> is mandatory; the call is

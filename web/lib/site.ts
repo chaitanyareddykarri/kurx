@@ -69,12 +69,32 @@ export function createMetadata({ title, description = siteConfig.description, pa
   };
 }
 
+/**
+ * Structured data for a `<script type="application/ld+json">`, escaped so its content cannot escape
+ * the element.
+ *
+ * `JSON.stringify` does not escape `<`, and the result is handed to `dangerouslySetInnerHTML` inside
+ * a `<script>`. An HTML parser ends that element at the first literal `</script>` it sees, wherever
+ * it appears — including inside a JSON string. So any value containing `</script>` closed the tag
+ * early and everything after it was parsed as markup.
+ *
+ * That was reachable by any registered user with no privileges: the display name typed into
+ * `onboarding-form.tsx` is rendered by `/u/{username}` as `jsonLd("Person", { name: profile.name })`.
+ * A name of `</script><img src=x onerror=...>` became stored XSS executing for every visitor to that
+ * public profile. `/e/{slug}` (event title, venue) and `/o/{slug}` (org name, bio) carried the same
+ * shape.
+ *
+ * `<` is the JSON escape for `<`, so every parser reads the document identically while the
+ * literal character never reaches the HTML tokenizer. Escaping here rather than at the six call
+ * sites is deliberate — the call sites were not wrong, the helper was, and a guard each caller has
+ * to remember is one a caller will eventually forget.
+ */
 export function jsonLd(type: string, data: Record<string, unknown>) {
   return {
     __html: JSON.stringify({
       "@context": "https://schema.org",
       "@type": type,
       ...data
-    })
+    }).replace(/</g, "\\u003c")
   };
 }

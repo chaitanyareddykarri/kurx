@@ -416,6 +416,14 @@
             "format": "date-time",
             "type": "string"
           },
+          "creator_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "creator_name": {
+            "nullable": true,
+            "type": "string"
+          },
           "currency": {
             "type": "string"
           },
@@ -446,6 +454,9 @@
           "org_id": {
             "format": "uuid",
             "type": "string"
+          },
+          "org_is_personal": {
+            "type": "boolean"
           },
           "org_name": {
             "type": "string"
@@ -505,6 +516,7 @@
           "checked_in",
           "city",
           "created_at",
+          "creator_id",
           "currency",
           "ends_at",
           "event_id",
@@ -513,6 +525,7 @@
           "is_paid",
           "is_suspended",
           "org_id",
+          "org_is_personal",
           "org_name",
           "org_verification",
           "registrations_count",
@@ -12643,6 +12656,16 @@
         ],
         "type": "object"
       },
+      "RevokeBadgeBody": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "RevokeCertificateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13976,6 +13999,22 @@
           "suggestedMapping",
           "totalRows",
           "truncated"
+        ],
+        "type": "object"
+      },
+      "StaffScanBody": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceInfo": {
+            "nullable": true,
+            "type": "string"
+          },
+          "pass": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pass"
         ],
         "type": "object"
       },
@@ -28300,6 +28339,45 @@
         ]
       }
     },
+    "/v1/events/{eventId}/badges/template/defaults": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "The built-in card layout, as placements the editor can load and drag",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
     "/v1/events/{eventId}/badges/template/preview": {
       "post": {
         "parameters": [
@@ -28415,6 +28493,68 @@
           }
         },
         "summary": "One badge, print-ready",
+        "tags": [
+          "badges"
+        ]
+      }
+    },
+    "/v1/events/{eventId}/badges/{recipientUserId}/revoke": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "recipientUserId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeBadgeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Revoke an issued badge \u2014 marks the card, does not void the ticket or assignment",
         "tags": [
           "badges"
         ]
@@ -30811,6 +30951,60 @@
             "description": "No token, or a token that is expired, revoked or malformed."
           }
         },
+        "tags": [
+          "gate"
+        ]
+      }
+    },
+    "/v1/gate/{eventId}/scan-staff": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffScanBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The request body failed validation, or could not be parsed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No token, or a token that is expired, revoked or malformed."
+          }
+        },
+        "summary": "Admit a staff member from the signed pass on their badge",
         "tags": [
           "gate"
         ]

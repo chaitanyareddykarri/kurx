@@ -64,6 +64,44 @@ public class UpdateEventBodyValidator : AbstractValidator<UpdateEventBody>
     }
 }
 
+/// <summary>D-388 — the same field rules as <see cref="UpdateEventBodyValidator"/> for the fields a
+/// proposal carries. Written out rather than shared: FluentValidation binds a validator to one concrete
+/// type, and the two bodies are deliberately different shapes (a proposal carries no operational fields).
+/// A reviewer must never be shown a proposal the apply path will later refuse for a reason the host could
+/// have been told at submission time.</summary>
+public class EventChangeRequestBodyValidator : AbstractValidator<EventChangeRequestBody>
+{
+    public EventChangeRequestBodyValidator()
+    {
+        RuleFor(x => x.Title).Length(2, 200).When(x => x.Title is not null);
+        RuleFor(x => x.CategoryId).NotEqual(Guid.Empty).When(x => x.CategoryId is not null);
+        RuleFor(x => x).Must(x => x.EndsAt is null || x.StartsAt is null || x.EndsAt > x.StartsAt)
+            .WithMessage("EndsAt must be after StartsAt.").WithName("EndsAt");
+        RuleFor(x => x.Visibility).Must(s => s is null || Enum.TryParse<Kurx.Domain.Enums.EventVisibility>(s, true, out _))
+            .WithMessage("Visibility must be Listed, Unlisted, or InviteOnly.");
+        RuleFor(x => x.Capacity).GreaterThan(0).When(x => x.Capacity is not null);
+        RuleFor(x => x.Reason).MaximumLength(1000);
+    }
+}
+
+/// <summary>D-388 — a rejection must carry a reason code from the closed
+/// <see cref="Kurx.Domain.Enums.EventReviewReason"/> vocabulary. Checked here as well as in the service:
+/// the service check is the contract, this one turns a typo into a named validation error instead of a
+/// bare code.</summary>
+public class ChangeRequestDecisionBodyValidator : AbstractValidator<ChangeRequestDecisionBody>
+{
+    public ChangeRequestDecisionBodyValidator()
+    {
+        RuleFor(x => x.ReasonCode).NotEmpty()
+            .WithMessage("A rejection needs a reason code.")
+            .When(x => !x.Approve);
+        RuleFor(x => x.ReasonCode)
+            .Must(c => c is null || Enum.TryParse<Kurx.Domain.Enums.EventReviewReason>(c, true, out _))
+            .WithMessage("ReasonCode must be one of: Incomplete, ProhibitedContent, UnverifiedOrganiser, MisrepresentedAffiliation, InvalidCommerce, Duplicate, Other.");
+        RuleFor(x => x.Notes).MaximumLength(2000);
+    }
+}
+
 public class TransitionEventBodyValidator : AbstractValidator<TransitionEventBody>
 {
     public TransitionEventBodyValidator()

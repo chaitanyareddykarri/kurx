@@ -25,13 +25,23 @@ export function Tabs({
   tabs,
   value,
   onChange,
-  id
+  id,
+  trailing
 }: {
   tabs: { id: string; label: string }[];
   value: string;
   onChange: (id: string) => void;
   /** Id base shared with `TabPanel`. Enables `aria-controls` / `aria-labelledby`. */
   id?: string;
+  /**
+   * A control parked at the end of the strip, on the same baseline — an overflow menu for the tabs
+   * that did not earn a permanent slot (D-381), which is the only reason it exists.
+   *
+   * Rendered as a SIBLING of the tablist, never inside it: `role="tablist"` promises its children are
+   * tabs, and a menu button among them makes assistive tech miscount ("tab, 6 of 10") and puts a
+   * non-tab in the arrow-key path. Omit it and the markup is exactly what it was.
+   */
+  trailing?: ReactNode;
 }) {
   const strip = useRef<HTMLDivElement>(null);
 
@@ -72,12 +82,12 @@ export function Tabs({
     event.preventDefault();
   }
 
-  return (
+  const tablist = (
     <div
       ref={strip}
       role="tablist"
       onKeyDown={onKeyDown}
-      className="flex gap-1 overflow-x-auto border-b border-border"
+      className={`flex gap-1 overflow-x-auto ${trailing ? "min-w-0 flex-1" : "border-b border-border"}`}
     >
       {tabs.map((tab) => {
         const active = tab.id === value;
@@ -99,6 +109,16 @@ export function Tabs({
           </button>
         );
       })}
+    </div>
+  );
+
+  // The underline is the strip's own when it stands alone, and the wrapper's when something sits
+  // beside it — otherwise the rule stops short of the trailing control and reads as a broken border.
+  if (!trailing) return tablist;
+  return (
+    <div className="flex items-stretch border-b border-border">
+      {tablist}
+      <div className="flex shrink-0 items-center pl-2">{trailing}</div>
     </div>
   );
 }

@@ -44,6 +44,11 @@ That reframing drives everything below.
 ## 2. Visual principles
 
 ### P1 · Opaque, not glass
+> **Scoped exception, [D-380]:** the public marketing page (`web/app/(public)/page.tsx` and
+> `web/components/marketing/**`) may use ambient light and depth. P1 remains binding on every
+> signed-in surface — product app, host workspace, admin, Flutter. Nothing from `marketing/` may be
+> lifted into those without a further decision.
+
 Surfaces are **opaque** — flat ink-black panels, not lit ones. No glassmorphism, no frosted panels,
 no gradient meshes, no glow. This is the explicit anti-"AI dashboard" rule: when a surface needs
 separation it gets a tint step and an honest shadow, never translucency. (Under D-286 the tint steps
@@ -89,6 +94,9 @@ audit found:
 | `radius-pill` | 999 px | filter chips, tags, avatars, primary mobile CTA |
 
 ### P6 · Motion confirms, never performs
+> **Scoped exception, [D-380]:** same boundary as P1 — the marketing page may carry idle and
+> pointer-driven motion. Everywhere a signed-in user works, motion still only confirms a change.
+
 Every animation answers *"what just changed?"*. Nothing exists to be admired. Durations are short
 (120/200/280 ms), easing is a single decelerating curve, and **`prefers-reduced-motion` is honoured
 by every animated component** — today zero components check it (audit S2-6).

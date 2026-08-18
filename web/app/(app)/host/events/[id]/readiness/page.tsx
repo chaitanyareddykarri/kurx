@@ -1,10 +1,8 @@
 import { requireEventOrg } from "@/lib/event-org";
-import {
-  getEventCapabilities, getPolicyRequirements, getEventAuthorization, getRepresentativeRoles
-} from "@/lib/api";
+import { getEventCapabilities, getPolicyRequirements, getEventAuthorization } from "@/lib/api";
 import { Card } from "@kurx/ui";
 import { ModulePicker } from "@/components/host/module-picker";
-import { AuthorizationForm } from "@/components/host/authorization-form";
+import { RepresentationStatus } from "@/components/host/representation-status";
 
 /**
  * D-266 M8 — everything that decides whether this event can go live, on one page.
@@ -17,29 +15,15 @@ import { AuthorizationForm } from "@/components/host/authorization-form";
  * for `event_authorization_required` and offer the organiser nowhere to provide one.
  */
 export default async function EventReadinessPage({ params }: { params: { id: string } }) {
-  const { session, orgId, event } = await requireEventOrg(params.id);
+  const { session, orgId, event, caps } = await requireEventOrg(params.id);
 
   // Each is independently non-fatal: a page that renders two of three panels is more useful than one
   // that 500s because a single engine was briefly unavailable.
-  const [capabilities, policy, authorization, roles] = await Promise.all([
+  const [capabilities, policy, authorization] = await Promise.all([
     getEventCapabilities(session.accessToken, orgId, event.id).catch(() => []),
     getPolicyRequirements(session.accessToken, orgId, event.id).catch(() => null),
     getEventAuthorization(session.accessToken, event.id).catch(() => null),
-    // The vocabulary the server validates against. An empty list on failure is honest: the form then
-    // offers nothing rather than a stale guess the API would reject.
-    getRepresentativeRoles(session.accessToken).catch(() => [] as string[]),
   ]);
-
-  // Shown when the policy engine says this event needs one, OR when one has already been filed — never
-  // inferred from the organisation being non-personal, which would be the client re-deriving a server rule.
-  //
-  // The second clause is load-bearing. An APPROVED authorization is no longer a publish blocker, so keying
-  // only on the blocker made the whole panel disappear the moment it was approved: the organiser could not
-  // see what they had submitted, that it had been approved, or the reviewer's notes — and if a reviewer
-  // later requested changes the panel reappeared, flickering in and out with the verdict. `??` did not
-  // catch this because it fires only on null, and `includes()` returns false.
-  const needsAuthorization =
-    (policy?.publish_blockers.includes("event_authorization_required") ?? false) || authorization !== null;
 
   return (
     <div className="space-y-6">
@@ -80,7 +64,18 @@ export default async function EventReadinessPage({ params }: { params: { id: str
         </Card>
       ) : null}
 
-      {needsAuthorization ? <AuthorizationForm eventId={event.id} existing={authorization} eventStatus={event.status} roles={roles} /> : null}
+      {/*
+        D-382 — the STATE of this event's representation, and a link to the one page that owns it.
+        Unconditional, because every event represents an organization and every event carries its own
+        authorization (D-379) — there is no shape of event for which this section is not a readiness
+        fact. What used to be here was the authorization FORM, a second copy of the Representing step.
+      */}
+      <RepresentationStatus
+        eventId={event.id}
+        orgName={caps.representation.name}
+        isPersonal={caps.representation.kind === "personal"}
+        authorization={authorization}
+      />
 
       <Card>
         <h2 className="mb-1 text-lg font-semibold">Modules</h2>
@@ -97,9 +92,9 @@ export default async function EventReadinessPage({ params }: { params: { id: str
 /// than being swallowed by a generic message.
 const BLOCKER_COPY: Record<string, string> = {
   event_authorization_required:
-    "The organization this event represents has to authorize it in writing, and that authorization has to be approved.",
+    "The organization this event represents has to authorize it in writing, and that authorization has to be approved. File it on the Representing tab.",
   representation_required:
-    "This type of event has to be run on behalf of an organization — choose who you're representing.",
+    "This type of event has to be run on behalf of an organization — see the Representing tab.",
   financial_review_required:
     "A fundraising event needs its money path cleared by our finance team before it can go live.",
   private_product_cannot_be_listed: "A private event can't be listed in discovery.",

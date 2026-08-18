@@ -19,7 +19,7 @@ namespace Kurx.Infrastructure.Events;
 /// an additional grant, and a platform admin outranks both. This service never re-implements that rule.
 /// Ticketing (TicketType/FormField) is out of scope for this phase and untouched here.
 /// </summary>
-public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustService trust, IAuditWriter audit,
+public partial class EventService(KurxDbContext db, ILogger<EventService> log, ITrustService trust, IAuditWriter audit,
     IChatService chat, IKindService kinds, ICapabilityService capabilities, IOrgUnitService orgUnits,
     IApprovalService approvals, ITemplateService templates, ISearchService search,
     INotificationService notifications, IAnalyticsFactSource analytics, IPlatformRoleService roles,
@@ -173,7 +173,10 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
                 x.e.Id, x.e.RepresentingOrgId, x.o.Name, x.e.Title, x.e.Slug, x.e.Status, x.e.IsFeatured,
                 x.e.StartsAt, x.e.EndsAt, x.e.CreatedAt, x.e.UpdatedAt, x.e.CategoryId, x.e.TypeId,
                 x.e.Visibility, x.e.City, x.e.VenueName, x.e.Capacity, x.e.IsSuspended, x.e.SuspendedReason,
-                x.e.IsHidden, x.e.HiddenReason, x.e.BannerKey, x.e.SettlementCurrency, x.o.VerificationStatus))
+                x.e.IsHidden, x.e.HiddenReason, x.e.BannerKey, x.e.SettlementCurrency, x.o.VerificationStatus,
+                x.e.CreatedBy,
+                db.Users.Where(u => u.Id == x.e.CreatedBy).Select(u => u.Name).FirstOrDefault(),
+                x.o.IsPersonal))
                 .ToListAsync(ct);
             var catNames = await CategoryNamesAsync(rows.Select(r => r.CategoryId).Concat(rows.Where(r => r.TypeId is not null).Select(r => r.TypeId!.Value)), ct);
             var stats = await EventStatsAsync(rows.Select(r => r.Id).ToList(), ct);
@@ -189,7 +192,10 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
                 x.e.Id, x.e.RepresentingOrgId, x.o.Name, x.e.Title, x.e.Slug, x.e.Status, x.e.IsFeatured,
                 x.e.StartsAt, x.e.EndsAt, x.e.CreatedAt, x.e.UpdatedAt, x.e.CategoryId, x.e.TypeId,
                 x.e.Visibility, x.e.City, x.e.VenueName, x.e.Capacity, x.e.IsSuspended, x.e.SuspendedReason,
-                x.e.IsHidden, x.e.HiddenReason, x.e.BannerKey, x.e.SettlementCurrency, x.o.VerificationStatus))
+                x.e.IsHidden, x.e.HiddenReason, x.e.BannerKey, x.e.SettlementCurrency, x.o.VerificationStatus,
+                x.e.CreatedBy,
+                db.Users.Where(u => u.Id == x.e.CreatedBy).Select(u => u.Name).FirstOrDefault(),
+                x.o.IsPersonal))
                 .ToListAsync(ct);
             var catNames = await CategoryNamesAsync(rows.Select(r => r.CategoryId).Concat(rows.Where(r => r.TypeId is not null).Select(r => r.TypeId!.Value)), ct);
             var stats = await EventStatsAsync(rows.Select(r => r.Id).ToList(), ct);
@@ -235,11 +241,18 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
 
     /// <summary>Plain-column projection shared by both the SQL-paginated and in-memory-candidate branches of
     /// <see cref="ListForAdminAsync"/> — one shape, so <see cref="ToView"/> isn't duplicated per branch.</summary>
+    /// <summary>D-381 — carries the CREATOR alongside the organization the event represents.
+    ///
+    /// <para>They are different entities (D-268/D-271) and the console had no way to tell them apart: it
+    /// received only <c>OrgName</c>, so a legacy self-representation row printed a person's name under
+    /// "Representing organization". <c>OrgIsPersonal</c> is what lets the console say "legacy" instead of
+    /// inventing an organization.</para></summary>
     private record AdminEventRow(Guid Id, Guid OrgId, string OrgName, string Title, string Slug, EventStatus Status,
         bool IsFeatured, DateTime StartsAt, DateTime EndsAt, DateTime CreatedAt, DateTime UpdatedAt,
         Guid CategoryId, Guid? TypeId, EventVisibility Visibility, string City, string VenueName, int? Capacity,
         bool IsSuspended, string? SuspendedReason, bool IsHidden, string? HiddenReason, string? BannerKey,
-        string SettlementCurrency, OrgVerificationStatus OrgVerificationStatus);
+        string SettlementCurrency, OrgVerificationStatus OrgVerificationStatus,
+        Guid CreatorId, string? CreatorName, bool OrgIsPersonal);
 
     private static AdminEventView ToView(AdminEventRow r, Dictionary<Guid, string> catNames, EventStatsRow s)
         => new(r.Id, r.OrgId, r.OrgName, r.Title, r.Slug, r.Status.ToString(), r.IsFeatured,
@@ -247,7 +260,8 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
             r.TypeId is { } tid ? catNames.GetValueOrDefault(tid) : null,
             r.Visibility.ToString(), r.City, r.VenueName, r.Capacity, r.EndsAt, s.IsPaid, r.OrgVerificationStatus.ToString(),
             r.UpdatedAt, r.IsSuspended, r.SuspendedReason, r.IsHidden, r.HiddenReason, r.BannerKey,
-            s.Sold, s.CheckedIn, s.Sold, s.RevenuePaise, r.SettlementCurrency);
+            s.Sold, s.CheckedIn, s.Sold, s.RevenuePaise, r.SettlementCurrency,
+            r.CreatorId, r.CreatorName, r.OrgIsPersonal);
 
     public async Task<ServiceResult<AdminEventView>> SetFeaturedAsync(Guid eventId, bool featured, CancellationToken ct = default)
     {
@@ -305,7 +319,10 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
     private async Task<AdminEventView> ToAdminEventViewAsync(Event ev, CancellationToken ct)
     {
         var org = await db.Organizations.AsNoTracking().Where(o => o.Id == ev.RepresentingOrgId)
-            .Select(o => new { o.Name, o.VerificationStatus }).FirstAsync(ct);
+            .Select(o => new { o.Name, o.VerificationStatus, o.IsPersonal }).FirstAsync(ct);
+        // D-381 — the creator is a USER, never the organization. One lookup, no join needed.
+        var creatorName = await db.Users.AsNoTracking().Where(u => u.Id == ev.CreatedBy)
+            .Select(u => u.Name).FirstOrDefaultAsync(ct);
         var catNames = await db.EventCategories.AsNoTracking()
             .Where(c => c.Id == ev.CategoryId || c.Id == ev.TypeId)
             .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
@@ -316,7 +333,8 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
             ev.Visibility.ToString(), ev.City, ev.VenueName, ev.Capacity, ev.EndsAt, ev.IsPaid || stats.IsPaid,
             org.VerificationStatus.ToString(), ev.UpdatedAt, ev.IsSuspended, ev.SuspendedReason,
             ev.IsHidden, ev.HiddenReason, ev.BannerKey, stats.Sold, stats.CheckedIn, stats.Sold,
-            stats.RevenuePaise, ev.SettlementCurrency);
+            stats.RevenuePaise, ev.SettlementCurrency,
+            ev.CreatedBy, creatorName, org.IsPersonal);
     }
 
     public async Task<ServiceResult<EventDetail>> CreateAsync(Guid userId, Guid? representingOrgId, bool isAdmin, CreateEventInput input, CancellationToken ct = default)
@@ -699,6 +717,28 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
          * start again. Cosmetic edits (banner, FAQ, contact, registration windows) stay free, because a
          * re-review to fix a typo is a rule people route around rather than respect.
          */
+        /*
+         * D-388 — a LIVE event's substance is not the host's to change directly.
+         *
+         * D-363 §4 (below) covers `Approved`, which is reviewed but not public. `Published`/`Scheduled`/
+         * `Live` had no guard at all: reproduced over HTTP, the owner of a published event retitled it and
+         * moved its start date by eight weeks in one PATCH — 200 OK, no reviewer, no audit row, and the
+         * registrants who had already bought tickets were told nothing.
+         *
+         * Refused rather than re-queued, which is the opposite of the `Approved` call directly below, and
+         * deliberately so: returning a live event to the queue would either take it off the public site
+         * mid-sale or leave the unreviewed values live while it waited. Neither is acceptable once people
+         * hold tickets. The host proposes instead — `POST .../change-requests` — and the live event does
+         * not move until a reviewer approves.
+         *
+         * Only the PROTECTED fields trigger this. A live event's contact email, banner, FAQ and check-in
+         * windows stay directly editable, because an organiser fixing a phone number on the morning of
+         * their event cannot be made to wait for an admin.
+         */
+        if (EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status)
+            && EventStatusWorkflow.RequiresApprovalWhenLive(input))
+            return ServiceResult<EventDetail>.Fail("change_request_required");
+
         var returnsToQueue = ev.Status == EventStatus.Approved && EventStatusWorkflow.RequiresFreshReview(input);
 
         var statusBefore = ev.Status;
@@ -948,6 +988,11 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
         }
 
         await ApplyMaterialChangeAsync(ev, userId, isAdmin, mcBeforeStart, mcBeforeEnd, mcBeforeVenue, mcBeforeMode, mcBeforeVenueName, ct);
+        // D-388: every content change moves the version, whichever door it came through — a draft edit, an
+        // approved change request, or a Super Admin emergency edit. Bumped HERE rather than at each caller
+        // because a pending change request's staleness check is only as honest as the least-disciplined
+        // writer: one path that mutates without incrementing would let a stale proposal be approved over it.
+        ev.Version++;
         ev.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 

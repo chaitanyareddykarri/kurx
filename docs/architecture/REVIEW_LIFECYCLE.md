@@ -137,6 +137,22 @@ transition anywhere targets the retired `InReview`**.
 `reject` and `reject_review` are deliberately separate. One means "needs work", the other means "refused".
 Collapsing them loses the difference between a queue item and an outcome.
 
+## What a reviewer can see before claiming (D-382)
+
+Reading is not deciding, and the console draws that line rather than the claim drawing it.
+
+The event's **dossier** (`GET /v1/events/{id}` — D-191 admits `kurx_admin` and `VerificationReviewer` to
+an event in any status) and its **institutional authorization** both render for every row in the queue,
+claimed or not. Only the verdict controls are gated on holding the item, and the API agrees: an
+unclaimed decision is refused, so offering the buttons earlier would produce a refusal rather than an
+action.
+
+The authorization panel used to be gated on `UnderReview` along with everything else. That put the
+event's details in the queue and the one document the decision turns on behind a claim — so whether an
+item was worth picking up had to be judged blind, and learning whether an authorization had even been
+*filed* meant taking the event into your own name first. The **review checklist stays** behind the claim:
+a checklist is work-in-progress, not evidence, and there is nothing to tick on an event nobody is working.
+
 ## Decisions and evidence
 
 Reviewer decisions are written to **`VerificationReview`** — the store that already existed, with

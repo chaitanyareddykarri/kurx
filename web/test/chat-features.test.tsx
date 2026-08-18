@@ -22,8 +22,10 @@ vi.mock("@/lib/chat-actions", () => ({
 }));
 
 vi.mock("next/link", () => ({
+  // See the note in discover-filter-sections.test.tsx: a click on a bare `<a href>` schedules a jsdom
+  // navigation that exits the runner non-zero long after the test passed.
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+    <a href={href} onClick={(e) => e.preventDefault()}>{children}</a>
   )
 }));
 

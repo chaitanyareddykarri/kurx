@@ -402,6 +402,22 @@ public class AdminEventManagementTests : IClassFixture<KurxApiFactory>
         // `org_id` stays the deprecated D-273a alias for the representation, beside the name rather than
         // instead of it — the pairing the console reads.
         Assert.Equal(orgId, row.GetProperty("representing_org_id").GetGuid());
+
+        /*
+         * D-381 — the creator travels BESIDE the organization, never instead of it.
+         *
+         * Guarded here rather than in a test of its own because this is the method that already knows
+         * how this contract breaks: `AdminEventResponse` is a positional record, so a member added or
+         * removed in the middle silently re-points every field after it, and the symptom is a correct-
+         * looking payload carrying the wrong values. `creator_name` is the field the console prints
+         * under "Creator", and the bug this decision fixed was printing a PERSON under "Representing
+         * organization" — so the assertion that matters is that the two are distinct keys, both present.
+         */
+        Assert.True(row.TryGetProperty("creator_name", out var creator), "the list row has no creator_name");
+        Assert.Equal(JsonValueKind.String, creator.ValueKind);
+        Assert.NotEqual(Guid.Empty, row.GetProperty("creator_id").GetGuid());
+        // A real organization, so the console must NOT offer the legacy state for it.
+        Assert.False(row.GetProperty("org_is_personal").GetBoolean());
         Assert.Equal(orgId, row.GetProperty("org_id").GetGuid());
 
         // Paired so the event is returned to its original state; each response is the same DTO.

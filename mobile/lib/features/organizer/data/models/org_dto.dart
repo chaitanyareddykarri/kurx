@@ -130,3 +130,14 @@ class RepresentationDto with _$RepresentationDto {
   factory RepresentationDto.fromJson(Map<String, dynamic> json) =>
       _$RepresentationDtoFromJson(json);
 }
+
+/// The organization-type vocabulary the registry accepts, in the order web offers it
+/// (`web/lib/api.ts` → `organizationTypes`). A list that drifts offers a type the API refuses.
+///
+/// Lives beside the DTO because two screens now ask for it — the standalone representation request and
+/// Create Event's Representing step, which registers an institution inline. Two copies of a closed
+/// vocabulary is how one of them ends up offering a value the server rejects.
+const kOrgTypes = [
+  'college', 'school', 'university', 'company', 'startup',
+  'ngo', 'club', 'community', 'government', 'other',
+];

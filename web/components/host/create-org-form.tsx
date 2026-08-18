@@ -1,16 +1,20 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { submitRepresentationRequestAction } from "@/lib/org-actions";
-import { organizationTypes } from "@/lib/api";
+import { registerRepresentationInlineAction, submitRepresentationRequestAction } from "@/lib/org-actions";
+// The vocabulary from the leaf module and the type as a type-only import: both erase to nothing at
+// runtime, so this client component never pulls `lib/api`'s axios client and React `cache` calls in.
+import { organizationTypes } from "@/lib/org-types";
+import type { Representation } from "@/lib/api";
 import { Button, Field, Input, Select, Spinner } from "@kurx/ui";
 
-function SubmitButton() {
+function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
       {pending ? <Spinner size={16} decorative /> : null}
-      {pending ? "Submitting…" : "Register for verification"}
+      {pending ? "Submitting…" : label}
     </Button>
   );
 }
@@ -31,12 +35,46 @@ function SubmitButton() {
  * control referenced, so a screen-reader user focused on either field was told nothing about what to
  * put in it. The submission error was a bare red `<p>`: colour only, and never announced.
  */
-export function CreateOrgForm() {
-  const [state, formAction] = useFormState(submitRepresentationRequestAction, null);
+export function CreateOrgForm({ returnTo, onRegistered }: {
+  /// D-382 — where to land after the request is filed, when the caller arrived from an event. Without it
+  /// they were dropped on the account-level representation list and had to rediscover the event they
+  /// were in the middle of. Validated server-side in `submitRepresentationRequestAction`, never trusted
+  /// as a redirect target just because it reached the form.
+  returnTo?: string;
+  /// Inline mode: hand the staged organization back instead of navigating anywhere.
+  ///
+  /// Create Event's Representing step mounts this form *in place*, so the redirect the standalone page
+  /// needs is the one thing the wizard cannot survive — leaving it discards every unsaved answer. One
+  /// component either way, because two copies of "what registering an institution asks for" is exactly
+  /// how the two drift.
+  onRegistered?: (rep: Representation) => void;
+} = {}) {
+  const inline = onRegistered !== undefined;
+  const [state, formAction] = useFormState(
+    inline
+      ? (async (_: unknown, fd: FormData) => registerRepresentationInlineAction(fd))
+      : submitRepresentationRequestAction,
+    null);
   const error = state && "error" in state ? String(state.error) : undefined;
+
+  // Fires once per staged organization: `state` is the action's return value, so re-renders that do not
+  // re-run the action see the same object and must not re-announce it.
+  //
+  // The shape is CHECKED, not assumed. "Not an error" is not the same as "a representation": anything
+  // else coming back — a bare `{ ok: true }`, a future field rename — would otherwise be handed to the
+  // caller as an organization and select an `undefined` id, leaving the step looking answered when
+  // nothing was registered. An id is the one thing that makes this a representation.
+  const announced = useRef<unknown>(null);
+  useEffect(() => {
+    if (!state || "error" in state || announced.current === state) return;
+    if (typeof (state as Representation).organization_id !== "string") return;
+    announced.current = state;
+    onRegistered?.(state as Representation);
+  }, [state, onRegistered]);
 
   return (
     <form action={formAction} className="space-y-4">
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
       <Field
         label="Organization name"
         required
@@ -51,7 +89,11 @@ export function CreateOrgForm() {
             {organizationTypes.map((t) => <option key={t} value={t}>{t}</option>)}
           </Select>
         </Field>
-        <Field label="Official email domain" helper="Optional.">
+        {/* "Organization email domain", not "Official email domain": this form now renders on the same
+            step as the authorization, which asks for the signatory's "Official email". Two fields whose
+            labels share a prefix is an ambiguity for anyone navigating by label — and for the tests
+            that do the same thing. */}
+        <Field label="Organization email domain" helper="Optional.">
           <Input id="org-domain" name="primaryDomain" placeholder="nsrit.edu.in" />
         </Field>
       </div>
@@ -77,7 +119,9 @@ export function CreateOrgForm() {
       {error ? (
         <p role="alert" className="text-sm text-danger">{error}</p>
       ) : null}
-      <SubmitButton />
+      {/* Inline, the button is one of several on the step, so it says what it does to THIS step rather
+          than naming the whole workflow. */}
+      <SubmitButton label={inline ? "Save organization" : "Register for verification"} />
     </form>
   );
 }

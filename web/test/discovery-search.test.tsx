@@ -34,7 +34,10 @@ vi.mock("@/lib/posts-actions", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>
+  // `preventDefault` for the same reason as discover-filter-sections.test.tsx — jsdom cannot navigate,
+  // and the attempt exits the runner non-zero on an otherwise green suite.
+  default: ({ children, href }: { children: React.ReactNode; href: string }) =>
+    <a href={href} onClick={(e) => e.preventDefault()}>{children}</a>
 }));
 
 const author = { name: "Asha", avatarKey: null };

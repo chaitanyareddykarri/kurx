@@ -40,6 +40,30 @@ Full detail: `docs/security/overview.md`, `docs/security/secret-management.md`. 
 - **Containers run unprivileged** (D-256) — see `deployment.md` for the writable-path caveat.
 - **A client never enforces a stricter auth rule than the server** (D-329). `PasswordResetService` accepts a recovery code **or** a satisfied step-up as factor 2; web, admin and Flutter each required the code to submit at all, and since codes are minted only by one step-up-gated call that nothing invokes at registration, the screen for a locked-out user refused nearly every account before a request was sent. A client-side gate stricter than the server is invisible to every check the platform has — the contract gate compares the spec to the **server**, so a client inventing a requirement produces no diff, no failing test and no drift alert. Render the server's rule, submit, and let the refusal name the real state; a control that never enables tells the user nothing. This is the auth-path form of the capability engine's rule that clients render capabilities and never decide them.
 
+## Structured data is escaped before it reaches a `<script>` (2026-08-18)
+
+`web/lib/site.ts` `jsonLd()` builds the body of `<script type="application/ld+json">` and hands it to
+`dangerouslySetInnerHTML`. **`JSON.stringify` does not escape `<`**, and an HTML parser ends a
+`<script>` at the first literal `</script>` it sees — being inside a JSON string means nothing to the
+tokenizer. So any value containing `</script>` closed the element early and the rest was parsed as
+markup.
+
+It was reachable by any registered user with no privileges: the free-text display name at
+`components/auth/onboarding-form.tsx` is rendered by `/u/{username}` as
+`jsonLd("Person", { name: profile.name })`. A name of `</script><img src=x onerror=…>` is stored XSS
+executing for every visitor to that public profile. `/e/{slug}` (event title, venue) and `/o/{slug}`
+(org name, bio) carried the same shape; the httpOnly session cookie limits token theft but not
+same-origin authenticated requests as the visitor.
+
+Fixed by escaping `<` to `\u003c` **in the helper, not at the six call sites** — the call sites were
+not wrong, the helper was, and a guard every caller must remember is one a caller eventually forgets.
+`web/test/structured-data-escaping.test.ts` asserts the property (no literal `<` survives, and the
+value still round-trips through `JSON.parse`), and was confirmed to fail without the fix.
+
+**The general rule: anything interpolated into a `<script>`, `<style>` or any other raw-text element
+is escaped at the helper that builds it.** React escapes its children; `dangerouslySetInnerHTML`
+opts out of exactly that, so every use of it owns its own escaping.
+
 ## User-safety invariants (D-262 · D-263 · D-264)
 
 These protect users from each other rather than from an attacker on the wire, and each one is a

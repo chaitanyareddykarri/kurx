@@ -176,3 +176,36 @@ class MembershipClaimDto with _$MembershipClaimDto {
   factory MembershipClaimDto.fromJson(Map<String, dynamic> json) =>
       _$MembershipClaimDtoFromJson(json);
 }
+
+/// `EventEndpoints` — GET `/v1/events/{eventId}/authorization` (D-266 M5 / D-379).
+///
+/// The event's own institutional authorization: who signed for the organization, how to reach them,
+/// the letter, and the reviewer's verdict. One row per event — `event_authorizations` is UNIQUE on
+/// `EventId` — so "the letter from last month's event" can never stand in for this one.
+///
+/// D-382 — this is read by the **event's Representing screen**, which is the single place Flutter
+/// collects or shows representation. Nothing else in the organiser surface asks for these fields.
+@freezed
+class EventAuthorizationDto with _$EventAuthorizationDto {
+  const factory EventAuthorizationDto({
+    @JsonKey(name: 'event_id') required String eventId,
+    @JsonKey(name: 'head_name') @Default('') String headName,
+    @JsonKey(name: 'head_designation') @Default('') String headDesignation,
+    @JsonKey(name: 'official_email') @Default('') String officialEmail,
+    @JsonKey(name: 'official_phone') String? officialPhone,
+    @JsonKey(name: 'representative_role') @Default('') String representativeRole,
+    @JsonKey(name: 'representative_role_other') String? representativeRoleOther,
+    @JsonKey(name: 'representative_username') String? representativeUsername,
+    @JsonKey(name: 'reviewer_name') String? reviewerName,
+    /// A short-lived presigned URL, never a storage key.
+    @JsonKey(name: 'letterhead_url') String? letterheadUrl,
+    /// `Submitted` / `Approved` / `Rejected` / `ChangesRequested`.
+    @Default('Submitted') String status,
+    @JsonKey(name: 'reason_code') String? reasonCode,
+    String? notes,
+    @JsonKey(name: 'updated_at') DateTime? updatedAt,
+  }) = _EventAuthorizationDto;
+
+  factory EventAuthorizationDto.fromJson(Map<String, dynamic> json) =>
+      _$EventAuthorizationDtoFromJson(json);
+}

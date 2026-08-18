@@ -64,6 +64,20 @@ public static class AdminEventEndpoints
                 c.Legacy));
         }).Produces<EventReviewCountsResponse>();
 
+        /*
+         * D-388 — the change-request queue.
+         *
+         * A READ only. The verdict goes through the org-scoped
+         * `POST /v1/orgs/{orgId}/events/{eventId}/change-requests/{id}/decision`, for the same reason the
+         * review verdicts do: there is no admin-side workflow route, because a duplicate admin action
+         * endpoint is how two workflows drift apart (REVIEW_LIFECYCLE.md, "Admin API").
+         */
+        g.MapGet("/change-requests", async (int? limit, IEventService svc, CancellationToken ct) =>
+        {
+            var res = await svc.ListPendingChangeRequestsAsync(limit ?? 50, ct);
+            return res.Ok ? Results.Ok(res.Value) : Results.Ok(Array.Empty<EventChangeRequestView>());
+        }).Produces<IReadOnlyList<EventChangeRequestView>>();
+
         // D-266 M4: one event's decision history, from VerificationReview. Reviewer actions themselves go
         // through the org-scoped transition endpoint (reviewer-capable) — there is deliberately no
         // admin-side duplicate of the workflow, matching the pattern the force-actions already use.
@@ -313,5 +327,10 @@ public static class AdminEventEndpoints
         e.CheckedIn,
         e.RegistrationsCount,
         e.RevenuePaise,
-        e.Currency);
+        e.Currency,
+        // D-381 — the creator is a USER and the organization is what the event REPRESENTS. Emitted
+        // separately so the console stops printing one under the other's label.
+        e.CreatorId,
+        e.CreatorName,
+        e.OrgIsPersonal);
 }

@@ -4,10 +4,12 @@ The end-to-end journey across **app, web and admin as one system**: how a person
 event comes into being, how it gets sold, run and settled, and which surface owns each step.
 
 **Scope boundary — this file does not list pages.** Per-surface page inventories are owned by
-[`docs/ui-ux/inventory-web.md`](../ui-ux/inventory-web.md) (93 routes),
-[`inventory-admin.md`](../ui-ux/inventory-admin.md) (27 routes) and
-[`inventory-mobile.md`](../ui-ux/inventory-mobile.md) (95 pages) — all three re-derived from the
-filesystem on 2026-08-15, when this line still said 88. Structural grouping and reachability are owned
+[`docs/ui-ux/inventory-web.md`](../ui-ux/inventory-web.md) (94 routes),
+[`inventory-admin.md`](../ui-ux/inventory-admin.md) (26 routes) and
+[`inventory-mobile.md`](../ui-ux/inventory-mobile.md) (94 pages) — all three re-derived from the
+filesystem on 2026-08-18 (`find … -name page.tsx | wc -l`, `find mobile/lib -name '*_page.dart'`),
+and none of the three reconciles with the 2026-08-15 figures by addition: routes have landed and been
+retired since, so each is a measurement rather than an arithmetic update. Structural grouping and reachability are owned
 by [`information-architecture.md`](../ui-ux/information-architecture.md). This file owns only what
 none of those do: the **flow between surfaces**, and where a journey cannot complete.
 
@@ -25,8 +27,8 @@ Measured 2026-08-07 on `feat/messages-settings`. Method: every literal `/v1/…`
 | Step-up challenge | ✅ | detect only | — |
 | Discover an event | ✅ | ✅ | — |
 | Book / pay | ✅ | ✅ | — |
-| Create an event | ✅ 7 steps | ✅ 11 steps | — |
-| Manage an event | ✅ 16 tabs | ✅ 17 tabs | oversight only |
+| Create an event | ✅ 11 steps | ✅ 11 steps | — |
+| Manage an event | ✅ 15 tabs | ✅ 19 tabs | oversight only |
 | Review / approve an event | — | reviewer copies | ✅ owner |
 | Check in at the gate | ✅ scanner | ✅ | — |
 | Moderate content | — | — | ✅ |
@@ -84,8 +86,13 @@ hub (AM9). An already-signed-in device calls pending → approve/reject.
 ORGANISER                        PLATFORM (admin)                ATTENDEE
 
 Create Event
-  app  7 steps
+  app  11 steps
   web  11 steps
+   step 1 · Representing
+   — the organization the event
+     represents, AND that
+     organization's authorization
+     letter (D-379, D-382)
       │
       ▼
    DRAFT

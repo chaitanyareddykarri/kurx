@@ -178,9 +178,14 @@ explicit requirement for Phase 14 and today is not guaranteed.
 | ├ Notifications | `/settings/notifications` | |
 | └ Representing | `/settings/representing` | |
 
-`/settings/representing` and `/host/representing` are two doors onto the same concept. Keep both —
-settings answers *"which organizations may I represent?"*, host answers *"act as one"* — but
-Phase 18/21 must make that distinction visible in the copy, because today it is not.
+`/settings/representing` **is a redirect to `/host/representing`, not a second door** — corrected
+2026-08-18 against `web/app/(app)/settings/representing/page.tsx`, which is a bare `redirect()`.
+
+The proposal above was to keep both and make the distinction visible in the copy; the code took the
+other option and collapsed them, on the reasoning written into that file: representing is the
+*authority to act for an organization*, which belongs with hosting rather than with how your account
+behaves. The route survives only so existing links and bookmarks keep working. One concept, one
+surface — there is no copy to disambiguate.
 
 ---
 
@@ -192,12 +197,20 @@ Workspace  /workspace                    my events, attending + hosting
 Host
   ├ Create        /host/events/new       the wizard
   ├ Event         /host/events/[id]      tabbed workspace, capability-driven
-  │   └ tabs      overview · readiness · details · schedule · people · media ·
-  │               tickets · registrations · attendees · check-in · announcements ·
-  │               invitations · certificates · chat · team · analytics · reviews
+  │   └ tabs      overview · readiness · representing · details · schedule · people · media ·
+  │               tickets · registrations · attendees · check-in · badges ·
+  │               certificates · announcements · invitations · chat · team ·
+  │               analytics · reviews
   └ Representing  /host/representing     which institutions I represent
+      ├ new       /host/representing/new  request one Kurx has not verified yet (D-074/D-075)
       └ finance   /host/representing/[orgId]/finance
 ```
+
+Two of those tabs are one concept split by responsibility (D-382). **Representing** is the only
+event-facing place representation is entered — the organization the event is run on behalf of, and
+that organization's authorization letter. **Readiness** reports the resulting state and links to it;
+it collects nothing. The same pair exists on mobile as `/events/{id}/manage/representing` and the
+Overview entry that points at it. `badges` is D-362.
 
 The tab list is **derived from live capabilities**, never hardcoded — `layout.tsx` gates each group
 on `events:update`, `attendees:view`, `analytics:view`, `volunteers:view`. Phase 21 preserves that

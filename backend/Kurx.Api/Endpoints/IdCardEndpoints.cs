@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Kurx.Api.ExceptionHandling;
 using Kurx.Application.Abstractions;
+using Kurx.Infrastructure.IdCards;
 
 namespace Kurx.Api.Endpoints;
 
@@ -66,6 +67,20 @@ public static class IdCardEndpoints
         //
         // One design per event, stored on DesignTemplate with Kind = IdCard. GET answers the shipped
         // default when nothing has been saved, so the editor always opens on a working card.
+
+        // The built-in placements, so the editor opens on the layout the server would actually print
+        // instead of on an empty card (D-385). `GET /template` answers `fields: null` for an event whose
+        // design has never been saved — that means "use the built-in layout", and a client that renders it
+        // as *no fields* both lies about the card and, on the first tick of a checkbox, sends a one-field
+        // layout that replaces the whole default.
+        //
+        // Ungated for the same reason as `/sizes`: it reads nothing and reveals nothing about the event.
+        g.MapGet("/template/defaults", (string? size, string? kind) =>
+        {
+            var badgeSize = BadgeSize.FromKey(size) ?? BadgeSize.Lanyard;
+            var isStaff = string.Equals(kind, "staff", StringComparison.OrdinalIgnoreCase);
+            return Results.Ok(BadgeLayout.Defaults(badgeSize, isStaff));
+        }).WithSummary("The built-in card layout, as placements the editor can load and drag");
 
         g.MapGet("/template", async (Guid eventId, ClaimsPrincipal p, IIdCardTemplateService svc, CancellationToken ct) =>
         {
@@ -135,6 +150,19 @@ public static class IdCardEndpoints
             .WithSummary("Print-ready sheet of badges, laid out N-up on A4 with cut guides")
             .Produces(StatusCodes.Status200OK, typeof(byte[]), "application/pdf");
 
+        // D-386. Marks the card document dead so the verification lookup stops reporting it current. It
+        // does NOT close a door by itself — an attendee's entry credential is their ticket and a staff
+        // member's is their assignment — and the summary says so, because the opposite assumption is the
+        // dangerous one.
+        g.MapPost("/{recipientUserId:guid}/revoke", async (
+            Guid eventId, Guid recipientUserId, RevokeBadgeBody? body, ClaimsPrincipal p, IIdCardService svc,
+            CancellationToken ct) =>
+        {
+            var r = await svc.RevokeAsync(eventId, UserId(p), IsAdmin(p), recipientUserId, body?.Reason, ct);
+            return r.Ok ? Results.Ok(r.Value) : Fail(r.Error);
+        })
+            .WithSummary("Revoke an issued badge — marks the card, does not void the ticket or assignment");
+
         g.MapGet("/{recipientUserId:guid}.pdf", async (
             Guid eventId, Guid recipientUserId, string? size, ClaimsPrincipal p, IIdCardService svc,
             CancellationToken ct) =>
@@ -160,6 +188,10 @@ public static class IdCardEndpoints
 
     /// <param name="Purpose">`background` or `logo` (default).</param>
     public record AssetPresignBody(string ContentType, string? Purpose);
+
+    /// <param name="Reason">Optional. "Revoked" is the fact a verifier needs; the why is often
+    /// operational and is not required to record the act.</param>
+    public record RevokeBadgeBody(string? Reason);
 
     private static IReadOnlyList<BadgeKind> ParseKinds(string[]? kinds)
     {

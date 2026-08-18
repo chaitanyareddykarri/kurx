@@ -123,6 +123,48 @@ public static class EventStatusWorkflow
     // `Content` (tagline, short description, logo, thumbnail, promo video, rules, FAQ), contact details,
     // website, socials, `Schedule` (registration/check-in windows), language, standalone listing.
 
+    /*
+     * D-388 — a LIVE event's substance is not the host's to change.
+     *
+     * D-363 §4 (`RequiresFreshReview` above) covered `Approved`, which is reviewed but NOT public: nobody
+     * has seen it, it can hold no orders, so applying an edit and returning it to the queue loses nothing.
+     * `Published`/`Scheduled`/`Live` are a different situation entirely and had NO guard at all — the
+     * owner of an event people had already registered for could retitle it and move its dates in one
+     * PATCH, with no reviewer, no notification and no audit row. Reproduced over HTTP before this existed.
+     *
+     * So the same edit takes a different route depending on where the event stands:
+     *
+     *   Draft / ChangesRequested / Rejected → applied directly
+     *   PendingReview / UnderReview         → refused, `event_under_review` (unchanged)
+     *   Approved                            → applied, event returns to the queue (D-363 §4, unchanged)
+     *   Published / Scheduled / Live        → refused, `change_request_required`  ← this
+     *
+     * PUBLIC ONLY. A Private product is never reviewed — its host is its only audience — so it keeps
+     * direct editing at every status, and putting an admin between a family and their own wedding page
+     * would be an absurdity, not a safeguard.
+     */
+
+    /// <summary>Whether this event's protected substance is frozen behind an approved change request:
+    /// a Public product that is publicly live. The one definition — <c>EventService</c>,
+    /// <c>TicketTypeService</c>, <c>AudienceService</c> and <c>EventAuthorizationService</c> all call it,
+    /// because §4's lesson was that a guard on the one path you thought of holds only until someone adds
+    /// a second.</summary>
+    public static bool IsLiveProtected(EventProduct product, EventStatus status) =>
+        product == EventProduct.Public
+        && status is EventStatus.Published or EventStatus.Scheduled or EventStatus.Live;
+
+    /// <summary>The protected set for a LIVE event: everything a reviewer assessed
+    /// (<see cref="RequiresFreshReview"/>) plus the two public-facing prose fields.
+    ///
+    /// <para><b>Subtitle and Description are protected here and free before publication</b>, which is not
+    /// an inconsistency. Before an event is public, prose is draft copy and a re-review to fix a typo is a
+    /// rule organisers route around. After it is public, the description is the single most abusable field
+    /// on the listing: it is what an attendee read before paying, and swapping it out is a bait-and-switch
+    /// no other guard would catch. Tagline, short description, rules, FAQ, banner, contact details and the
+    /// registration windows stay free at every status — presentation and operations, not the offer.</para></summary>
+    public static bool RequiresApprovalWhenLive(UpdateEventInput i) =>
+        RequiresFreshReview(i) || i.Subtitle is not null || i.Description is not null;
+
     /// <summary>Actions only a reviewer may invoke. Authorization itself is D-269's
     /// <c>IEventAuthority</c>; this only says which actions are reviewer-scoped, so the two never
     /// duplicate each other.</summary>

@@ -1,15 +1,30 @@
 using System.Security.Cryptography;
+using Kurx.Application.Abstractions;
 using Kurx.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kurx.Infrastructure.IdCards;
 
 /// <summary>Storage keys for a generated ID card's artefacts (D-362), mirroring
-/// <c>CertificateStorageKeys</c> so both document families are laid out the same way under an event.</summary>
+/// <c>CertificateStorageKeys</c> so both document families are laid out the same way under an event.
+///
+/// <para><b>The size is part of the key (D-385).</b> A rendered badge is a raster at one physical size, so
+/// one card issued at <c>lanyard</c> and later printed at <c>card</c> are two different artefacts. Keying
+/// them together meant a stored lanyard raster was served for a CR80 request and drawn into a landscape
+/// slot at the wrong aspect — the size selector silently stopped working the moment cards were issued.
+/// With the size in the path a mismatched request simply misses and re-renders.</para></summary>
 public static class IdCardStorageKeys
 {
-    public static string Pdf(Guid eventId, Guid cardId) => $"events/{eventId}/id-cards/{cardId:N}/card.pdf";
-    public static string Png(Guid eventId, Guid cardId) => $"events/{eventId}/id-cards/{cardId:N}/card.png";
+    public static string Pdf(Guid eventId, Guid cardId, string sizeKey) =>
+        $"events/{eventId}/id-cards/{cardId:N}/{Size(sizeKey)}/card.pdf";
+
+    public static string Png(Guid eventId, Guid cardId, string sizeKey) =>
+        $"events/{eventId}/id-cards/{cardId:N}/{Size(sizeKey)}/card.png";
+
+    /// <summary>Callers pass a <see cref="BadgeSize.Key"/>, which is already one of a fixed set — this is
+    /// the belt on the braces, because the value lands in a storage path.</summary>
+    private static string Size(string sizeKey) =>
+        BadgeSize.FromKey(sizeKey)?.Key ?? BadgeSize.Lanyard.Key;
 }
 
 /// <summary>

@@ -40,8 +40,13 @@ public static class BadgeLayout
     /// <param name="background">The uploaded artwork's bytes, resolved by the caller. Passed on the
     /// document rather than in the render data because that is where the renderer paints it — beneath
     /// every element, <c>contain</c>, so nothing of the design is cropped.</param>
+    /// <param name="values">The render values the caller is about to hand the renderer. Supplied so a
+    /// field with nothing behind it can be dropped here (D-385): the shared renderer draws
+    /// <c>{holder_name}</c> for an empty value, which is the right prompt on a certificate *design* and a
+    /// printed defect on an *issued* badge. Null skips the check — the preview path wants the prompt.</param>
     public static CertificateDocument Build(
-        BadgeRecipient recipient, BadgeSize size, IdCardTemplateSpec? spec, byte[]? background = null)
+        BadgeRecipient recipient, BadgeSize size, IdCardTemplateSpec? spec, byte[]? background = null,
+        IReadOnlyDictionary<string, string>? values = null)
     {
         var s = (spec ?? IdCardTemplateSpec.Default).Sanitised();
         var isStaff = recipient.Kind == BadgeKind.Staff;
@@ -56,6 +61,9 @@ public static class BadgeLayout
             // blank line — an attendee has no access level, and a band saying nothing is worse than none.
             if (!isStaff && f.Key is IdCardField.AccessLevel) continue;
             if (f.Key == IdCardField.Logo && s.LogoKey is null) continue;
+            // A text field the caller has no value for prints nothing rather than its own key (D-385).
+            if (values is not null && IsTextField(f.Key)
+                && !(values.TryGetValue(f.Key, out var v) && !string.IsNullOrWhiteSpace(v))) continue;
 
             elements.Add(f.Key switch
             {
@@ -69,6 +77,11 @@ public static class BadgeLayout
 
         return new CertificateDocument("custom", background, elements, size.WidthMm, size.HeightMm);
     }
+
+    /// <summary>Whether a field key renders through <see cref="Text"/> — i.e. is substituted from the
+    /// render values rather than drawn from an image slot or painted as a plain band.</summary>
+    private static bool IsTextField(string key) =>
+        key is not (IdCardField.Photo or IdCardField.Logo or IdCardField.Qr or IdCardField.AccentBand);
 
     /// <summary>The built-in layout, expressed as placements so the editor can load and move them. Portrait
     /// and landscape differ in arrangement, not in which fields exist: CR80 is wider than tall and cannot

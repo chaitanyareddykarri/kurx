@@ -136,20 +136,26 @@ class _CheckinScannerPageState extends ConsumerState<CheckinScannerPage> {
   Future<void> _checkIn(String code) async {
     setState(() => _processing = true);
     try {
-      await guard(() => ref.read(dioProvider).post(
-            '/v1/gate/${widget.eventId}/scan',
-            data: {'ticketCode': code},
+      final staff = isStaffPass(code);
+      final res = await guard(() => ref.read(dioProvider).post(
+            '/v1/gate/${widget.eventId}/${staff ? 'scan-staff' : 'scan'}',
+            data: staff ? {'pass': code} : {'ticketCode': code},
           ));
       if (mounted) {
         setState(() {
           _checkedInCount++;
-          _lastResult = const _ScanResult(success: true, message: 'Checked in');
+          // A marshal needs to read the badge's claim back against the person in front of them, so a
+          // staff scan reports who and what rather than a bare "checked in".
+          _lastResult = _ScanResult(success: true, message: staff ? staffLabel(res.data) : 'Checked in');
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _lastResult = const _ScanResult(success: false, message: 'Invalid ticket');
+          _lastResult = _ScanResult(
+            success: false,
+            message: isStaffPass(code) ? 'Invalid staff pass' : 'Invalid ticket',
+          );
         });
       }
     } finally {
@@ -207,6 +213,22 @@ class _CheckinScannerPageState extends ConsumerState<CheckinScannerPage> {
       ),
     );
   }
+}
+
+/// A staff badge carries `staff:{assignmentId}:{signature}`; an attendee's carries a bare ticket code
+/// (D-385). The two go to different routes rather than to one polymorphic endpoint, so neither
+/// credential can be resolved as the other — and a scanner never has to guess which it is holding.
+bool isStaffPass(String code) => code.startsWith('staff:');
+
+/// What a staff scan puts on screen: the name the badge prints and what it authorises, so the two can be
+/// read against the person holding it. Falls back to a plain confirmation when the response is not the
+/// shape this build expects, rather than showing nothing.
+String staffLabel(dynamic data) {
+  if (data is! Map) return 'Staff checked in';
+  final name = (data['name'] as String?)?.trim();
+  final access = (data['access_level'] as String?)?.trim();
+  if (name == null || name.isEmpty) return 'Staff checked in';
+  return access == null || access.isEmpty ? name : '$name · $access';
 }
 
 class _ScanResult {

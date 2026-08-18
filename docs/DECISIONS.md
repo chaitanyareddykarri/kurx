@@ -14214,6 +14214,13 @@ disagree about a font metric. A folder of two hundred PDFs is the same job with 
 
 ### Deliberately not built
 
+> **Built in [D-385](#d-385--the-badge-systems-four-silent-defects-and-the-staff-gate-d-362-deferred)
+> (2026-08-18).** `staff_gate_entries` exists, the migration is generated, and
+> `POST /v1/gate/{eventId}/scan-staff` admits a staff pass — checking live that the assignment is still
+> `Accepted` and belongs to *this* event. The blocker named below (another session's uncommitted
+> migration) had cleared. The rest of this section is kept as the record of why it waited; read it as
+> history, not as current behaviour.
+
 **Staff scans are not yet recorded.** `gate_entries.TicketId` is non-nullable, and putting staff rows in
 it would corrupt attendee check-in counts, so staff scanning needs its own `staff_gate_entries` table.
 That migration was **not** generated: another session had an uncommitted migration and a modified
@@ -15465,3 +15472,680 @@ Every in-flight Draft on the platform is blocked at submit until its organizatio
 supplied, and any event a person created under their own name can no longer move forward. That is the
 rule working, not a defect — but it is a real migration cost and it is why this is a decision rather
 than a patch.
+
+---
+
+## D-380 — The public marketing page gets a spatial register; the product keeps P1 and P6
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Scopes an exception to `docs/ui-ux/visual-identity.md` P1 and P6**
+
+### The conflict
+
+`docs/ui-ux/visual-identity.md` is binding, and two of its principles forbid a spatial marketing page
+outright:
+
+* **P1 · Opaque, not glass** — *"Surfaces are opaque… No glassmorphism, no frosted panels, no gradient
+  meshes, no glow. This is the explicit anti-'AI dashboard' rule."*
+* **P6 · Motion confirms, never performs** — *"Every animation answers 'what just changed?'. Nothing
+  exists to be admired."*
+
+A homepage that reads as a premium spatial product experience requires ambient light, depth, parallax
+and idle motion. Those are P1 and P6 inverted. Both cannot hold, so this records which wins where.
+
+### The rule
+
+**The spatial register is permitted on the public marketing surface only** — `web/app/(public)/page.tsx`
+and `web/components/marketing/**`, plus the `web/components/spatial/**` primitives they consume.
+
+**P1 and P6 remain fully binding everywhere else**: the signed-in web app, the host workspace, the admin
+console and the Flutter app. A component that carries ambient motion or a light wash may not be lifted
+out of `marketing/` into a product surface without a further decision.
+
+**Why the line falls there.** The two surfaces have different jobs. A marketing page's job is to make a
+stranger understand and believe the product in five seconds; depth and material are how a product signals
+that it is built rather than assembled. A product surface's job is to let someone who already believes
+get work done, and there P1/P6 are exactly right — a payout table that shimmers is a defect. The split
+is by *purpose*, not by taste, which is why it can be stated as a boundary rather than a preference.
+
+### What does NOT change
+
+**One token set.** The spatial page invents no colour, no radius, no shadow and no type step. Every value
+resolves to `packages/ui/src/styles/tokens.css` and the shared Tailwind preset, so the marketing page and
+the product still read as one company in the same breath. `web/test/design-tokens.test.ts` continues to
+govern every contrast pair.
+
+* **P2 · Blue acts, teal attests** is unchanged and is load-bearing in the new sections: the verification
+  and representation scenes use teal because they depict attestation, not because teal is decorative.
+* **P5 · The ticket is the shape** is unchanged — the floating objects are cards at `radius-lg`.
+* **P7 · Both themes are first-class** is unchanged: the ambient washes are token-tinted, so light and
+  dark are one DOM with different custom-property values, exactly as before.
+
+### The constraints this exception carries
+
+The carve-out is conditional on all of the following, which are what keep it from becoming the "AI
+dashboard" P1 was written to prevent:
+
+1. **No new dependency.** The depth is CSS 3D (`perspective` + `preserve-3d`) driven by the
+   already-installed `framer-motion`. No `three`, no WebGL, no renderer. Cost is ~4KB of app code
+   rather than ~160KB of engine.
+2. **The message survives the scene.** The `h1`, the lead paragraph and both CTAs are ordinary
+   server-rendered HTML that paint before any spatial code runs. If every effect fails, the page still
+   states what Kurx is and offers the primary action.
+3. **Decorative stays decorative.** Illustrative event objects are `aria-hidden` and carry no fact a
+   sighted visitor gets and a screen-reader user does not. No invented statistic, customer, logo or
+   testimonial appears — the existing illustrative strings are reused rather than expanded.
+4. **`prefers-reduced-motion` is a real branch, not a degradation.** Under it the composition is static
+   and still complete: no idle float, no parallax, no scroll reveal, and no element left mid-transition
+   or invisible.
+5. **Motion never gates interaction.** No scroll-jacking, no entrance animation that delays a CTA
+   becoming clickable, no custom cursor.
+6. **Weak devices get less.** Pointer tilt is off for coarse pointers and low-core devices; parallax runs
+   on motion values, never on React state, so a pointer move costs no render.
+
+### The cost, stated
+
+The homepage is now the one surface in the product where a reviewer cannot apply P1 and P6 literally, so
+"is this consistent?" stops being a single-rule check there and becomes a judgement against this entry.
+That is a real reduction in how mechanically the design system can be enforced, and it is why the
+exception is scoped to a directory rather than granted to the brand.
+
+---
+
+## D-381 — The admin event review names the creator, the organization and the representative separately
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Corrects the console's reading of D-267/D-268/D-271 · Supersedes the D-074 note**
+
+### What was wrong
+
+The admin event workspace showed a person's name — "karri venkata reddy" — under **Representing
+organization**. That is not a rendering bug. The console had no creator field at all, so the one name
+it could reach was whatever `org.name` happened to hold, and for a legacy `IsPersonal` row that name
+IS a person. A reviewer deciding whether an institution consented was being shown the applicant.
+
+The note beside it made the same claim in prose: *"Organizer and representing organization are the same
+field…"* (D-074). D-267/D-268 ended that — **a User owns an event, an organization is the one it
+represents** — and D-379 made a real organization mandatory for every new event. The note had outlived
+the model it described.
+
+### The rule
+
+The console renders **three distinct facts**, and never substitutes one for another:
+
+| Field | Source | Meaning |
+|---|---|---|
+| **Creator** | `Events.CreatedBy` → `CreatorId` / `CreatorName` | The User who owns the event (D-268). |
+| **Representing organization** | `Events.OrgId` → org name + verification status | The institution answerable for it (D-379). |
+| **Representative** | `EventAuthorizations` head/designation | The named human who signed for that institution. |
+
+`CreatorId`, `CreatorName` and `OrgIsPersonal` are **additive** fields on the existing admin event
+contract. No second creator/organizer entity was introduced — the model already had one, the contract
+simply never carried it.
+
+### Legacy `IsPersonal` rows
+
+D-379 closed the route that minted self-representation organizations, but the rows it already created
+still back live events. Those render an explicit **"Legacy personal representation"** state.
+
+Deliberately **not** done: back-filling those events with a real organization to make the console look
+correct. That would forge exactly the institutional consent D-379 exists to require. The console reports
+the data as it is and marks it historical.
+
+### Event identity
+
+`Slug` is the human-readable reference. The raw `Event.Id` UUID moves out of the Overview into a
+**Technical details** section with a copy control, beside the organization and creator ids. The id is
+not removed and no new identifier was invented — a UUID is simply not what a reviewer reads an event by,
+and it was occupying the position the title deserves.
+
+### Action hierarchy
+
+Thirteen equally-weighted controls shared one wrap, which is how the console's **Approve** button came
+to sit between *Unfeature* and *Archive* — and, separately, how it came to submit `publish`. That second
+defect is the one that matters: approving an event **made it public in the same click**, contradicting
+D-377 (approval grants the permission; the creator decides when to go live). The sheet now delegates to
+`ReviewActions`, the component that already models the real state machine, rather than keeping a second
+spelling of it beside the first.
+
+Everything else moves behind **More ▾**. Nothing was removed and every action keeps the authorization it
+had; `Archive` gained the confirmation it never had, despite being terminal for the event's presence on
+every listing.
+
+### The single approval decision is unchanged
+
+This entry touches presentation and contract only. There is still **ONE** admin review and **ONE**
+approval decision (D-379): the authorization letter is evidence weighed inside that review, never a
+second sequential gate. Splitting the console's display into three fields does not split the decision
+into three.
+
+### Cost
+
+The tab strip is now a fixed 5 + 4 split rather than a width-measured one, so a viewport wide enough for
+all nine still hides four behind a menu. That is accepted: a `ResizeObserver` in a sheet with one width
+buys a smoother breakpoint and a class of layout bugs, and the split is one array to revisit.
+
+---
+
+## D-382 — Representation is entered on Representing, and Readiness only reports it
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Supersedes the Readiness half of D-266 M8 · Extends [D-379](#d-379--a-user-owns-the-event-an-organization-is-always-the-one-it-represents)**
+
+### The duplication
+
+Two surfaces collected the same institutional authorization.
+
+D-379 made the create-event wizard ask for the organization and its authorization together on **Step 1
+· Representing** — one question, one screen, because the letter names the organization it authorises.
+D-266 M8 had already put the whole `AuthorizationForm` on the event's **Readiness** page, and that copy
+was never removed. So an organiser was asked twice for the signatory's name, their designation, their
+role, an official email, an official phone, an optional linked Kurx account and the letter itself.
+
+`event_authorizations` is UNIQUE on `EventId`. Two forms, one row: whichever was submitted last silently
+replaced the other, including replacing a reviewed filing with a half-typed one. The second form was
+also the *only* post-creation route to that row, which is why deleting it outright was not an option —
+a reviewer requesting changes has to be answerable somewhere.
+
+### The rule
+
+**There is exactly one event-facing place representation is entered, per surface, and it is called
+Representing.**
+
+| Surface | Collects | Reports |
+|---|---|---|
+| Web · Create Event | Step 1 · Representing (organization + authorization, D-379) | — |
+| Web · event workspace | `host/events/{id}/representing` | `host/events/{id}/readiness` |
+| Flutter · Create Event | Step 1 · Representing | — |
+| Flutter · event workspace | `/events/{id}/manage/representing` | the Overview entry that links to it |
+| Admin console | never — a reviewer decides, they do not file | the event review's authorization panel |
+
+Readiness renders a `RepresentationStatus` card: the organization, one of *Approved* / *Pending review*
+/ *Action required*, the reviewer's reason when there is one, and a link to Representing. It contains no
+input, no form and no submit — a test asserts that structurally, and a second asserts that
+`<AuthorizationForm` appears in exactly one file in the whole web app.
+
+### What this decision does NOT change
+
+**No new endpoint, no new table, no second state machine.** Every route already existed:
+`POST/GET /v1/events/{id}/authorization`, `…/authorization/presign`, `GET /v1/events/authorization/roles`,
+the org-scoped `policy-requirements` blockers, `POST /v1/events/{id}/transition`, and on the reviewer's
+side `GET/POST /v1/admin/events/{id}/authorization[/review]`. The lifecycle is untouched: `submit_review`
+still refuses `representation_required`, `event_authorization_required`, `authorization_fields_required`
+and `letterhead_required`, and the reviewer still works the event and its authorization as **one**
+review (D-379) rather than as a gate before it.
+
+### The four defects this exposed on the way
+
+1. **Flutter could not create a private event at all.** `_stepErrors[_Step.representing]` has demanded a
+   valid representation for every product since D-379, but `_buildRepresenting()` still had the retired
+   Private branch: it rendered "Hosted by you … there's no organisation to name and nothing to verify"
+   and **no picker**. A step with nothing to answer and a Continue that could never enable. Web retired
+   the same branch; only this half was left behind.
+2. **Flutter asked for the letter on step twelve**, after Legal — the exact ordering D-379 removed on
+   web, where an organiser learns on the last step that the first one was incomplete. It is asked on
+   Representing now, under the organization it authorises.
+3. **Flutter had nowhere to file it after creation.** The letter could only be submitted inside the
+   wizard, so a reviewer requesting changes reached an organiser with no way to answer. That screen now
+   exists, and it is the same one that shows the verdict.
+4. **Flutter could not request an organization at all — a closed loop.** There was no equivalent of
+   web's `/host/representing/new`, and no client call for
+   `POST /v1/orgs/representation-requests[/media/presign]`. The wizard told an organiser with no
+   representation to request one "from your profile"; the profile's Representing page told them they
+   are asked while creating an event. Since D-379 an event cannot be created without a verified
+   organization, so for anyone not already verified that loop was the end of the road — the Flutter app
+   could not create *any* event. `/representing/new` is that screen, reachable from both ends of the
+   loop, and it posts to the endpoints web has always used.
+
+Both clients also un-gate the "register an organization you don't see here" route from `product ==
+Public`. Every event needs a verified organization since D-379, so gating the only route to getting one
+left the private branch in an empty state with no way out. When that route is reached from an event, a
+`returnTo` carries the event with it — validated to an in-app `/host/` path, because a redirect target
+that arrives in a form field is untrusted input.
+
+### Reading is not deciding — the reviewer's half
+
+The console showed the authorization panel only once a reviewer had **claimed** the event. So the queue
+carried an event's full dossier and hid the one document the decision turns on: whether an item was
+worth picking up had to be judged blind, and finding out whether an authorization had even been *filed*
+meant claiming the event first — taking it out of the queue and into your own name to answer a question
+the row could have answered.
+
+The panel now renders for every row and is `readOnly` until the item is held: the evidence is readable,
+the verdict buttons are not. Acting still requires the claim, which is the property the claim exists to
+protect (D-266 M7) — and the transition endpoints refuse an unclaimed verdict anyway, so offering the
+buttons earlier would only produce a refusal. The review **checklist** stays behind the claim, because a
+checklist is work-in-progress rather than evidence: there is nothing to tick on an event nobody is
+working.
+
+### The cost, stated
+
+The organization an event represents is **fixed at creation** — `Event.RepresentingOrgId` has no update
+path, and this decision does not add one. So the event's Representing page states which organization it
+is and lets only the authorization behind it be corrected. An organiser who picked the wrong
+organization must create a new event. That is the honest consequence of representation being part of
+what an event *is* rather than a setting on it (D-267/D-268), and both surfaces now say so on screen
+instead of leaving someone hunting for an edit control that was never going to exist.
+
+---
+
+## D-383 — The homepage's events band falls back to upcoming when nothing is curated
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Refines the events section of [D-380]**
+
+### What was observed
+
+`GET /v1/events/featured` is wired correctly and answers correctly: `SearchService.FeaturedAsync`
+is `BaseDiscoverable().Where(d => d.IsFeatured)`, and `IsFeatured` is an **admin curation flag** set
+through `POST /v1/admin/events/{id}/feature`. On the development database it returns `[]` because
+**none of the 16 events carries the flag** — measured, not assumed. Nothing is broken.
+
+But the homepage asked only that question, so its one real-data section rendered *"No featured events
+right now — check back soon."* on a platform that had published, bookable events. **Every new
+deployment starts in exactly that state**: curation is a thing a human does later, so a fresh install
+ships a dead band on the page that is supposed to prove the product has events on it.
+
+### The rule
+
+The band asks for featured events, and **falls back to upcoming events when curation is empty**.
+Curation still wins whenever it exists — this adds a second question, it does not replace the first.
+
+`getUpcomingEvents` already exists in `web/lib/api.ts` and `GET /v1/events/upcoming` already ships;
+no endpoint, DTO or backend behaviour changes. The fallback is two lines in the page.
+
+### The eyebrow tells the truth about which list is showing
+
+The section is labelled **"Featured"** only when it is actually showing curated events, and
+**"Upcoming"** when it is showing the fallback. Leaving it as "Featured" would have been the cheaper
+edit and a small lie: nobody chose those events. The `h2` — *"Events people can book today"* — is
+true of both lists and is unchanged.
+
+### What was rejected
+
+* **Curating an event in the dev database instead.** That fixes one machine's screenshot and leaves
+  the actual defect — the empty-curation state — in place for every real deployment.
+* **Dropping the section when empty.** A page whose layout changes shape depending on invisible admin
+  state is harder to reason about than one whose content changes.
+
+### The empty state stays
+
+If both lists come back empty — a genuinely new platform with nothing published, or a backend the
+page could not reach, since both calls are caught to `[]` — the section still renders its heading and
+a "check back soon" line. That copy changed with this decision: it read *"No featured events right
+now"*, which by that point names the one thing already ruled out, and is simply wrong in the outage
+case. It now reads **"No events to show right now"**, which is true in all three states.
+
+---
+
+## D-384 — The signed-out auth screens join the public register, and stop being a dead end
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Extends [D-380]; fixes defects on `/login` and `/register`**
+
+### 1. The spatial boundary moves from "marketing" to "signed out"
+
+D-380 scoped the spatial register to `web/components/marketing/**` and `app/(public)/page.tsx`,
+on the reasoning that a marketing page persuades a stranger while a product surface helps someone
+work. `/login` and `/register` are on the persuading side of that line — they are the two screens a
+stranger sees immediately after the homepage, and leaving them flat made the product visibly change
+character at the exact moment it asks for trust.
+
+**The boundary is therefore signed-out-public, not marketing:** `/login` and `/register` may carry
+the same ambient treatment. P1 and P6 remain binding everywhere a signed-in user works, and every
+condition D-380 was granted under still applies — no new dependency, no motion that gates
+interaction, decorative layers `aria-hidden`, reduced motion a real branch.
+
+### 2. `/register` moves inside the `(public)` route group
+
+It rendered its own bare `<main>` outside `(public)`, so the signup page had **no navigation, no
+footer, no skip link and no logo** — a visitor who landed there had no orientation and no way out
+except the back button, and no link to sign in if they already had an account. `/login` has had the
+full shell all along, so the two halves of the same decision looked like two different products.
+
+The move is `app/register/` → `app/(public)/register/`. **Route groups do not affect the URL**, so
+`/register` is unchanged for every existing link, redirect and test; it simply inherits the shell,
+and its own `<main>` is removed so the layout owns the only one.
+
+`test/register-resume.test.ts` reads the page by path and pinned the `h1`'s exact class string. Its
+path is updated and its assertion is loosened to match the heading rather than its styling — every
+behavioural guarantee it makes (the "Create" copy stays inside the else arm, the sign-out escape
+exists, and only on the resume path) is unchanged.
+
+### 3. Three defects fixed on the way
+
+**The sign-in fields had no real labels.** `OtpPanel` hand-rolled its identifier and password inputs
+from a local `inputCls` constant with `placeholder` + `aria-label` and no visible `<label>`. This is
+the exact pattern `packages/ui/src/field.tsx` was written to end — its comment names the twenty
+copy-pasted `inputClass` constants it replaced — and `test/auth-otp.test.tsx` already asserts *"has a
+real label, not a placeholder standing in for one"*. That test guards the shared primitive, so the
+sign-in screen kept the defect while the rule was green. Both fields now use `Field` + `Input`.
+
+**The signup code field could not be autofilled.** The same test file explains that iOS and Android
+only offer to fill an SMS code when the field declares `autocomplete="one-time-code"`, *"without it
+every user retypes the code by hand on the highest-friction step"*. The real field in
+`registration-flow.tsx` never declared it. It does now.
+
+**That field's accessible name contradicted its visible one.** It sat inside
+`<Field label="Verification code">` while carrying `aria-label="One-time code"`, and `aria-label`
+wins — so the control was announced as something other than the words printed above it, which is
+WCAG 2.5.3 (Label in Name). The `aria-label` is removed; the `Field` label is the name.
+
+### 4. `PhoneField` now wires its own label, which repaired two other screens
+
+Giving the signup phone field a `label` did not give it an accessible name: `PhoneField` renders
+`<label htmlFor={id}>` beside `<input id={id}>`, and with no `id` prop both are `undefined`. The
+label was a heading-shaped string attached to nothing, the control fell back to its placeholder, and
+it looked perfectly correct on screen — a silent failure with no way to notice it by reading the
+call site.
+
+Fixed in the component rather than at the call sites, because the call sites were not the bug: the
+API allowed a label with no id and quietly did the wrong thing with it. `PhoneField` now falls back
+to `useId()`, which is exactly what `Field` in the same package already does, and `id` stays
+available for callers that need to name the control from outside.
+
+**Two of the four call sites were already broken by this and are repaired without being touched:**
+`web/components/settings/phone-change.tsx` ("New phone number") and `admin/app/login/page.tsx`
+("Phone number") — so the admin console's own sign-in screen had an unnamed phone field. The two
+that passed an explicit `id` are unaffected.
+
+### What is explicitly not touched
+
+`lib/session.ts`, `lib/auth-api.ts` and `lib/webauthn.ts` are frozen by
+`docs/ui-ux/do-not-change.md` §4 and are unmodified. No authentication call, argument, outcome
+branch, redirect target or error code changes anywhere in this entry — the password-first order
+(D-182), the absence of a code path on the sign-in screen (D-320) and the registration step order
+(D-311) are all exactly as they were.
+
+---
+
+## D-385 — The badge system's four silent defects, and the staff gate D-362 deferred
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Completes [D-362](#d-362--event-badges-are-printed-by-the-organizer-and-staff-carry-a-signed-pass-because-they-hold-no-ticket-2026-08-16)**
+
+### How these were found
+
+By printing badges, not by reading code. A live event was seeded with three real staff — a Custom
+"Event Manager", a "Registration Desk" and a "Volunteer" — plus four ticket holders; seven `id_cards`
+rows were issued through the real API; and the resulting PDFs were measured and their QR codes decoded.
+The single-badge PDF is exactly 88.9 × 139.7 mm and its QR decodes to `staff:{assignmentId}:{hmac}` at
+27.6 mm, so the parts D-362 claimed were true. Four things it did not claim were not.
+
+Every defect below is invisible to a typecheck, a green test suite and a screenshot of the editor. Three
+of them are only visible **on paper**.
+
+### 1. A badge could print `{holder_name}`
+
+`CertificateDocumentRenderer` draws `{fieldKey}` when a `dynamicfield` has no value — deliberately, so a
+mis-mapped field shows up while an organiser is designing rather than as a blank space on a finished
+document. `CertificateIssuingService` guards it: issuing refuses with `missing_required_values` when a
+required value is missing, so the placeholder is only ever seen in a *design preview*.
+
+The badge path had no such guard. An account that never set a display name was issued a real card
+(`KRX-00004`) that printed the literal text `{holder_name}`.
+
+**Chose:** drop the field. `BadgeLayout.Build` now takes the render values and skips any text field with
+nothing behind it, so a missing value prints *nothing* rather than its own key. Ahead of that,
+`IdCardService` falls back from `User.Name` to `User.Username` — real data rather than an invented
+"Guest" — and the print screen warns before a run that N of these badges will have a blank name line.
+
+**Rejected:** refusing the whole run, as certificates do. A certificate is a formal record issued one at a
+time; a badge run is two hundred lanyards for Saturday, and failing all of them because one attendee never
+filled in a profile is the wrong trade.
+
+### 2. Choosing a badge size stopped working the moment cards were issued
+
+`RenderOneAsync` and `RenderSheetAsync` served `card.PdfKey` / `card.PngKey` whenever the artefact
+existed, without checking it was rendered at the size being *requested*. `BadgeIssueRequest` already
+documented that "stored artefacts are size-specific" — nothing enforced it.
+
+Measured: cards issued at `lanyard` (88.9 × 139.7 mm) and then printed at `card` reused the lanyard
+raster, which QuestPDF fitted into the CR80 slot at **34.4 × 54 mm** instead of 85.6 × 54 mm. The sheet
+footer still read "85.6 × 54 mm". The QR shrank until `cv2.QRCodeDetector` could no longer find it at
+300 dpi — an unscannable credential on a correctly-labelled sheet.
+
+**Chose:** put the size in the storage key —
+`events/{eventId}/id-cards/{cardId}/{sizeKey}/card.pdf`. A request for a size the card was never issued
+at simply misses and re-renders. No column, no migration, and the invariant is now structural rather than
+a comment.
+
+**Rejected:** a `SizeKey` column on `id_cards`. It would need a migration to express a fact the key can
+carry for free, and a row can legitimately have artefacts at several sizes at once.
+
+### 3. The designer opened on an empty card, and the first checkbox destroyed the layout
+
+`GET /badges/template` answers `fields: null` for an event whose design has never been saved. That means
+*"the server will use its built-in layout"*. The editor rendered it as **no fields**: a blank canvas with
+every checkbox unticked, against a card the server prints fully populated. That is the large empty layout
+area the feature was reported for.
+
+The second half is worse. `BadgeLayout.Build` treats any non-empty `Fields` array as the *whole* layout.
+So ticking one box on an empty canvas saved a **one-field card** — silently dropping the QR, which is the
+only reason the badge exists.
+
+**Chose:** serve the defaults. `GET /badges/template/defaults?size=&kind=` returns the built-in
+placements, and the editor seeds the canvas from them when nothing is saved. The checkboxes now describe
+the card, and enabling a field adds to a real layout instead of replacing it. Changing the card size
+re-seeds only while the organiser has not moved anything — CR80 is the one landscape size and needs its
+own arrangement, but nobody's own placements get overwritten.
+
+**Rejected:** duplicating the default layout in TypeScript. Two copies of a layout is two layouts, and
+the one that prints is the server's.
+
+### 4. The staff pass had no verifier anywhere — D-362's deferred half
+
+`SignStaffPass` was called in exactly one place, to *mint* a payload. Nothing in the backend, the mobile
+scanner or the web console ever read one back. `POST /v1/gate/{id}/scan` binds `Guid TicketCode`, so a
+staff payload did not even parse. The QR was printed at 27 mm on a real lanyard and understood by nothing.
+
+D-362 named this and deferred it for a specific reason: `gate_entries.TicketId` is non-nullable, staff
+need their own table, and another session held an uncommitted migration at the time. That tree is clean
+now.
+
+**Chose:** `staff_gate_entries`, plus `TokenService.VerifyStaffPass` and
+`IGateEntryService.ScanStaffAsync` behind `POST /v1/gate/{eventId}/scan-staff`.
+
+- **Its own table.** Every attendance figure counts `gate_entries`; admitting staff through it would
+  inflate attendee check-ins with people who never bought anything. Keyed on the `EventAssignment`, which
+  is what the badge encodes and what revocation acts on.
+- **A separate route, not a polymorphic payload.** The two credentials are structurally different — a
+  bare Guid against `staff:{id}:{sig}` — so each gets its own route and neither can be resolved as the
+  other. The mobile scanner picks by prefix.
+- **The signature is the weakest of the three checks.** It proves only that Kurx minted the pass.
+  Whether the assignment is still `Accepted`, and whether it belongs to *this* event, are asked of the
+  database at scan time (D-015) — so removing someone from the crew stops the badge already in their
+  pocket, and Saturday's badge does not open Sunday's door. The comparison is fixed-time.
+- **A repeat scan reports rather than refuses.** Staff come and go all day. The marshal still gets the
+  name and access level, which is why they scanned.
+
+### 5. The single-badge route existed and nothing called it
+
+`GET /v1/events/{id}/badges/{userId}.pdf` shipped with D-362, has a test, and had **no client function
+and no button** — so reprinting the one lanyard that was lost meant regenerating the whole sheet. Added
+to `badge-api.ts` and to each row of the print list.
+
+### What is recorded rather than fixed
+
+> **All five were closed the same day in
+> [D-386](#d-386--closing-the-four-gaps-d-385-recorded).** Access bands now cover every assignable role,
+> long values shrink instead of clipping, `(EventId, UserId)` is unique, `POST /badges/{userId}/revoke`
+> exists, and the dead columns are labelled `NOT IMPLEMENTED` (labelled, not dropped — that is a
+> destructive migration awaiting its own decision). Read the rest of this section as the record of what
+> was found, not as current behaviour.
+
+**`StaffAccess.LevelFor` names roles the platform cannot produce.** It maps `manager`, `vendor`,
+`speaker` and friends to `All Access`, `Vendor` and `Backstage` — but `EventAssignmentService.ValidRoles`
+offers *Volunteer, Judge, Moderator, Registration Desk, Stage Manager, Security, Photographer,
+Videographer, Host, Media Team, Speaker Coordinator, Technical Team, Support Team, Custom*. Only
+`Volunteer` and `Judge` intersect. Proven live: a staff member assigned the Custom role "Event Manager"
+prints **Staff**, not All Access.
+
+So three of the five access bands are unreachable except through a free-text `CustomRole` that happens to
+match, and the colour-coding a marshal is supposed to read across a room mostly does not vary. The switch
+was moved to `Kurx.Application.Abstractions` so the badge and the gate share one answer, but its
+**semantics are unchanged**: deciding which crew roles carry which authority is a product call, and
+guessing it would over-grant the one thing a marshal reads off a lanyard. It needs its own `D-NNN`.
+
+**`id_cards` has no unique index on `(EventId, UserId)`.** Two concurrent `POST /generate` calls can each
+see no existing card and create one, after which `ToDictionaryAsync(c => c.UserId)` throws and both the
+roster and the generate path fail permanently for that event. Unfixed here because the correcting
+migration should not be written blind against rows that may already be duplicated.
+
+**A long name is clipped, not shrunk.** "Ananya Krishnamurthy-Venkataraghavan" printed as "Ananya
+Krishnamurthy-" on a real badge: `DrawText` caps the font against the box height but never against its
+width, so an over-long value wraps and the second line falls outside the box. Shared with certificates,
+so it is a renderer-wide change and not a badge fix.
+
+**There is no revoke path for an issued badge.** `IdCard.IsRevoked` exists, the roster returns it and the
+console renders a "Revoked" chip — but no endpoint sets it. The staff gate makes this less pressing than
+it looks (revocation acts on the assignment, which *is* enforced), but an attendee badge cannot be
+revoked at all.
+
+---
+
+## D-386 — Closing the four gaps D-385 recorded
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Completes [D-385](#d-385--the-badge-systems-four-silent-defects-and-the-staff-gate-d-362-deferred)**
+
+D-385 fixed what it could prove and wrote down four things it deliberately did not touch — three because
+they needed a product call or a migration, one because it was renderer-wide. This closes all four.
+
+### 1. Every assignable role now has an access band
+
+`StaffAccess.LevelFor` mapped `manager`, `vendor`, `speaker` and friends. `EventAssignmentService.ValidRoles`
+offers *Volunteer, Judge, Moderator, Registration Desk, Stage Manager, Security, Photographer,
+Videographer, Host, Media Team, Speaker Coordinator, Technical Team, Support Team, Custom* — only two of
+which intersected. Thirteen of fourteen real roles printed **Staff**, so the colour band a marshal is
+supposed to read across a room did not vary. Proven live: a staff member assigned the Custom role "Event
+Manager" printed Staff, not All Access.
+
+**The bands answer "where may this person go", not "how senior are they".** That is the question a door
+asks, and it is why `Security` outranks `Registration Desk` here while neither has any authority in the
+permission model. This is **signage**; `IEventAuthority` remains the only thing that decides what anyone
+may *do*, and nothing in this entry touches it.
+
+| Band | Roles |
+|---|---|
+| All Access | Stage Manager, Host, Security (+ `owner`/`manager`/`organizer` as custom text) |
+| Backstage | Judge, Moderator, Speaker Coordinator, Photographer, Videographer, Media Team, Technical Team (+ `speaker`/`performer`) |
+| Vendor | `sponsor`/`vendor`/`exhibitor` — not in `ValidRoles`, reachable through `CustomRole`, which is how a stall is staffed |
+| Volunteer | Volunteer |
+| Staff | Registration Desk, Support Team, Custom, and anything unrecognised |
+
+**An unknown role falls to the narrowest band, never the widest.** Defaulting the other way would let a
+typo in a free-text `CustomRole` print an all-access lanyard.
+
+### 2. A long value is shrunk, not clipped
+
+A real badge printed "Ananya Krishnamurthy-Venkataraghavan" as "**Ananya Krishnamurthy-**".
+`CertificateDocumentRenderer.DrawText` capped the font against the box's *height* and never its *width*,
+so a long value wrapped and the second line fell outside a box only tall enough for one. QuestPDF wraps;
+it does not shrink.
+
+**Chose:** cap by width **only for a box that cannot hold two lines** (`boxHeight < size * 2`). Such a box
+is a single-line field by construction — a name, a role, a card number. A tall box is left alone, because
+wrapping is exactly what a certificate's body paragraph is for and shrinking it to one line would be the
+worse bug. As before, the rule **only ever reduces**: a design whose type already fits renders exactly as
+authored.
+
+The width estimate is deliberately crude — mean advance as a fraction of the em, 0.5 for Calibri and 0.55
+bold. Measuring exactly would mean loading the font and asking it, for precision this does not need: the
+job is to stop an overrun, and erring small costs a point or two of type on the few values that trip it.
+A quarter turn swaps which dimension the line runs along, so rotated elements measure against the other
+edge.
+
+This is the shared renderer, so it applies to certificates too. That is correct — the same clipping was
+available to them.
+
+### 3. One event badge per holder, enforced by the database
+
+`GenerateAsync` is idempotent per (event, holder) **in code**, but two concurrent calls could each read
+"no card" and write one. Every later read then keyed the set by `UserId`, so
+`ToDictionaryAsync(c => c.UserId)` threw on the duplicate — and because the *roster* read it too, a
+transient race turned into a **permanently dead badge page** for that event.
+
+**Chose:** a unique index on `(EventId, UserId)` filtered on `EventId IS NOT NULL`. The database is the
+only place that check can be made atomic. The filter matters: a college ID (D-331) carries no event, and
+many of them legitimately share the null.
+
+**Plus a belt for rows already written.** `OldestPerHolder` replaces the three `ToDictionaryAsync` calls
+and groups instead, taking the **oldest** card per holder — so a duplicate that predates the index cannot
+take the surface down, and the number people are already holding stays authoritative.
+
+### 4. An issued badge can be revoked
+
+`IdCard.IsRevoked` existed, the roster returned it and the console rendered a "Revoked" chip — with **no
+endpoint that set it**. `POST /v1/events/{eventId}/badges/{userId}/revoke` now does.
+
+**What it does not do is the load-bearing part.** It marks the *document*, so the verification lookup
+stops reporting the card current. It does **not** close a door: an attendee's entry credential is their
+ticket and a staff member's is their assignment, so stopping someone entering means voiding the ticket or
+removing the assignment. `Revoking_a_badge_does_not_by_itself_close_the_gate` pins that — if admission
+ever becomes conditional on the card, that test is what should be rewritten to say so, deliberately,
+rather than the behaviour drifting into place.
+
+A revoked card **keeps its number and stays on the roster** (D-331): a verifier must be able to tell a
+revoked badge from one that never existed, and hiding it would make those two indistinguishable. There is
+no un-revoke — a reissue after a loss takes a new number, and that is what lets a revoked card be told
+apart from its replacement.
+
+### 5. The dead columns are labelled, not dropped
+
+`IdCard.LayoutJson`, `ShowMealInfo`, `SignatureKey` and `LogoKey` are read and written by nothing
+(verified 2026-08-18). Each carried a confident doc comment describing behaviour that does not exist —
+`ShowMealInfo`'s cited D-334 §8 and explained how quantities are resolved at generation time, for a flag
+nothing sets and a field key that has no slot in `IdCardField.Keys`.
+
+**The defect was the claim, and the claim is fixed**: every one now says `NOT IMPLEMENTED` and why the
+capability lives elsewhere (per-card layout was superseded by the event-level design in D-362; the logo
+that prints is the *organiser's*, so one key per event is the right shape).
+
+**Dropping the columns is deliberately not done here.** It is a destructive schema change, which needs its
+own decision and its own migration — and the columns are null or false on every row, so they cost nothing
+while that decision waits. `IdCard.Template` is kept for a different reason: it is written, and it records
+what kind of card was issued, which is useful on a roster and in an audit. Its comment claimed it chose
+the rendering layout; it has not done that since D-362, and now it says so.
+
+---
+
+## D-387 — One editable template head, enforced by the database rather than by a read
+
+**Status:** Accepted · **Date:** 2026-08-18 · **Same family as [D-231](#d-231--privacy-writes-become-one-atomic-jsonb-merge--and-the-row-lock-that-fixed-it-first-is-recorded-as-forbidden-2026-08-02) and [D-240](#d-240--shared-money-counters-are-mutated-in-sql-never-read-modify-write-2026-08-02)**
+
+`TemplateService.NewVersionAsync` promises **one editable head per template family** and enforced it with
+a read-then-insert: look for an existing Draft, compute `MAX(Version) + 1`, insert. Its own comment named
+the unique `(RootTemplateId, Version)` index as the authority — *"the DB constraint stays authoritative"*.
+
+It was not the authority. That index only catches two racers who compute the **same** version, and the
+two reads can straddle the other's commit:
+
+```
+A: draft exists? no  → MAX=1 → insert v2 → commit
+B: draft exists? no     (read before A committed)
+   MAX=2                (read after  A committed)  → insert v3 → OK
+```
+
+Different version numbers, so the unique index lets both through. Two live Drafts in one family, both
+requests `200 OK`, and the invariant every later read depends on is gone. `TemplateActivationTests
+.Parallel_version_creation_yields_one_winner_and_no_500` caught it on 2026-08-18 — it had passed for
+weeks, because the failure needs the two reads to interleave precisely.
+
+**The chosen fix is a partial unique index, not a lock and not a retry:**
+
+```csharp
+e.HasIndex(x => x.RootTemplateId).IsUnique().HasFilter("\"State\" = 'Draft' AND \"DeletedAt\" IS NULL");
+```
+
+Migration `20260818112940_OneDraftPerTemplateFamily`. No service code changed: `NewVersionAsync` already
+caught `DbUpdateException` and reported `draft_exists`, so the loser now gets the clean `409` the test
+always asked for instead of a second draft.
+
+**Why not a lock.** `SELECT … FOR UPDATE` on a request path is forbidden by
+[D-231](#d-231--privacy-writes-become-one-atomic-jsonb-merge--and-the-row-lock-that-fixed-it-first-is-recorded-as-forbidden-2026-08-02)
+— it once took the suite from 7 minutes to 5h42m. A serializable transaction or an application retry
+would both work and both add a moving part; the invariant is a statement about *rows*, so it belongs to
+the row store. This is the same reasoning as D-240: state the rule where the data lives.
+
+**Why the filter is safe.** Only `NewVersionAsync` can add a Draft to an *existing* family. `CreateAsync`,
+`CloneAsync` and `SystemTemplateSeeder` each open a new family (`RootTemplateId = Id`), so each is the
+single row under its own key. `DeletedAt IS NULL` keeps soft-deleted drafts from blocking a live one. The
+dev database was checked for families holding more than one live draft before the index shipped — none.
+
+**Generalisation worth carrying:** a uniqueness comment that says "the constraint is authoritative" is a
+claim to verify, not a note to trust. Ask what the index key actually is, then ask whether two racers can
+land on *different* keys and still both be wrong.

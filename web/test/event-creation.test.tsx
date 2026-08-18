@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/event-actions", () => ({ createEventWizardAction: vi.fn(), updateEventAction: vi.fn() }));
+// The Representing step registers an organization in place, so the wizard reaches the org actions too.
+// Mocked for the same reason as the event ones: they are server actions over a real API client.
+vi.mock("@/lib/org-actions", () => ({
+  registerRepresentationInlineAction: vi.fn(), submitRepresentationRequestAction: vi.fn()
+}));
 
 // `useFormState` returns [state, action]; the state is what the form renders its outcome from.
 let formState: unknown = { ok: true };

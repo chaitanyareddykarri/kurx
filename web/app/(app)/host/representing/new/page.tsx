@@ -1,10 +1,23 @@
-import { Card } from "@kurx/ui";
+import { Card, LinkButton } from "@kurx/ui";
 import { CreateOrgForm } from "@/components/host/create-org-form";
 
 // Request to represent a not-yet-registered organization (event-first, D-074/D-075). Submitting stages a
 // hidden org an admin verifies; the caller becomes a Verified Representative on approval — never an owner,
 // because organizations have no account.
-export default function RequestRepresentationPage() {
+export default function RequestRepresentationPage({
+  searchParams
+}: {
+  /// The shape Next actually passes. Typing it `{ returnTo?: string }` would be a lie the compiler
+  /// believes: a repeated `?returnTo=a&returnTo=b` arrives as an ARRAY, and `.startsWith` on it throws
+  /// at request time — a 500 on a URL anyone can type.
+  searchParams?: { [key: string]: string | string[] | undefined };
+}) {
+  // D-382 — the event context, when the caller arrived from one. Only a `/host/` path is carried, and
+  // the redirect target is re-validated in the action; this is presentation, not the guard.
+  const raw = searchParams?.returnTo;
+  const candidate = Array.isArray(raw) ? raw[0] : raw;
+  const returnTo = candidate?.startsWith("/host/") ? candidate : undefined;
+
   return (
     <div className="space-y-4">
       <div>
@@ -15,8 +28,13 @@ export default function RequestRepresentationPage() {
         </p>
       </div>
       <Card>
-        <CreateOrgForm />
+        <CreateOrgForm returnTo={returnTo} />
       </Card>
+      {/* Leaving mid-request must not mean losing the event: the way back is on screen the whole time,
+          not only after a successful submit. */}
+      {returnTo ? (
+        <LinkButton href={returnTo} variant="secondary">Back to your event</LinkButton>
+      ) : null}
     </div>
   );
 }

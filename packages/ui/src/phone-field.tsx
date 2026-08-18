@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useId } from "react";
 import {
   AsYouType,
   getCountries,
@@ -55,13 +55,25 @@ export function PhoneField({
   value,
   onChange,
   defaultCountry = "IN",
-  id,
+  id: idProp,
   label,
   error,
   disabled,
   autoFocus,
   onEnter
 }: PhoneFieldProps) {
+  /*
+   * A `label` with no `id` used to render a `<label htmlFor={undefined}>` beside an
+   * `<input id={undefined}>` — a heading-shaped string that named nothing, so the control's
+   * accessible name fell back to its placeholder, which disappears as soon as anyone types. It
+   * failed silently and looked correct on screen, and two of the four call sites hit it: the
+   * signup step and Settings › phone change.
+   *
+   * `useId` is what `Field` in this same package already does, so a caller now gets the wiring for
+   * free and `id` stays available for the cases that need to name the control from outside.
+   */
+  const fallbackId = useId();
+  const id = idProp ?? fallbackId;
   const initial = useMemo(() => {
     const parsed = value ? parsePhoneNumberFromString(value) : undefined;
     if (parsed?.country) {

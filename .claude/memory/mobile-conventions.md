@@ -181,8 +181,16 @@ and an organization is optional metadata an event *represents*. `myEventsProvide
 `GET /v1/me/events` once — never "list my orgs, then list each org's events", which is precisely what
 made this screen render as an organization browser. Hosted / Drafts / Pending approval / Archived are
 **status filters over one list**, never separate containers. Create Event is `/events/create`, reachable
-straight from Workspace, and **Representing (Personal by default) is the wizard's first step**, never a
-gate in front of it.
+straight from Workspace, and **Representing is the wizard's first step**, never a gate in front of it.
+
+*"Personal by default" was retired by D-379*: every event represents a real organization Kurx has
+verified, whatever its product. Step one asks for that organization **and** its authorization letter for
+this event (D-382) — one question, one screen, because the letter names the organization it authorises.
+Two Flutter-specific traps that cost a working screen each, both fixed under D-382 and both worth not
+reintroducing: a `product == 'Private'` branch that rendered no picker while `_stepErrors` still demanded
+a valid representation (a step with nothing to answer and a Continue that could never enable — the app
+could not create a private event at all), and an `Authorization` step appended after `Legal`, which
+taught an organiser on step twelve that step one was incomplete.
 
 Do not reintroduce: `/orgs`, `/org/create`, `/org/:orgId`, `/org/:orgId/events`, or any page that makes
 an organization the container you open to find events. Management routes are `/events/:eventId/manage/…`
@@ -190,6 +198,14 @@ an organization the container you open to find events. Management routes are `/e
 exactly one place resolves it (`EventManageScope`, from `GET /v1/events/{eventId}`) and nobody picks it.
 The surfaces that genuinely need an organization live under `/representing/:orgId/…`, reached from
 Profile → Representing.
+
+**Representation has one home per surface (D-382).** After the event exists, its organization and
+authorization are managed at `/events/:eventId/manage/representing` — the only organiser screen that
+collects a signatory, a designation, an official contact or a letter. The manage Overview links to it and
+reports nothing else about it. `/representing/new` is the request flow for an institution not yet on Kurx
+(`POST /v1/orgs/representation-requests`), reachable from both the wizard's empty state and the Profile
+list: its absence used to close a loop that made the app unusable for anyone not already verified — the
+wizard sent them to Profile, and Profile sent them back to event creation.
 
 **Launcher tiles with no endpoint behind them are absent, not dead.** A tile that 404s is a promise
 the API cannot keep, and web's participant workspace is legitimately thinner than Flutter's because

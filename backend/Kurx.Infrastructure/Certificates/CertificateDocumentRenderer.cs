@@ -122,6 +122,10 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
         var turns = ((int)Math.Round(element.Rotation / 90.0) % 4 + 4) % 4;
         for (var i = 0; i < turns; i++) box = box.RotateRight();
 
+        // A quarter turn swaps which dimension the text runs along, so the width a line has to fit into
+        // is the box's height on an odd number of turns.
+        var (textW, textH) = turns % 2 == 1 ? (h, w) : (w, h);
+
         // The element's own ground, painted before its content. This is also the whole mechanism behind
         // cover-and-replace: a masking element is an ordinary filled box that happens to sit over
         // printed text, and the fill is what hides it.
@@ -131,7 +135,7 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
         switch (element.Kind?.Trim().ToLowerInvariant())
         {
             case "text":
-                DrawText(box, element, element.StaticText ?? "", h);
+                DrawText(box, element, element.StaticText ?? "", textW, textH);
                 break;
 
             case "dynamicfield":
@@ -141,7 +145,7 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
                 var value = data.Values.TryGetValue(element.FieldKey ?? "", out var v) && !string.IsNullOrEmpty(v)
                     ? v
                     : $"{{{element.FieldKey}}}";
-                DrawText(box, element, value, h);
+                DrawText(box, element, value, textW, textH);
                 break;
             }
 
@@ -170,7 +174,13 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
     /// size is therefore clamped to what the box can hold. Text slightly smaller than designed is visible
     /// and obviously wrong; text that is absent looks like a design choice, and nobody notices until the
     /// certificates are sent.</para></summary>
-    private static void DrawText(IContainer box, CertificateRenderElement element, string value, float boxHeightPoints)
+    /// <param name="boxWidthPoints">Used to shrink a single-line field that would otherwise overrun its
+    /// box (D-386). A real badge printed "Ananya Krishnamurthy-Venkataraghavan" as
+    /// "Ananya Krishnamurthy-": the name wrapped, and the second line fell outside a box only tall enough
+    /// for one.</param>
+    private static void DrawText(
+        IContainer box, CertificateRenderElement element, string value,
+        float boxWidthPoints, float boxHeightPoints)
     {
         var aligned = (element.VerticalAlignment?.Trim().ToLowerInvariant()) switch
         {
@@ -187,12 +197,11 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
 
         var span = aligned.Text(value);
         if (element.LineHeight is { } leading && leading > 0) span.LineHeight((float)leading);
-        // 0.8 leaves room for the line box around the glyphs; above that QuestPDF starts dropping the
-        // line. Only ever reduces — a design whose type already fits renders exactly as authored.
         var requested = (float)(element.FontSizePt ?? 16);
-        span.FontSize(Math.Max(4f, Math.Min(requested, boxHeightPoints * 0.8f)));
+        var bold = string.Equals(element.FontWeight, "bold", StringComparison.OrdinalIgnoreCase);
+        span.FontSize(FitSize(requested, value, boxWidthPoints, boxHeightPoints, bold));
         span.FontColor(Hex(element.Color, Colors.Black));
-        if (string.Equals(element.FontWeight, "bold", StringComparison.OrdinalIgnoreCase)) span.Bold();
+        if (bold) span.Bold();
         if (string.Equals(element.FontStyle, "italic", StringComparison.OrdinalIgnoreCase)) span.Italic();
         if (element.Underline) span.Underline();
 
@@ -207,6 +216,49 @@ public class CertificateDocumentRenderer(IQrCodeGenerator qr) : ICertificateDocu
             _ => Fonts.Calibri,
         });
     }
+
+    /// <summary>The point size to actually draw at. **Only ever reduces** — a design whose type already
+    /// fits renders exactly as authored.
+    ///
+    /// <para><b>Height</b> is the long-standing rule: 0.8 leaves room for the line box around the glyphs,
+    /// and above that QuestPDF starts dropping the line.</para>
+    ///
+    /// <para><b>Width applies only to a box that cannot hold two lines</b> (D-386). Such a box is a
+    /// single-line field by construction — a name, a role, a card number — and QuestPDF wraps rather than
+    /// shrinks, so the overflow is clipped and invisible until it is on paper. A tall box is left alone:
+    /// wrapping is what a certificate's body paragraph is *for*, and shrinking it to one line would be the
+    /// worse bug.</para>
+    ///
+    /// <para>The width estimate is deliberately crude — mean advance width as a fraction of the em, 0.5
+    /// for Calibri and 0.55 bold. Measuring exactly would mean loading the font here and asking it, which
+    /// buys precision this does not need: the only job is to stop a long value overrunning, and erring
+    /// small costs a point or two of type on the handful of values that trip it.</para></summary>
+    private static float FitSize(float requested, string value, float boxWidth, float boxHeight, bool bold)
+    {
+        // 0.8 leaves room for the line box around the glyphs; above that QuestPDF starts dropping the line.
+        var size = Math.Min(requested, boxHeight * 0.8f);
+
+        if (!string.IsNullOrEmpty(value) && boxWidth > 0 && boxHeight < size * TwoLines)
+        {
+            var perChar = bold ? 0.55f : 0.50f;
+            size = Math.Min(size, boxWidth / (perChar * value.Length));
+        }
+
+        return Math.Max(4f, size);
+    }
+
+    /// <summary>How tall a box must be, relative to its type, before it is treated as able to wrap: two
+    /// lines at a ~1.25 line box.
+    ///
+    /// <para>Measured against the size actually being drawn rather than the authored one, so the test does
+    /// not flip on a one-point change. The badge case is why: a name field 8% tall on a lanyard is 31.7pt,
+    /// and a bare <c>height &lt; size × 2</c> caught it at 16pt type and missed it at 15pt — the same
+    /// field, clipping or not depending on a point.</para>
+    ///
+    /// <para>Erring inclusive is deliberate. A genuinely two-line field caught by this shrinks to one
+    /// line, which is visible and adjustable; a single-line field missed by it clips, which is neither
+    /// until it is on paper.</para></summary>
+    private const float TwoLines = 2.5f;
 
     /// <summary>`#RGB`, `#RRGGBB` or `#RRGGBBAA`, else the fallback. A malformed colour must not throw
     /// mid-render: the design is user data, and a bad hex is a typo rather than a reason to fail a batch

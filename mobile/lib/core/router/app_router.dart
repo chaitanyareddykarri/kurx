@@ -69,10 +69,12 @@ import '../../features/organizer/presentation/pages/create_event_gate_page.dart'
 import '../../features/organizer/presentation/pages/create_event_page.dart';
 import '../../features/organizer/presentation/pages/event_analytics_page.dart';
 import '../../features/organizer/presentation/pages/event_manage_detail_page.dart';
+import '../../features/organizer/presentation/pages/event_representation_page.dart';
 import '../../features/organizer/presentation/pages/event_status_page.dart';
 import '../../features/organizer/presentation/pages/invitations_page.dart';
 import '../../features/organizer/presentation/pages/media_page.dart';
 import '../../features/organizer/presentation/pages/representing_page.dart';
+import '../../features/organizer/presentation/pages/request_representation_page.dart';
 import '../../features/organizer/presentation/widgets/event_manage_scope.dart';
 import '../../features/organizer/presentation/pages/org_verification_page.dart';
 import '../../features/organizer/presentation/pages/org_wallet_page.dart';
@@ -700,6 +702,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/representing',
         pageBuilder: (_, s) => _fadePage(const RepresentingPage(), s),
       ),
+      // D-382 — request an institution that is not on Kurx yet (D-074/D-075). Declared BEFORE
+      // `/representing/:orgId/…` so `new` is a route, not an organization id.
+      GoRoute(
+        path: '/representing/new',
+        pageBuilder: (_, s) => _fadePage(const RequestRepresentationPage(), s),
+      ),
       GoRoute(
         path: '/representing/:orgId/verification',
         pageBuilder: (_, s) => _fadePage(
@@ -741,6 +749,23 @@ final routerProvider = Provider<GoRouter>((ref) {
           EventManageScope(
             eventId: s.pathParameters['eventId']!,
             builder: (orgId) => EventStatusPage(
+              orgId: orgId,
+              eventId: s.pathParameters['eventId']!,
+            ),
+          ),
+          s,
+        ),
+      ),
+      // EDIT Event, not Manage: representation is collected once inside Create Event, and this route is
+      // only how a reviewer's "changes requested" gets corrected. It was `/manage/representing`, a
+      // standing workspace screen — a second permanent place to answer a question creation had already
+      // answered. Reached from Event Status, where the verdict that needs acting on is shown.
+      GoRoute(
+        path: '/events/:eventId/edit/representing',
+        pageBuilder: (_, s) => _fadePage(
+          EventManageScope(
+            eventId: s.pathParameters['eventId']!,
+            builder: (orgId) => EventRepresentationPage(
               orgId: orgId,
               eventId: s.pathParameters['eventId']!,
             ),

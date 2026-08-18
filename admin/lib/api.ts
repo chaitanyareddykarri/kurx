@@ -515,6 +515,15 @@ export const adminEventSchema = z.object({
   ends_at: z.string(),
   is_paid: z.boolean(),
   org_verification: z.string(),
+  // D-381 — the CREATOR is a user; the organization is what the event REPRESENTS (D-268/D-271). The
+  // console received only `org_name`, so a legacy self-representation row printed a person's name under
+  // "Representing organization". Optional so the console still parses a payload from a server deployed
+  // before D-381; the current API always sends them.
+  creator_id: z.string().optional(),
+  creator_name: z.string().nullable().optional(),
+  // True when the represented organization is a legacy self-representation row (D-268), retired for new
+  // events by D-379. Lets the console name it as legacy rather than fabricate an organization.
+  org_is_personal: z.boolean().optional(),
   updated_at: z.string(),
   is_suspended: z.boolean(),
   suspended_reason: z.string().nullable(),
@@ -1237,30 +1246,11 @@ export async function applyImportTaxonomy(accessToken: string, nodes: TaxonomyEx
   return z.object({ created: z.number(), updated: z.number(), skipped: z.number() }).parse(data);
 }
 
-// ── Certificates (D-036/D-064) — event-scoped roster; the kurx_admin claim bypasses the org-role check ──
-export const certificateSchema = z.object({
-  id: z.string(),
-  event_id: z.string(),
-  verify_code: z.string(),
-  user_id: z.string().nullable(),
-  holder_name: z.string().nullable(),
-  kind: z.string(),
-  status: z.string(),
-  is_revoked: z.boolean(),
-  revoked_reason: z.string().nullable(),
-  issued_at: z.string()
-});
-export type Certificate = z.infer<typeof certificateSchema>;
-
-export async function listEventCertificates(accessToken: string, eventId: string) {
-  const { data } = await api.get(`/v1/events/${eventId}/certificates`, auth(accessToken));
-  return z.array(certificateSchema).parse(data);
-}
-
-export async function generateEventCertificates(accessToken: string, eventId: string) {
-  const { data } = await api.post(`/v1/events/${eventId}/certificates/generate`, {}, auth(accessToken));
-  return z.object({ generated: z.number() }).parse(data).generated;
-}
+// ── Certificates (D-036/D-064) ──
+// The roster + bulk-generate pair that used to sit here called `/v1/events/{id}/certificates` and
+// `/v1/events/{id}/certificates/generate`. Neither route has ever existed on the backend — issuing runs
+// through `certificate-batches` — and nothing rendered either result, so both were dead AND wrong.
+// Deleted rather than repointed (D-381 audit); revocation below is real and used.
 
 export async function revokeCertificate(accessToken: string, certificateId: string, reason: string) {
   await api.post(`/v1/certificates/${certificateId}/revoke`, { reason }, auth(accessToken));

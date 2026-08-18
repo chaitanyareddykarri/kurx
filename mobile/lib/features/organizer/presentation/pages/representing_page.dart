@@ -20,7 +20,9 @@ import '../providers/organizer_providers.dart';
 /// action that is genuinely about representation. Events live in Workspace.
 ///
 /// There is no "Create organization" action, and there never should be: a person does not mint an
-/// institution, they submit a representation request that an admin verifies (D-074/D-075).
+/// institution, they submit a representation *request* that an admin verifies (D-074/D-075). D-382
+/// added the route to that request — `/representing/new` — which is that act, not organization
+/// creation: what it stages is hidden and PendingReview until an admin approves it.
 class RepresentingPage extends ConsumerWidget {
   const RepresentingPage({super.key});
 
@@ -34,18 +36,48 @@ class RepresentingPage extends ConsumerWidget {
         value: ref.watch(myRepresentationsProvider),
         onRetry: () => ref.invalidate(myRepresentationsProvider),
         isEmpty: (list) => list.isEmpty,
-        empty: const EmptyState(
-          icon: Icons.verified_user_outlined,
-          title: 'You represent no organisation',
-          message:
-              'Personal events need none. You are asked who you represent while creating an event — '
-              'choose an institution there and an admin verifies the request.',
+        // D-382 — the old empty state said "Personal events need none. You are asked who you represent
+        // while creating an event", which stopped being true at D-379 (every event represents a real
+        // organization) and pointed at a step that pointed back here. Now it says what to do and
+        // offers the action.
+        empty: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(KSpace.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const EmptyState(
+                  icon: Icons.verified_user_outlined,
+                  title: 'You represent no organisation',
+                  message:
+                      'Every event is hosted on behalf of an organisation Kurx has verified. Request '
+                      'representation and an admin reviews it before it can back an event.',
+                ),
+                const SizedBox(height: KSpace.md),
+                Builder(
+                  builder: (context) => FilledButton(
+                    onPressed: () => context.push('/representing/new'),
+                    child: const Text('Represent an organisation'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         data: (orgs) => ListView.separated(
           padding: const EdgeInsets.all(KSpace.lg),
-          itemCount: orgs.length,
+          // One extra row: the way to request another institution (D-382).
+          itemCount: orgs.length + 1,
           separatorBuilder: (_, _) => const SizedBox(height: KSpace.md),
-          itemBuilder: (_, i) => _RepresentationCard(representation: orgs[i]),
+          itemBuilder: (context, i) => i == orgs.length
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => context.push('/representing/new'),
+                    child: const Text('Represent another organisation'),
+                  ),
+                )
+              : _RepresentationCard(representation: orgs[i]),
         ),
       ),
     );

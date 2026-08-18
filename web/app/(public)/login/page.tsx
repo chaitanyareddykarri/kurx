@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AuthShell } from "@/components/auth/auth-shell";
 import { OtpPanel } from "@/components/auth/otp-panel";
 import { currentSession } from "@/lib/session";
 import { createMetadata } from "@/lib/site";
@@ -38,35 +39,30 @@ export default async function LoginPage({
   const wasRequired = searchParams.login === "required";
 
   return (
-    <section className="grid-bg flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        {/*
-          "Welcome back", not "Sign in": `OtpPanel` renders its own `<h2>Sign in</h2>`, and two
-          headings saying the same word stacked 150px apart reads as a mistake. This keeps the
-          page's h1 → h2 outline honest while letting the card name the action.
-        */}
-        <div className="mb-6 text-center">
-          <h1 className="text-h1 text-text">Welcome back</h1>
-          <p className="mt-2 text-body text-muted">Events. Simplified.</p>
-        </div>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to pick up your tickets, certificates and the events you run."
+    >
+      {wasRequired ? (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-border-strong bg-surface px-4 py-3 text-caption text-muted"
+        >
+          Your session ended. Sign in to pick up where you left off.
+        </p>
+      ) : null}
 
-        {wasRequired ? (
-          <p
-            role="status"
-            className="mb-4 rounded-md border border-border-strong bg-surface px-4 py-3 text-caption text-muted"
-          >
-            Your session ended. Sign in to pick up where you left off.
-          </p>
-        ) : null}
+      {/*
+        Rendered bare, with no wrapper. `OtpPanel`'s root is already the card — border, surface fill
+        and padding — and boxing it again put a card on a card, which visual-identity.md §7 forbids
+        ("elevation is one step at a time"). It also already carries the "New to Kurx? Create an
+        account" link, so the page adds no second one.
 
-        {/*
-          Rendered bare, with no wrapper. `OtpPanel`'s root is already the card — border, surface
-          fill and padding — and boxing it again put a card on a card, which visual-identity.md §7
-          forbids ("elevation is one step at a time"). It also already carries the "New to Kurx?
-          Create an account" link, so the page adds no second one.
-        */}
-        <OtpPanel />
-      </div>
-    </section>
+        The page's own centred `<h1>Welcome back</h1>` moved into `AuthShell`; the panel keeps its
+        `<h2>Sign in</h2>`, so the outline is still h1 → h2 and the two headings no longer sit 150px
+        apart saying near-enough the same word.
+      */}
+      <OtpPanel />
+    </AuthShell>
   );
 }

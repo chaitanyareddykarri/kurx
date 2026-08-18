@@ -69,21 +69,44 @@ public class IdCard
     /// <c>User.AvatarKey</c> at issue time but is snapshotted, so changing an avatar later does not
     /// silently reprint every card.</summary>
     public string? PhotoKey { get; set; }
+
+    /// <summary><b>Per-card logo and signature are NOT IMPLEMENTED (verified 2026-08-18, D-386).</b>
+    /// Nothing reads or writes either; both are null on every row.
+    ///
+    /// <para>The logo that prints comes from the <i>event's</i> design — <c>IdCardTemplateSpec.LogoKey</c>
+    /// (D-362) — because the mark on a badge is the organiser's, not the holder's, so one key per event is
+    /// the right shape and a key per card would be two hundred copies of it. A signature has no field key
+    /// in <c>IdCardField.Keys</c> and therefore nowhere on the card to go.</para>
+    ///
+    /// <para>Kept as columns only because dropping them is a destructive migration needing its own
+    /// decision.</para></summary>
     public string? LogoKey { get; set; }
     public string? SignatureKey { get; set; }
 
-    /// <summary>Per-card element overrides (position/size/theme) produced by the editor. Held as JSON
-    /// because the schema is presentation, not data anyone queries; a column per knob would migrate on
-    /// every template change.</summary>
+    /// <summary><b>NOT IMPLEMENTED — nothing reads or writes this (verified 2026-08-18, D-386).</b>
+    ///
+    /// <para>Intended as per-card element overrides from the editor. D-362 then made the design
+    /// <i>event-level</i> — one <c>DesignTemplate</c> with <c>Kind = IdCard</c>, which is what
+    /// <c>IdCardService.SpecAsync</c> reads and the only thing that shapes a rendered badge. Per-card
+    /// overrides were never built and are not currently wanted: an organiser designs the card once and
+    /// prints many, and a per-card layout is how two people at the same door end up holding visibly
+    /// different credentials.</para>
+    ///
+    /// <para>Kept as a column only because dropping it is a destructive migration that needs its own
+    /// decision. Do not read it — it is null on every row.</para></summary>
     public string? LayoutJson { get; set; }
 
-    /// <summary>Whether the card prints the holder's meal entitlement (D-334 §8). Changed through the
-    /// manage path (verified membership of the issuing org), not the holder's own PATCH.
+    /// <summary><b>NOT IMPLEMENTED — nothing reads or writes this (verified 2026-08-18, D-386).</b>
     ///
-    /// <para>The quantities themselves are never stored here. They are read from the holder's live
-    /// entitlement grants at generation time, so a card regenerated after an allocation change prints
-    /// the new figure and a stale client value can never become the authority (D-334 §38). A card whose
-    /// <see cref="EventId"/> is null ignores this flag — a college ID has no event meals.</para></summary>
+    /// <para>Intended (D-334 §8) to print the holder's meal entitlement on the card, read live from their
+    /// entitlement grants at generation time. Neither half exists: there is no meal key in
+    /// <c>IdCardField.Keys</c>, so the layout has nowhere to put it, and no path sets the flag. It is
+    /// <c>false</c> on every row and reads as "no meal info" — which happens to be correct, but by
+    /// accident rather than by design.</para>
+    ///
+    /// <para>Kept as a column only because dropping it is a destructive migration that needs its own
+    /// decision. Building it means a field key, a layout slot and a grant lookup — a feature, not a
+    /// wiring job.</para></summary>
     public bool ShowMealInfo { get; set; }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────────────────────────

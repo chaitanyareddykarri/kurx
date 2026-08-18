@@ -470,9 +470,12 @@ which resolves who may act and stores nothing; and not a replacement for `organi
 (D-044), which says the institution is real rather than that it agreed to this. One row per event: a second
 would make "is this event authorised?" a query with more than one answer.
 
-An approved row is what clears the `event_authorization_required` publish blocker for a Public event that
-represents a non-personal organization. Resubmitting returns the row to `Submitted` and clears the prior
-verdict — evidence replaced after review has not been reviewed.
+Since [D-379](../DECISIONS.md) **every** event needs one, whatever its product: a row's *existence* is what
+clears the `event_authorization_required` publish blocker, and the reviewer's verdict is worked as part of
+the one event review rather than as a gate before it. (This paragraph said "an approved row … for a Public
+event that represents a non-personal organization" — both qualifiers were removed by D-379, and
+self-representation is retired for new events.) Resubmitting returns the row to `Submitted` and clears the
+prior verdict — evidence replaced after review has not been reviewed.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -758,18 +761,37 @@ Photo gallery for a venue.
 ---
 
 ### `event_templates`
-Reusable event blueprints (system-seeded or org-custom).
+Reusable event blueprints (system-seeded, or scoped to an org/unit/person). Versioned since Phase 15: a
+*family* is every row sharing a `RootTemplateId`, and v1 is its own root. Real column names below.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| id | uuid PK | |
-| org_id | uuid | null = system template available to all |
-| name | text | |
-| slug | text UNIQUE | |
-| description | text | |
-| default_sections_json | jsonb | which optional sections to pre-enable (UI hint only) |
-| is_system | bool | |
-| created_at | timestamp | |
+| Id | uuid PK | |
+| RootTemplateId | uuid NOT NULL | the family key; v1 sets it to its own `Id`, and a clone opens a new family |
+| Version | int NOT NULL | 1-based, incremented per family |
+| State | text NOT NULL | `Draft` \| `Published` \| `Archived` — a Published row is immutable |
+| Scope | text NOT NULL | `Platform` \| `Org` \| `Unit` \| `Personal` |
+| OrgId | uuid FK → organizations | set for Org/Unit scope; null on a system template |
+| OrgUnitId | uuid | set for Unit scope only |
+| OwnerUserId | uuid | set for Personal scope only |
+| Name | text NOT NULL | |
+| Slug | text NOT NULL | **not unique** — stable across a family's versions; the service keeps it unique per scope on create |
+| Description | text NOT NULL | |
+| KindSlug | text | event kind this blueprint is written for |
+| ConfigJson | jsonb NOT NULL | capability preset + declarative defaults; validated through the closed registry on every write |
+| DefaultSectionsJson | jsonb NOT NULL | which optional sections to pre-enable (UI hint only) |
+| IsSystem | bool NOT NULL | seeded blueprint; never editable |
+| CreatedAt / UpdatedAt | timestamptz | |
+| DeletedAt | timestamptz | soft-delete marker; null = active |
+
+Indexes — the two unique ones are load-bearing, not just lookups:
+
+| Index | Purpose |
+|-------|---------|
+| `("RootTemplateId", "Version")` UNIQUE | one row per version within a family |
+| `("RootTemplateId")` UNIQUE `WHERE "State" = 'Draft' AND "DeletedAt" IS NULL` | **one editable head per family (D-387)** — the version-creation guard is a read-then-insert, and two racers computing *different* next-versions both pass it; this constraint is what actually rejects the loser, which the service reports as `draft_exists`/409 |
+| `("Slug")` | lookup |
+| `("Scope", "OrgId", "OrgUnitId", "OwnerUserId")` | scope resolution |
 
 ---
 
@@ -1483,6 +1505,26 @@ Scan log — one row per successful check-in scan. Unique per ticket+event.
 | device_info | text | scanner device identifier |
 | created_at | timestamp | scan timestamp |
 
+### `staff_gate_entries`
+Staff arrivals — one row per staff badge scanned in at an event (D-386).
+
+**Why not a nullable column on `gate_entries`.** That table's `ticket_id` is non-nullable and every
+attendance figure on the platform counts its rows, so admitting staff through it would inflate attendee
+check-ins with people who never bought anything. Staff arrivals and attendee admissions are two different
+measurements.
+
+Keyed on the **assignment**, not the user: the assignment is what the badge's signed pass encodes, what
+carries the role the badge prints, and what revocation acts on.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| assignment_id | uuid FK → event_assignments | the accepted assignment the scanned pass resolved to |
+| event_id | uuid FK → events | unique per assignment+event — a repeat scan reports rather than writes |
+| scanned_by | uuid FK → users | who worked the gate |
+| device_info | text | scanner device identifier |
+| created_at | timestamp | scan timestamp |
+
 ---
 
 ## Money & Payouts
@@ -2104,6 +2146,7 @@ No new tables. `chat_rooms` gained a nullable `EventId`, the participant pair
 | 43 | tickets | Individual entry tickets with QR code |
 | 44 | ticket_transfers | Peer-to-peer ticket transfer requests |
 | 45 | gate_entries | Check-in scan log |
+| 45a | staff_gate_entries | Staff arrivals, keyed on the assignment (D-386) |
 | 46 | transfers | Razorpay route transfers to org accounts |
 | 47 | ledger_entries | Append-only financial ledger |
 | 48 | withdrawals | Org payout withdrawal requests |

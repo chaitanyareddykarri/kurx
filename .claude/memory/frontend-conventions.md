@@ -28,6 +28,15 @@ primitive locally in either app if an equivalent could live in `@kurx/ui` — pr
   library is installed anywhere in the monorepo, and none should be added for a KPI trend line or
   day-count bar strip; that's a few-line SVG job, not a dependency's job.
 - Admin's page-header block (`kicker` / `h1` / description) is `admin/components/layout/page-header.tsx` — reuse it rather than re-inlining the same three lines per page.
+- Crowded action bars: `Menu` / `MenuItem` (`packages/ui/src/menu.tsx`) — roving focus, Home/End,
+  Escape-restores-focus and a `destructive` tone are already in it. A menu item is a plain `onSelect`,
+  so a form-backed action dispatches the same `FormData` its `<form>` would have posted: identical
+  server action, identical audit trail, no second code path to drift (D-381).
+- Tab strips that outgrow their container: pass `trailing` to `Tabs` and put the low-frequency tabs in a
+  `Menu` — do NOT let `overflow-x-auto` scroll silently, which reads as a clipped label rather than as
+  more content. `trailing` renders as a SIBLING of the `role="tablist"`, never inside it, or assistive
+  tech miscounts ("tab, 6 of 10"). Keep the selected overflow tab in the visible strip so the nav still
+  shows where it is (D-381).
 
 ## Error copy comes from the shared table (D-315)
 
@@ -70,6 +79,32 @@ shows "Finish setting up your account" plus the signed-in phone, because "Create
 above a ticked "Phone verified" reads as the login button creating a second account. **Anything
 reachable while signed in offers sign-out or a switch** — check this whenever adding a redirect that
 depends on session state, not only on this page.
+
+## One surface collects, the others report (D-382)
+
+A form that writes a given record exists in **exactly one place per client**. Any other surface that
+cares about that record renders its *state* and links to the one that owns it — a status line, a badge
+and a button, never a second copy of the inputs.
+
+The rule came from the event authorization letter, which was collected on the Create Event wizard's
+Representing step *and* on the event's Readiness page. `event_authorizations` is UNIQUE on `EventId`, so
+the two forms wrote one row: whichever was submitted last silently replaced the other, including
+replacing a reviewed filing with a half-typed one. A duplicated form is not a duplicated screen — it is
+two answers to one question, and the database keeps only the last one.
+
+Applying it:
+
+- **The collector is a route, not a modal**, so a blocker message can name it (`"File it on the event's
+  Representing tab"`) and a status card can link to it.
+- **Status surfaces derive, never infer.** The Readiness card maps the server's authorization status;
+  it does not re-derive "does this event need one" from the organization's shape, which would be the
+  client re-implementing a policy rule and disagreeing with it on the first edge case.
+- **Pin it structurally.** `web/test/representation-home.test.tsx` walks `app/` and `components/` and
+  asserts `<AuthorizationForm` appears in exactly one file, and that the reporting surface renders no
+  `input`, no `form` and no `button`. A grep-based test is what stops the second copy coming back in a
+  refactor — an import with no JSX would be the next version of the same bug.
+- **Cross-client, the same shape.** Flutter's pair is `/events/{id}/manage/representing` (collects) and
+  the manage Overview entry (reports).
 
 ## Known bug class to watch for
 
@@ -187,6 +222,13 @@ region, so an overseas number is silently filed as an Indian one. `PhoneField` i
 field is optional). For mixed identifier fields that accept phone *or* email *or* username, use
 `toE164Identifier` instead — it leaves non-phone input untouched.
 
+**Always pass `label`.** `PhoneField` renders a real `<label>` only when you give it one; without it the
+control's accessible name falls back to the placeholder, which disappears the moment the user types. You no
+longer need to pass `id` alongside it — the component falls back to `useId()` (D-384 §4), the same way
+`Field` does. Before that fix a `label` with no `id` produced `<label htmlFor={undefined}>` beside
+`<input id={undefined}>`: a label attached to nothing, correct-looking on screen and silent in every test.
+Two shipped screens were sitting on it, including the admin console's own sign-in page.
+
 **Keep the phone libraries in step across surfaces.** Backend `libphonenumber-csharp`, web/admin
 `libphonenumber-js`, Flutter `phone_numbers_parser` are three independent ports of Google's metadata on
 different release cadences. Because submit is gated on client-side `valid`, a client whose metadata is
@@ -197,3 +239,30 @@ report arrives, compare metadata versions before looking at the code.
 This is now guarded rather than merely documented: `docs/api/phone-conformance.json` is a shared corpus that
 all three platforms assert in their own test suites (D-288), so drift fails CI instead of failing a user.
 When it goes red, the disagreeing platform is the outlier — bump its metadata, never edit the fixture.
+
+
+## The signed-out surfaces have their own visual register (D-380 / D-384)
+
+`web/app/(public)/page.tsx`, `/login`, `/register` and `web/components/marketing/**` may use ambient light,
+depth and idle motion. **Everywhere a signed-in user works — product app, host workspace, admin, Flutter —
+`visual-identity.md` P1 ("opaque, not glass") and P6 ("motion confirms, never performs") are unchanged and
+still binding.** The split is by purpose: a signed-out page has to make a stranger believe the product, a
+product surface has to let someone who already believes get work done. Do not lift a component out of
+`marketing/` into a product surface without a new decision.
+
+The primitives are CSS 3D over the already-installed framer-motion — no WebGL, no renderer, ~4KB:
+
+* `components/marketing/depth.ts` — the five named Z planes, and `plane(z)`. **Plain module on purpose:**
+  `spatial.tsx` is `"use client"`, and a server component importing a value from a client module gets a
+  client *reference*, not the function, so calling `plane()` during render fails.
+* `components/marketing/spatial.tsx` — `Tilt` (pointer parallax on motion values, never React state),
+  `Float`, `SpatialCard`, and `SpatialRoot` (framer `MotionConfig reducedMotion="user"`).
+* `components/marketing/atmosphere.tsx` — the ambient wash, as ONE element with two
+  `radial-gradient(… at x% y%)` layers so nothing overflows and no section needs `overflow: hidden` to
+  crop it.
+* `components/auth/auth-shell.tsx` — the frame `/login` and `/register` share so they cannot drift.
+
+**Any scroll-reveal on a public page needs a no-JS guard.** `MotionPanel` writes framer's
+`initial={{opacity: 0}}` into the *server-rendered* HTML; the home page shipped 11 blocks that were present
+in the markup and invisible on screen with scripting off. `app/(public)/page.tsx` carries a `<noscript>`
+style that resets `[style*="opacity:0"]`.

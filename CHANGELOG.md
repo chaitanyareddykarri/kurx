@@ -18,6 +18,100 @@ Changes · Verification · Remaining Work).
 
 ## [Unreleased]
 
+### One editable template head, enforced by the database (2026-08-18) - D-387
+
+**Implementation Summary.** `TemplateService.NewVersionAsync` promised one Draft per template family and
+enforced it with a read-then-insert, naming the unique `(RootTemplateId, Version)` index as the authority.
+That index only catches racers who compute the *same* version. Two concurrent calls whose `draft exists?`
+and `MAX(Version)` reads straddle the other's commit compute **2** and **3**, both insert, both return
+`200 OK` — two live Drafts in one family. Replaced the promise with a partial unique index on
+`RootTemplateId WHERE "State" = 'Draft' AND "DeletedAt" IS NULL`; the loser's insert now raises
+`DbUpdateException`, which the existing catch already reports as `draft_exists`/`409`.
+
+**Files Changed.** `backend/Kurx.Infrastructure/Persistence/KurxDbContext.cs` (index + why the read cannot
+hold it alone). No service code changed — the catch was already correct, only unreachable.
+
+**Database.** Migration `20260818112940_OneDraftPerTemplateFamily` — one partial unique index, no data
+change. Checked for families holding more than one live Draft before shipping it: none.
+
+**API.** No contract change. The 409 the endpoint always documented is now actually produced under a race.
+
+**Breaking Changes.** None.
+
+**Verification.** `TemplateActivationTests` 20/20 green (was 19/20), then the full backend suite
+**2439 pass / 1 skip / 0 fail** (2440, 23m27s) in the SDK container with clamd up. Clients re-measured the
+same day, one at a time: web 953 pass / 1 skip (62 files), admin 45 pass, mobile 526 pass with
+`flutter analyze` clean.
+
+**Remaining Work.** The migration reaches the dev database on the next `kurx-backend` start; it was not
+applied out-of-band because a concurrent session had the stack up.
+
+### The admin review names the creator, the organization and the representative separately (2026-08-18) - D-381
+
+**Implementation Summary.** The admin event workspace showed a person's name — "karri venkata reddy" —
+under **Representing organization**. Not a rendering slip: the console had no creator field at all, so
+the only name it could reach was `org.name`, and for a legacy `IsPersonal` row that name *is* a person.
+A reviewer judging whether an institution had consented was being shown the applicant. The note beside
+it repeated the same claim in prose, citing D-074's "organizer and representing organization are the
+same field" — true before D-267/D-268, false since.
+
+Three facts are now rendered separately: **Creator** (the User who owns the event, D-268),
+**Representing organization** (the institution answerable for it, D-379) and **Representative** (the
+human who signed for it). Legacy self-representation rows render an explicit *"Legacy personal
+representation"* state — deliberately **not** back-filled with a real organization, which would forge
+the institutional consent D-379 exists to require.
+
+A second defect surfaced while restructuring the action bar and matters more than the display one:
+**Approve submitted `publish`**, so approving an event made it public in the same click. D-377 is
+explicit that approval grants the permission and the *creator* decides when to go live. The sheet now
+delegates to `ReviewActions`, which already models the real state machine, instead of keeping a second
+spelling of it that had drifted into publishing.
+
+**Files Changed.** `backend/Kurx.Api/Endpoints/AdminEventEndpoints.cs`,
+`backend/Kurx.Application/Abstractions/{EndpointResponses,IEventService}.cs`,
+`backend/Kurx.Infrastructure/Events/EventService.cs`,
+`admin/components/admin/events-workspace/event-workspace-sheet.tsx`, `admin/lib/api.ts`,
+`packages/ui/src/tabs.tsx`, `backend/Kurx.Tests/AdminEventManagementTests.cs`.
+
+**Database.** None. No entity, no migration — the creator was always on `Events.CreatedBy`; the contract
+simply never carried it.
+
+**API.** `AdminEventResponse` gains `creator_id`, `creator_name`, `org_is_personal` — additive, appended
+last with defaults, so no positional shift in a record whose middle once silently vacated `org_name`.
+`docs/api/openapi.json` regenerated: **+13 lines, 0 removed**. `contract-check`: 0 errors, no drift.
+
+**Docs.** `docs/DECISIONS.md` D-381; `docs/api/README.md` admin events row.
+
+**Breaking Changes.** None. Clients predating the three fields bind unchanged.
+
+**Verification.** Live 17-step E2E over HTTP: **21/21**, including the load-bearing one — approval leaves
+`Status != Published` and `PublishedAt` null, and the creator publishes separately. Admin: typecheck,
+41 tests, `next build`, contract-check. Web: 933 tests/1 skip, typecheck, `next build`.
+
+**Also removed — client calls to routes that never existed.** An endpoint-coverage sweep run alongside
+this work (382 of 472 spec paths have a client caller) surfaced five exported functions across `web/` and
+`admin/` calling `/v1/events/{id}/certificates`, `/v1/events/{id}/certificates/generate` and
+`/v1/certificates/{code}`. The backend has none of those routes — certificate issuing runs through
+`certificate-batches`, and verification is `/v1/verify/{code}`. Nothing rendered any of their results:
+`generateEventCertificates` looked live (two references) but its only caller,
+`generateCertificatesAction`, is itself unreachable from any UI — and it called
+`revalidatePath("/certificates")`, a page admin does not have.
+
+**No functionality was lost, because none of it was the live implementation.** Certificates are served
+end to end by `web/lib/certificate-api.ts` (512 lines) over the batch model —
+`certificate-templates` · `certificate-batches` (preview/approve/send/cancel/revoke/deliveries) ·
+`certificate-recipients` · `certificate-access` — and all four certificate pages (host roster, host
+generate, `/my-certificates`, the public token page) import that module. The deleted five were the
+stranded first draft of the same feature (D-035/D-036/D-064 era), left behind when it moved to batches;
+their routes were dropped from the backend and the client stubs never were. Nothing imported them, so
+nothing ever failed loudly enough to flag it. Deleted with their orphaned zod schemas rather than
+repointed — repointing unreachable code only hides it. `revokeCertificate` (5 real callers, real route)
+is untouched.
+
+**Remaining Work.** The tab strip is a fixed 5+4 split rather than width-measured, so a viewport wide
+enough for all nine still hides four behind `More`. One array to revisit if it ever matters.
+
+
 ### A wizard step that asks a question waits for the answer (2026-08-17) - D-378
 
 **Implementation Summary.** The create-event wizard blocked Continue on **one** step. Details refused

@@ -16,6 +16,10 @@ public class TicketTypeService(KurxDbContext db, IEventAuthority authority, IInv
         if (!(await authority.ResolveAsync(userId, ev.Id, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<TicketTypeView>.Fail("forbidden");
         if (ev.Status == EventStatus.Archived) return ServiceResult<TicketTypeView>.Fail("event_archived");
         if (EventStatusWorkflow.IsEditLocked(ev.Status)) return ServiceResult<TicketTypeView>.Fail("event_under_review");
+        // D-388: what a live event costs is not the host's to change alone. Refused rather than routed into a
+        // change request — that carries the event row only for now; see the decision's follow-up note.
+        if (EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status))
+            return ServiceResult<TicketTypeView>.Fail("change_request_required");
 
         if (!Enum.TryParse<PricingUnit>(input.PricingUnit, true, out var pricingUnit))
             return ServiceResult<TicketTypeView>.Fail("invalid_pricing_unit");
@@ -79,6 +83,10 @@ public class TicketTypeService(KurxDbContext db, IEventAuthority authority, IInv
         if (!(await authority.ResolveAsync(userId, ev.Id, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<TicketTypeView>.Fail("forbidden");
         if (ev.Status == EventStatus.Archived) return ServiceResult<TicketTypeView>.Fail("event_archived");
         if (EventStatusWorkflow.IsEditLocked(ev.Status)) return ServiceResult<TicketTypeView>.Fail("event_under_review");
+        // D-388: what a live event costs is not the host's to change alone. Refused rather than routed into a
+        // change request — that carries the event row only for now; see the decision's follow-up note.
+        if (EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status))
+            return ServiceResult<TicketTypeView>.Fail("change_request_required");
 
         if (!Enum.TryParse<PricingUnit>(input.PricingUnit, true, out var pricingUnit))
             return ServiceResult<TicketTypeView>.Fail("invalid_pricing_unit");
@@ -165,6 +173,9 @@ public class TicketTypeService(KurxDbContext db, IEventAuthority authority, IInv
         if (ev is null) return ServiceResult<bool>.Fail("not_found");
         if (!(await authority.ResolveAsync(userId, ev.Id, isAdmin, ct)).Can(EventPermission.ManageContent)) return ServiceResult<bool>.Fail("forbidden");
         if (EventStatusWorkflow.IsEditLocked(ev.Status)) return ServiceResult<bool>.Fail("event_under_review");
+        // D-388 — see CreateAsync. Deleting a live event's ticket type is a bigger change than editing one.
+        if (EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status))
+            return ServiceResult<bool>.Fail("change_request_required");
         // Block deletion if anything is actually taken — authoritative pool sold (Consumed+Held), not the mirror.
         var sold = (await inventory.PoolCountsAsync([ticketTypeId], ct)).TryGetValue(ticketTypeId, out var dc) ? dc.Sold : tt.Sold;
         if (sold > 0) return ServiceResult<bool>.Fail("tickets_already_sold");

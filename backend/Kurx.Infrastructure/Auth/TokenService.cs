@@ -167,4 +167,31 @@ public class TokenService(JwtOptions options, IServiceScopeFactory? scopeFactory
         return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes($"staff-pass|{assignmentId}")))
             .ToLowerInvariant();
     }
+
+    /// <summary>Reads a scanned staff-pass payload back into the assignment it names, or null (D-385).
+    ///
+    /// <para>The counterpart to <see cref="SignStaffPass"/>, and the half D-362 shipped without: a
+    /// signature nothing verifies makes the printed QR decoration rather than a credential. Returns only
+    /// the identity the payload proves — whether that assignment is still <c>Accepted</c>, and whether it
+    /// belongs to the event being scanned, are live database questions and deliberately not answered
+    /// here.</para>
+    ///
+    /// <para>The comparison is fixed-time. The attacker's job is to find a signature for an assignment id
+    /// they already know, which is exactly the shape a byte-by-byte compare leaks.</para></summary>
+    public Guid? VerifyStaffPass(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+
+        var parts = payload.Split(':');
+        if (parts.Length != 3 || !string.Equals(parts[0], "staff", StringComparison.Ordinal)) return null;
+        if (!Guid.TryParse(parts[1], out var assignmentId)) return null;
+
+        var expected = Encoding.UTF8.GetBytes(SignStaffPass(assignmentId));
+        var supplied = Encoding.UTF8.GetBytes(parts[2].Trim().ToLowerInvariant());
+        if (expected.Length != supplied.Length) return null;
+
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expected, supplied)
+            ? assignmentId
+            : null;
+    }
 }

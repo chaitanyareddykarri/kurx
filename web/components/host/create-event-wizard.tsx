@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Globe, EyeOff, Lock, Ticket, ShieldCheck, Check } from "lucide-react";
 import { Button, DateTimeField, Field, FormSteps, Input, Select, Spinner, Textarea, controlClass } from "@kurx/ui";
 import { SelectCard, SelectCardGroup } from "@/components/host/select-card-group";
+import { CreateOrgForm } from "@/components/host/create-org-form";
 import { createEventWizardAction, CreateEventValues,
   submitAuthorizationAction, uploadAuthorizationDocumentAction } from "@/lib/event-actions";
 import type { Category, FieldPreset, Representation } from "@/lib/api";
@@ -75,10 +76,10 @@ const STEPS = [
  */
 const STEP = {
   representing: 0, visibility: 1, category: 2, type: 3, registration: 4,
-  details: 5, content: 6, location: 7, windows: 8, eligibility: 9, legal: 10,
-  /// Appended only when the event represents an institution (D-351), so it is the last index of
-  /// `steps`, not of `STEPS`.
-  authorization: 11
+  details: 5, content: 6, location: 7, windows: 8, eligibility: 9, legal: 10
+  // `authorization: 11` lived here until D-382. D-379 had already folded the letter into Representing
+  // and deleted the step, but its index survived — an unreferenced name for a step that does not
+  // exist, and the next person to add a step would have had to decide what it meant.
 } as const;
 
 const GENDERS = ["Any", "Male", "Female", "NonBinary"] as const;
@@ -104,7 +105,7 @@ function presetFields(preset: FieldPreset): string[] {
 }
 
 export function CreateEventWizard({
-  representations,
+  representations: initialRepresentations,
   canHostPaid,
   categories,
   subcategories,
@@ -115,8 +116,9 @@ export function CreateEventWizard({
   representativeRoles,
   teamCapableArchetypes
 }: {
-  /// Institutions the caller may represent. Empty is normal and fully functional — Personal is always
-  /// available, which is what makes Create Event reachable without registering anything (D-267).
+  /// Institutions the caller may represent, as the server knows them when the wizard opens. Empty is a
+  /// normal, workable state: the Representing step registers one in place, so nobody has to arrive with
+  /// a representation already in hand.
   representations: Representation[];
   canHostPaid: boolean;
   categories: Category[];
@@ -143,17 +145,17 @@ export function CreateEventWizard({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState(0);
-  /// null = Personal — the user represents themselves. Not "an organization that is personal": there is
-  /// no organization in that branch at all, and the client neither names nor creates one (D-268).
-  /// Null = Personal, and the right default for a free event. Entering as Paid it is not a legal answer
-  /// at all (D-350), so the first verified organization is preselected rather than opening on a choice
-  /// the Continue button would immediately refuse.
-  /// D-353 — null means "hosted by the person", which is legal ONLY for a Private event. A Public
-  /// event opens on its first selectable representation rather than on an answer Continue would refuse.
+  /// The caller's representations, held locally because this step can ADD one: registering an
+  /// institution inline appends it here and selects it, with no reload and no navigation. Seeded from
+  /// the server's list; the server stays the authority on what is verified.
+  const [representations, setRepresentations] = useState<Representation[]>(initialRepresentations);
+
+  /// null until an organization is chosen. There is no "Personal" answer to fall back to (D-379), so
+  /// this opens on the first organization that could carry the event all the way — a verified one —
+  /// rather than on a pending one whose selection Continue would accept but publish would later stop.
   const [representingOrgId, setRepresentingOrgId] = useState<string | null>(
-    product === "Private"
-      ? null
-      : representations.find((r) => r.can_back_paid_event ?? r.is_verified)?.organization_id ?? null);
+    initialRepresentations.find((r) => r.can_back_paid_event ?? r.is_verified)?.organization_id
+      ?? initialRepresentations[0]?.organization_id ?? null);
   const [error, setError] = useState<string | null>(null);
 
   // Unlisted is the only sane default for Private — Listed is forbidden and InviteOnly is a stronger
@@ -328,19 +330,25 @@ export function CreateEventWizard({
   const ticketErrors = validateTicket(ticket, pricing);
 
   /*
-   * D-353 — a PUBLIC event must represent a real, verified organization. Self-hosting is a Private-only
-   * affordance.
+   * Two sets, because "may this back a draft?" and "may this back a paid event?" are different
+   * questions and collapsing them is what used to strand people.
    *
-   * The axis is public exposure, not money (D-307/D-343): a public event carries the platform's name
-   * into discovery whether or not a ticket is sold, so a named institution has to be answerable for it.
-   * A private event reaches no discovery surface and can never sell, so self-hosting stands there and
-   * the organization question is not asked at all.
+   * `selectableReps` is every representation the caller holds, PendingReview included. A staged
+   * organization can carry a Draft: `EventService.CreateAsync` refuses only a self-representation row
+   * or a deleted one, and `ResolveOrgAsync` grants Manager off the pending `Representative` seat. What
+   * a pending organization cannot do is PUBLISH — `pending_org_verification` blocks that at transition
+   * time and is untouched here. Filtering it out of the picker did not enforce that rule (the server
+   * already did); it only meant someone who registered their college inside this step had nothing to
+   * select afterwards and could not finish the event they were in the middle of creating.
    *
-   * A PendingReview organization is deliberately NOT selectable: it is a staged request, and treating a
-   * pending representation as an approved one is the exact thing §7 of the requirement forbids. The
-   * server refuses it too — this is presentation over `CreateAsync`'s `representation_required`.
+   * `paidCapableReps` keeps the stricter bar exactly where it was: money needs a verified institution,
+   * so the Registration step still gates on this set and the server still refuses the rest at
+   * submit-for-review.
    */
-  const selectableReps = representations.filter((r) => r.can_back_paid_event ?? r.is_verified);
+  const selectableReps = representations;
+  const paidCapableReps = representations.filter((r) => r.can_back_paid_event ?? r.is_verified);
+  const representingIsPending =
+    representingOrgId !== null && !paidCapableReps.some((r) => r.organization_id === representingOrgId);
   /*
    * D-379 — every event represents a real organization. Both escapes are gone:
    *
@@ -350,10 +358,9 @@ export function CreateEventWizard({
    *     mock-backed; whether an event names an organization is not, and an environment that needs a
    *     represented event seeds a real test organization.
    *
-   * The organization must be one the caller may actually act for: `selectableReps` is already filtered
-   * to verified/paid-capable representations, so a PENDING one cannot satisfy this. The server refuses
-   * the same shape with `representation_required` — this is presentation over that rule, never a
-   * substitute for it.
+   * The organization must be one the caller may actually act for — which `selectableReps` is, since it
+   * is the server's own list of the caller's representations. The server refuses anything else with
+   * `representation_required`; this is presentation over that rule, never a substitute for it.
    */
   const representingValid = selectableReps.some((r) => r.organization_id === representingOrgId);
 
@@ -431,7 +438,9 @@ export function CreateEventWizard({
         : {
             representingOrgId: selectableReps.length > 0
               ? "Choose the organization you are hosting this event on behalf of"
-              : "Every event must represent an organization Kurx has verified. Request representation to continue"
+              // Names the action that is now ON this step. It used to end "Request representation to
+              // continue", which described a link to somewhere else — the thing that has been removed.
+              : "Every event must represent an organization Kurx has verified. Add yours below to continue"
           }),
       ...authorizationErrors
     },
@@ -454,9 +463,11 @@ export function CreateEventWizard({
       ...(pricing === "free" || canHostPaid
         ? {}
         : { priceRupees: "Paid events need identity, PAN and a verified bank account — verify first" }),
-      ...(pricing === "free" || representingValid
+      // Deliberately `paidCapableReps`, not `representingValid`: a PendingReview organization may carry
+      // a free draft but may never back a paid one, and the server refuses that at submit-for-review.
+      ...(pricing === "free" || paidCapableReps.some((r) => r.organization_id === representingOrgId)
         ? {}
-        : { name: "Go back to Representing and choose a verified organization — a paid event can't be hosted under your own name" }),
+        : { name: "Go back to Representing and choose a verified organization — a paid event needs one Kurx has already verified" }),
     },
     // 5 · Details.
     detailsErrors,
@@ -742,67 +753,75 @@ export function CreateEventWizard({
                 name="representing"
                 className="grid gap-3 sm:grid-cols-2"
               >
-                {selectableReps.map((r) => (
-                  <SelectCard
-                    key={r.organization_id}
-                    name="representing"
-                    value={r.organization_id}
-                    checked={representingOrgId === r.organization_id}
-                    onSelect={() => setRepresentingOrgId(r.organization_id)}
-                    icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
-                    title={r.name}
-                    description={`Representing · your authority: ${r.authority}`}
-                  />
-                ))}
+                {selectableReps.map((r) => {
+                  const paidCapable = r.can_back_paid_event ?? r.is_verified;
+                  return (
+                    <SelectCard
+                      key={r.organization_id}
+                      name="representing"
+                      value={r.organization_id}
+                      checked={representingOrgId === r.organization_id}
+                      onSelect={() => setRepresentingOrgId(r.organization_id)}
+                      icon={<ShieldCheck size={18} aria-hidden className="text-accent-text" />}
+                      title={r.name}
+                      // A pending organization is selectable and says so on its own card, rather than
+                      // being listed separately as unusable — it CAN carry this draft, and the thing
+                      // it cannot do is publish, which is what the description now states.
+                      description={paidCapable
+                        ? `Representing · your authority: ${r.authority}`
+                        : "Awaiting admin verification · you can start the event now, but it can't publish until that's approved"}
+                    />
+                  );
+                })}
               </SelectCardGroup>
             </>
           ) : (
             <div className="rounded-lg border border-dashed border-border bg-surface p-4">
               <p className="text-sm text-text">
-                You don&apos;t currently have an approved organization representation.
+                You don&apos;t represent an organization yet.
               </p>
               <p className="mt-1 text-xs text-muted">
-                Every event must be represented by an organization that Kurx has verified.
-                Request representation and submit the organization&apos;s official authorization —
-                an admin reviews it before it can be used.
+                Every event is hosted on behalf of an organization. Add it below — you can carry on
+                creating this event straight away; an admin verifies the organization before the event
+                can be published.
               </p>
             </div>
           )}
 
           {/*
-            Pending and rejected requests are SHOWN but never selectable (§7, §11-C/D): a staged
-            representation is not an approved one, and hiding it entirely would leave someone
-            re-requesting something already in the queue.
+            The registration form, RENDERED HERE rather than linked to.
+            It used to be a link out to the standalone request page: a full navigation away from a
+            wizard holding ten steps of unsaved state, which is why someone with no representation could
+            not finish an event without starting over. The staged organization is appended to the list
+            and selected on the spot, so the step completes without the flow ever leaving.
           */}
-          {product === "Public" && representations.length > selectableReps.length ? (
-            <ul className="space-y-2">
-              {representations
-                .filter((r) => !(r.can_back_paid_event ?? r.is_verified))
-                .map((r) => (
-                  <li key={r.organization_id}
-                    className="rounded-lg border border-border bg-surface px-4 py-3 text-xs text-muted">
-                    <span className="text-text">{r.name}</span> — awaiting verification. It can&apos;t
-                    host a public event until an admin approves it.
-                  </li>
-                ))}
-            </ul>
-          ) : null}
+          <details className="rounded-lg border border-border bg-surface p-4" open={selectableReps.length === 0}>
+            <summary className="cursor-pointer text-sm font-medium text-text">
+              {selectableReps.length === 0
+                ? "Add your college or organization"
+                : "Representing an organization you don't see here? Add it"}
+            </summary>
+            <p className="mt-2 text-xs text-muted">
+              An admin verifies the institution itself before this event can publish — a one-time step
+              per organization. This event&apos;s own authorization letter is asked for below and is
+              needed for every event, however many you run under the same organization.
+            </p>
+            <div className="mt-4">
+              <CreateOrgForm
+                onRegistered={(rep) => {
+                  setRepresentations((prev) =>
+                    prev.some((r) => r.organization_id === rep.organization_id) ? prev : [...prev, rep]);
+                  setRepresentingOrgId(rep.organization_id);
+                }}
+              />
+            </div>
+          </details>
 
-          {product === "Public" ? (
-            <p className="text-xs text-muted">
-              Representing an organization you don&apos;t see here?{" "}
-              {/*
-                The dedicated request workflow (D-074/D-075), not a generic membership form: it stages a
-                HIDDEN PendingReview organization plus evidence, which an admin verifies before it joins
-                the registry or becomes selectable here. `/host/representing` is the list; `/new` is the
-                request — linking to the list left people on a page with nothing to do.
-              */}
-              <a href="/host/representing/new" className="text-accent-text hover:underline">
-                Register the organization
-              </a>{" "}
-              — an admin verifies the institution itself before it can host anything. That is a
-              one-time step per organization. This event&apos;s own authorization letter is asked for
-              later in this form, and is needed for every event.
+          {representingIsPending ? (
+            <p className="rounded-lg border border-border bg-surface px-4 py-3 text-xs text-muted">
+              <span className="text-text">Awaiting verification.</span> You can finish creating this
+              event and file its authorization now. It stays a draft until an admin verifies the
+              organization{pricing === "paid" ? ", and a paid event needs that verification before you can continue" : ""}.
             </p>
           ) : null}
         </div>

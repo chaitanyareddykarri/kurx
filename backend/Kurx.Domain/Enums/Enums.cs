@@ -515,6 +515,26 @@ public enum EventReviewReason
     Other,
 }
 
+/// <summary>D-388 — the lifecycle of an <see cref="Entities.EventChangeRequest"/>.
+///
+/// <para><b>Deliberately not <see cref="EventStatus"/>.</b> One enum for two lifecycles would make
+/// "approved" ambiguous — the event is approved, or the proposed change to it is — and the two move
+/// independently: a live event stays <c>Published</c> throughout, whichever way its change request
+/// goes.</para></summary>
+public enum EventChangeRequestStatus
+{
+    /// <summary>Submitted by the host, awaiting a reviewer. The live event is unchanged.</summary>
+    Pending,
+    /// <summary>A reviewer accepted it and the values were applied. Terminal.</summary>
+    Approved,
+    /// <summary>A reviewer refused it, with a reason code. The live event never changed. Terminal —
+    /// the host proposes again rather than resurrecting this one, so the record of what was refused
+    /// stays readable.</summary>
+    Rejected,
+    /// <summary>The host took it back before a decision. Terminal.</summary>
+    Withdrawn,
+}
+
 /// <summary>What an <see cref="Entities.EntitlementProduct"/> gives its holder (D-334).
 ///
 /// <para><b>Named "Entitlement", not "Coupon".</b> <see cref="Entities.Coupon"/> is already taken by

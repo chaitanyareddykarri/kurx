@@ -114,6 +114,7 @@ public class KurxDbContext : DbContext
     public DbSet<EventAuthorization> EventAuthorizations => Set<EventAuthorization>();   // D-266 M5
     public DbSet<EventReviewChecklistItem> EventReviewChecklistItems => Set<EventReviewChecklistItem>();  // D-266 M7
     public DbSet<EventDraftSnapshot> EventDraftSnapshots => Set<EventDraftSnapshot>();                    // D-266 M8
+    public DbSet<EventChangeRequest> EventChangeRequests => Set<EventChangeRequest>();                    // D-388
     // D-265 — event creation
     public DbSet<RegistrationConsent> RegistrationConsents => Set<RegistrationConsent>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
@@ -123,6 +124,7 @@ public class KurxDbContext : DbContext
     public DbSet<SeatHold> SeatHolds => Set<SeatHold>();
     public DbSet<TicketTransfer> TicketTransfers => Set<TicketTransfer>();
     public DbSet<GateEntry> GateEntries => Set<GateEntry>();
+    public DbSet<StaffGateEntry> StaffGateEntries => Set<StaffGateEntry>();
     public DbSet<TicketWaitlist> TicketWaitlists => Set<TicketWaitlist>();
     public DbSet<InventoryPool> InventoryPools => Set<InventoryPool>();      // V3 §8.1 inventory (Phase 7)
     public DbSet<EventCheckinDevice> EventCheckinDevices => Set<EventCheckinDevice>();
@@ -1066,6 +1068,30 @@ public class KurxDbContext : DbContext
             e.HasOne<User>().WithMany().HasForeignKey(x => x.ReviewerId);
         });
 
+        // D-388 — a proposed edit to a LIVE event, held rather than applied. See the entity's remarks for
+        // why this is not a second event row and why BaseVersion is what makes approval safe.
+        b.Entity<EventChangeRequest>(e =>
+        {
+            e.ToTable("event_change_requests");
+            // At most ONE pending request per event, enforced by the database rather than by a read: two
+            // pending proposals make "what is waiting for approval" unanswerable, and a check-then-insert
+            // in application code loses the race that a partial unique index simply cannot.
+            e.HasIndex(x => x.EventId)
+                .IsUnique()
+                .HasFilter($"\"Status\" = {(int)EventChangeRequestStatus.Pending}");
+            // The queue read: pending first, oldest first.
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.Property(x => x.ProposedJson).HasColumnType("jsonb");
+            e.Property(x => x.PreviousJson).HasColumnType("jsonb");
+            e.Property(x => x.Reason).HasMaxLength(1000);
+            e.Property(x => x.ReviewReasonCode).HasMaxLength(60);
+            e.Property(x => x.ReviewNotes).HasMaxLength(2000);
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+            // RESTRICT, matching VerificationReview.ReviewerId: account deletion anonymises rather than
+            // removes (D-263), so an approval trail never loses entries when someone leaves.
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
         b.Entity<RegistrationConsent>(e =>
         {
             e.ToTable("registration_consents");
@@ -1203,6 +1229,10 @@ public class KurxDbContext : DbContext
             // Versioned (Phase 15): one row per (family, version). Slug is stable across a family's versions, so it is
             // no longer unique per row (the service keeps it unique per scope on create).
             e.HasIndex(x => new { x.RootTemplateId, x.Version }).IsUnique();
+            // One editable head per family. The service's read-then-insert check cannot hold this alone: two concurrent
+            // version-creations can both read "no draft", then read MaxAsync on either side of the other's commit and
+            // insert v2 and v3 — distinct versions, so the index above lets both through. The constraint is authoritative.
+            e.HasIndex(x => x.RootTemplateId).IsUnique().HasFilter("\"State\" = 'Draft' AND \"DeletedAt\" IS NULL");
             e.HasIndex(x => x.Slug);
             e.HasIndex(x => new { x.Scope, x.OrgId, x.OrgUnitId, x.OwnerUserId });   // scope resolution
             e.Property(x => x.DefaultSectionsJson).HasColumnType("jsonb");
@@ -1345,6 +1375,18 @@ public class KurxDbContext : DbContext
             e.HasIndex(x => new { x.TicketId, x.EventId }).IsUnique();
             e.HasIndex(x => new { x.EventId, x.CreatedAt });
             e.HasOne<Ticket>().WithMany().HasForeignKey(x => x.TicketId);
+            e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.ScannedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<StaffGateEntry>(e =>
+        {
+            e.ToTable("staff_gate_entries");
+            // The duplicate guard, exactly as gate_entries has one: a second scan of the same badge at the
+            // same event reports "already arrived" rather than writing a second arrival.
+            e.HasIndex(x => new { x.AssignmentId, x.EventId }).IsUnique();
+            e.HasIndex(x => new { x.EventId, x.CreatedAt });
+            e.HasOne<EventAssignment>().WithMany().HasForeignKey(x => x.AssignmentId);
             e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.ScannedBy).OnDelete(DeleteBehavior.Restrict);
         });
@@ -2038,6 +2080,14 @@ public class KurxDbContext : DbContext
             e.HasIndex(x => x.UserId);
             e.HasIndex(x => new { x.OrgId, x.Status });
             e.HasIndex(x => x.EventId);
+            // One event badge per holder (D-386). `GenerateAsync` is idempotent per (event, holder) in
+            // code, but two concurrent calls could each read "no card" and write one — and every later
+            // read keyed the set by UserId, so the duplicate threw and the badge page died permanently
+            // for that event. The database is the only place that check can be made atomic. Filtered on
+            // EventId, because a college ID (D-331) carries no event and several may share the null.
+            e.HasIndex(x => new { x.EventId, x.UserId })
+                .IsUnique()
+                .HasFilter("\"EventId\" IS NOT NULL");
             e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrgId);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId);
             e.HasOne<Event>().WithMany().HasForeignKey(x => x.EventId);

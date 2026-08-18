@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../common/widgets/async_value_view.dart';
 import '../../../../common/widgets/kurx_button.dart';
@@ -98,6 +99,24 @@ class EventStatusPage extends ConsumerWidget {
                       isLast: i == steps.length - 1,
                     ),
                 const SizedBox(height: KSpace.xl),
+                // The correction path, and the only way back into representation after creation.
+                //
+                // A reviewer's verdict lands here, so the fix is offered here — ABOVE "Resubmit for
+                // review", because resubmitting without correcting the authorisation just returns the
+                // event to the same reviewer with the same problem. The manage hub has no Representing
+                // tile any more: representation is answered inside Create Event, and this is the one
+                // case that re-opens it.
+                if (event.status == 'changesrequested' || event.status == 'rejected') ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: KSpace.md),
+                    child: KurxButton(
+                      label: 'Edit representation & authorisation',
+                      variant: KurxButtonVariant.secondary,
+                      expand: true,
+                      onPressed: () => context.push('/events/$eventId/edit/representing'),
+                    ),
+                  ),
+                ],
                 // Lifecycle actions, driven by the server's own workflow
                 // (`EventStatusWorkflow`): only transitions valid *from the current status* are
                 // offered, so the app never presents a button the backend will reject with

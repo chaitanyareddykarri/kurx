@@ -2,7 +2,9 @@
 
 Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation applied` · `Partially migrated` · `Redesigned` · `Verified` · `Blocked` · `N/A`. Every row starts `Legacy`. This file is regenerated only by hand — edit rows in place as work lands.
 
-**Total: 93 routes** (`find web/app -name page.tsx | wc -l`, re-measured 2026-08-15), plus **2** genuine
+**Total: 94 routes** (`find web/app -name page.tsx | wc -l`, re-measured 2026-08-18). D-382 added
+`/host/events/[id]/representing`; the previous figure of 93 was measured 2026-08-15 and other routes
+have landed and been retired since, so this is the measurement, not 93 + 1. Plus **2** genuine
 non-visual route handlers (`route.ts`) listed at the bottom.
 
 > ⚠️ **This header said "88 routes, plus 90 non-visual route handlers" and both halves were wrong.**
@@ -51,6 +53,7 @@ non-visual route handlers (`route.ts`) listed at the bottom.
 | `/host/events/[id]/media` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/media/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/events/[id]/people` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/people/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/events/[id]/readiness` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/readiness/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
+| `/host/events/[id]/representing` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/representing/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/events/[id]/registrations` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/registrations/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/events/[id]/reviews` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/reviews/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/host/events/[id]/schedule` | Event workspace tab | 21.2 | `web/app/(app)/host/events/[id]/schedule/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
@@ -82,9 +85,9 @@ non-visual route handlers (`route.ts`) listed at the bottom.
 | `/pricing` | Public marketing | 13A · 25 | `web/app/(public)/pricing/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/privacy` | Public marketing | 13A · 25 | `web/app/(public)/privacy/page.tsx` | **Redesigned** | ☑ | ☑ | ☑ |
 | `/profile` | Own profile | 18.1 | `web/app/(app)/profile/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/recover` | Auth | 16 | `web/app/recover/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/register` | Auth | 16 | `web/app/register/page.tsx` | Legacy | ☐ | ☐ | ☐ |
-| `/reset` | Auth | 16 | `web/app/reset/page.tsx` | Legacy | ☐ | ☐ | ☐ |
+| `/recover` | Auth | 16 | `web/app/(public)/recover/page.tsx` | Legacy | ☐ | ☐ | ☐ |
+| `/register` | Auth | 16 | `web/app/(public)/register/page.tsx` | Legacy | ☐ | ☐ | ☐ |
+| `/reset` | Auth | 16 | `web/app/(public)/reset/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/saved` | Saved | 18.4 | `web/app/(app)/saved/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/settings` | Account settings | 18.2 | `web/app/(app)/settings/page.tsx` | Legacy | ☐ | ☐ | ☐ |
 | `/settings/account` | Account settings | 18.2 | `web/app/(app)/settings/account/page.tsx` | Legacy | ☐ | ☐ | ☐ |

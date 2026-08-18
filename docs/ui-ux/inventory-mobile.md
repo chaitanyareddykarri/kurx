@@ -2,9 +2,10 @@
 
 Baseline generated in Phase 0.1. `Status` vocabulary: `Legacy` · `Foundation applied` · `Partially migrated` · `Redesigned` · `Verified` · `Blocked` · `N/A`. Every row starts `Legacy`. This file is regenerated only by hand — edit rows in place as work lands.
 
-**Total: 95 pages** (`find mobile/lib -name '*_page.dart' | wc -l`, re-measured 2026-08-15 — this said
-91, and four pages that shipped after the Phase 0.1 baseline were never added; they are listed at the
-bottom with no fabricated status).
+**Total: 94 pages** (`find mobile/lib -name '*_page.dart' | wc -l`, re-measured 2026-08-18). D-382
+added `event_representation_page.dart` and `request_representation_page.dart`. The previous figure of
+95 was measured 2026-08-15 and does not reconcile by addition — pages have been added and removed
+since, so this is the measurement rather than an arithmetic update of it.
 
 > Widget tests under `mobile/test/features/**` assert against several of these pages — change finders,
 > never assertions.
@@ -64,6 +65,8 @@ bottom with no fabricated status).
 | `org_wallet` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/org_wallet_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `payment_readiness` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/payment_readiness_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `registrations` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/registrations_page.dart` | Legacy | ☐ | ☐ | ☐ |
+| `event_representation` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/event_representation_page.dart` | **Redesigned** | ☑ | ☑ | ☑ |
+| `request_representation` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/request_representation_page.dart` | **Redesigned** | ☑ | ☑ | ☑ |
 | `representing` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/representing_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `schedule` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/schedule_page.dart` | Legacy | ☐ | ☐ | ☐ |
 | `speakers` | Organizer screens | 39 | `mobile/lib/features/organizer/presentation/pages/speakers_page.dart` | Legacy | ☐ | ☐ | ☐ |

@@ -548,12 +548,22 @@ holding an item cannot strand it. Any decision releases the hold — the verdict
 and a decided event is no longer work in progress. `review_claimed_by_name` is null for accounts that never
 completed onboarding; the id is the load-bearing field.
 
-**The publish gate.** A Public event representing a non-personal organization reports
-**`event_authorization_required`** in `publish_blockers` and `reviewer_checklist` until an approved
-authorization exists, and the transition refuses with **409**. A self-represented event represents no third
-party, so the rule does not apply to it. Separately, an archetype whose D12 §6 Representation column is
-*Required* (Recruitment · Festival · Ceremonial) reports **`representation_required`** when the event is
-self-represented. Both originate in `PolicyResolver` and reach the gate through
+**The publish gate — rewritten by [D-379](../DECISIONS.md), corrected here 2026-08-18.** **Every** event
+reports **`event_authorization_required`** in `publish_blockers` and `reviewer_checklist` until an
+authorization **exists**, and the transition refuses with **409**.
+
+Two qualifiers this paragraph used to carry are gone, and both were how an event went live unrepresented:
+
+- ~~"A Public event"~~ — the product no longer decides. A Private event represents somebody too;
+  visibility never decided who is answerable for an event.
+- ~~"until an **approved** authorization exists"~~ — the blocker is keyed on **existence**. The verdict is
+  the reviewer's, worked as part of the one event review (the checklist is a projection of this same list,
+  so it cannot be skipped) rather than as a prerequisite decision before it.
+
+~~"A self-represented event represents no third party, so the rule does not apply to it."~~ Self-representation
+is retired for new events: **`representation_required`** now fires whenever an event does not represent a
+real organization, for every archetype — not only the three whose D12 §6 Representation column is *Required*
+(Recruitment · Festival · Ceremonial). `PolicyResolver` is the single source for all three violations. Both originate in `PolicyResolver` and reach the gate through
 `EventPolicyService` → `PublishBlockers` → `TransitionGateAsync`; there is no second validation.
 
 **Templates & workspace (Event Architecture V3 §13.1/§20, Phase 15):** the inert template scaffold is now the
@@ -917,7 +927,7 @@ removed that bypass; only a real per-org Owner/Manager role can, or SuperAdmin v
 
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/v1/admin/events` | GET | Real, paginated search across every status: `?q=`, `?status=`, `?categoryId=`, `?city=`, `?visibility=`, `?isPaid=`, `?verifiedOnly=`, `?dateFrom=`/`?dateTo=`, `?revenueMin=`/`?revenueMax=`, `?registrationsMin=`/`?registrationsMax=`, `?sort=` (`revenue`\|`registrations`\|`attendance`\|`updated`\|`date`, default recency), `?limit=` (default 50, capped 50), `?page=` (default 1). Returns `{ items: [...], total }` — `items[]` carries `tickets_sold`/`checked_in`/`registrations_count`/`revenue_paise` per row, sourced from `IAnalyticsFactSource` (Phase 17, D-192), the same numbers the org-facing event list shows. |
+| `/v1/admin/events` | GET | Real, paginated search across every status: `?q=`, `?status=`, `?categoryId=`, `?city=`, `?visibility=`, `?isPaid=`, `?verifiedOnly=`, `?dateFrom=`/`?dateTo=`, `?revenueMin=`/`?revenueMax=`, `?registrationsMin=`/`?registrationsMax=`, `?sort=` (`revenue`\|`registrations`\|`attendance`\|`updated`\|`date`, default recency), `?limit=` (default 50, capped 50), `?page=` (default 1). Returns `{ items: [...], total }` — `items[]` carries `tickets_sold`/`checked_in`/`registrations_count`/`revenue_paise` per row, sourced from `IAnalyticsFactSource` (Phase 17, D-192), the same numbers the org-facing event list shows. **D-381 — creator and representation are separate facts on every row:** `creator_id` / `creator_name` are the USER who owns the event (D-268), `org_name` / `org_verification` are the organization it REPRESENTS, and `org_is_personal` marks a pre-D-379 self-representation row so a console can name it legacy instead of printing a person's name as an organization. All three are additive with defaults, so a client that predates them binds unchanged. `creator_name` is nullable in the contract (the FK is `ON DELETE RESTRICT` and deletion anonymises rather than removes, D-263) — a console renders the empty case rather than falling back to the organization. |
 | `/v1/admin/events/{id}/{feature\|unfeature}` | POST | Toggle the public `is_featured` flag. |
 | `/v1/admin/events/{id}/{suspend\|hide}` | POST `{ reason }` | Moderation override; `reason` **required** (D-193 — was silently optional before). Audit-logged. |
 | `/v1/admin/events/{id}/{unsuspend\|unhide}` | POST | Clears the override. No reason field. |
@@ -1116,6 +1126,36 @@ Real PDF/PNG rendering via QuestPDF (`ICertificateRenderer`) against system layo
 | `/v1/certificates/{certificateId}/revoke` | POST `{ reason }` | Owner/Manager/Admin | Marks a certificate revoked (D-036). |
 | `/v1/tickets/{code}/qr.png` | GET | ticket owner or event org member | Real scannable QR image (`image/png`) for a ticket — the actual QR payload embedded in `Ticket.Code`. |
 
+## The gate (`/v1/gate/{eventId}`)
+
+Admission at the door. **Two credentials, two routes** — an attendee's is a bare ticket `Guid`, a staff
+member's is `staff:{assignmentId}:{sig}`. They are structurally disjoint, and each gets its own route so
+neither can be resolved as the other and a scanner never has to guess what it is holding (D-385).
+
+Both require the caller to be able to work this gate: a member of the organization the event represents,
+**or** the holder of an accepted `EventAssignment` on this specific event. That is what lets an external
+Security or Registration Desk assignee scan for the event they accepted and nothing else.
+
+| Endpoint | Method | Notes |
+|---|---|---|
+| `/v1/gate/{eventId}/scan` | POST `{ ticketCode, deviceInfo? }` | Admits a ticket holder. Writes `gate_entries` and denormalises first check-in onto the ticket. `invalid_code`, `invalid_signature`, `ticket_void`, `event_mismatch` (an all-access fest pass at a child event is allowed), `forbidden`. A repeat scan returns `200` with `is_duplicate: true` and who admitted them first. Admission **succeeds even when the holder is no longer audience-eligible** and reports `eligibility_flag` — it never silently voids, nor silently admits (V3 §4.4). |
+| `/v1/gate/{eventId}/scan-staff` | POST `{ pass, deviceInfo? }` | **D-385.** Admits a staff member from the signed pass on their badge. Returns `{ admitted, is_duplicate, name, role, access_level }` — the marshal reads those back against the person in front of them. Writes `staff_gate_entries`. |
+
+**The signature is the weakest of the three checks on a staff pass.** It proves only that Kurx minted the
+pass. Whether the assignment is still `Accepted` (`assignment_not_active`) and whether it belongs to
+**this** event (`event_mismatch`) are asked of the database at scan time (D-015), so removing someone from
+the crew stops the badge already in their pocket and Saturday's badge does not open Sunday's door. A
+malformed payload, a bad signature and a deleted assignment all answer `invalid_pass` — telling a forger
+which half they got wrong is free help. The comparison is fixed-time.
+
+**A repeat staff scan reports rather than refuses.** Staff come and go all day; the marshal still gets the
+name and access level, which is why they scanned again.
+
+**`staff_gate_entries` is its own table, not a nullable column on `gate_entries`.** Every attendance figure
+on the platform counts that row, so admitting staff through it would inflate attendee check-ins with people
+who never bought anything. It is keyed on the `EventAssignment` — what the badge encodes, and what
+revocation acts on — with a unique `(AssignmentId, EventId)`.
+
 ## Event badges (`/v1/events/{eventId}/badges`) — D-362
 
 Printed lanyard badges for an event's attendees and staff. **Organizer-only: there is no holder-facing
@@ -1133,18 +1173,37 @@ Rendering reuses `ICertificateDocumentRenderer` (D-361's millimetre pages) rathe
 
 | Endpoint | Method | Auth | Notes |
 |---|---|---|---|
-| `/v1/events/{eventId}/badges/sizes` | GET | Manager | The badge sizes available for printing: `lanyard` (88.9×139.7mm), `large` (101.6×152.4mm), `card` (CR80, 85.6×54mm, the only landscape one). Served rather than hardcoded per client so the console cannot drift from what the renderer supports. |
-| `/v1/events/{eventId}/badges/recipients` | GET | Manager | Everyone who can be given a badge — ticket holders and accepted `EventAssignment` staff. Someone who is both appears **once, as staff**. Returns `{ user_id, name, kind: "attendee" \| "staff", subtitle, access_level, has_photo }`. The QR payload is deliberately **not** returned: it is a working credential, and listing everyone's scannable code would hand out badges as JSON. |
+| `/v1/events/{eventId}/badges/sizes` | GET | Authenticated | The badge sizes available for printing: `lanyard` (88.9×139.7mm), `large` (101.6×152.4mm), `card` (CR80, 85.6×54mm, the only landscape one). Served rather than hardcoded per client so the console cannot drift from what the renderer supports. |
+| `/v1/events/{eventId}/badges/recipients` | GET | Manager | Everyone who can be given a badge — ticket holders and accepted `EventAssignment` staff. Someone who is both appears **once, as staff**. Returns `{ user_id, name, kind: "attendee" \| "staff", subtitle, access_level, has_photo, card }`. `card` is null until one is issued. The QR payload is deliberately **not** returned: it is a working credential, and listing everyone's scannable code would hand out badges as JSON. |
+| `/v1/events/{eventId}/badges/template` | GET | Manager | The event's saved card design, or the shipped default. Served **snake_case** including nested records (`font_size_pt`, `z_order`). `fields: null` means *"the server will use its built-in layout"* — **not** an empty card. |
+| `/v1/events/{eventId}/badges/template` | PUT | Manager | Save the design. Binds **camelCase**. Colours, geometry and field keys are sanitised before storage, never just before rendering: `x`/`y` clamp to 0–99, `width`/`height` to 1–100, `fontSizePt` to 4–72, a malformed hex is discarded, an unknown `sizeKey` falls back to `lanyard`, and an unknown field key is dropped. A `logoKey`/`backgroundKey` outside `events/{eventId}/id-cards/` is refused (`invalid_logo_key` / `invalid_background_key`) — accepting an arbitrary one would make saving a design a read primitive over the bucket. |
+| `/v1/events/{eventId}/badges/template/defaults` | GET `?size=&kind=` | Authenticated | **D-385.** The built-in placements, so the editor opens on the layout the server would actually print. Without it a client renders `fields: null` as an empty card, and the first field enabled replaces the whole default layout — silently dropping the QR. Reads nothing about the event, so it is authenticated only, like `/sizes`. |
+| `/v1/events/{eventId}/badges/template/preview` | POST `{ spec, kind? }` | Manager | Renders the spec **in the body** — unsaved — as `image/png` at 96dpi, through the same renderer that prints. `kind` is `attendee` or `staff`; they differ, since only a staff card carries an access band. |
+| `/v1/events/{eventId}/badges/template/asset/presign` | POST `{ contentType, purpose? }` | Manager | Presigned upload for the card's artwork (`background`, ≤8MB) or logo (default, ≤2MB). Raster only — PNG/JPEG/WebP; **SVG is refused** (`unsupported_content_type`), since it is a script-capable document the renderer fetches and serves back inside a page. |
+| `/v1/events/{eventId}/badges/template/asset-url` | GET `?key=` | Manager | A signed readable URL so the editor canvas can show the artwork under the fields. The key is checked against the event first — this returns a signed URL, so an unchecked key would read anything in the bucket. |
+| `/v1/events/{eventId}/badges/generate` | POST `{ sizeKey, kinds?, userIds? }` | Manager | **Issues real cards**: creates the `id_cards` rows, allocates card numbers (`KRX-00001`, unique per issuing org) and verify codes, renders the artefacts and stores them. Returns `{ issued, regenerated }`. Idempotent per (event, holder) — re-running keeps the existing number, so reprinting a damaged badge does not mint a second identity. |
 | `/v1/events/{eventId}/badges/sheet` | POST `{ sizeKey, kinds?, userIds? }` | Manager | The print run — one `application/pdf` with badges laid out N-up on A4 with cut guides. `kinds` omitted means both. `userIds` omitted means everyone matching `kinds`. An unrecognised `sizeKey` is **refused** (`unknown_badge_size`), never defaulted: defaulting prints a whole run at the wrong physical size. |
-| `/v1/events/{eventId}/badges/{userId}.pdf` | GET `?size=` | Manager | One badge, print-ready. Defaults to `lanyard`. |
+| `/v1/events/{eventId}/badges/{userId}/revoke` | POST `{ reason? }` | Manager | **D-386.** Marks an issued card revoked and returns it. `card_not_issued` when nothing was ever issued, `already_revoked` on a second call — two different states, reported as such. **It marks the card, it does not close a door**: an attendee's entry credential is their ticket and a staff member's is their assignment, so stopping entry means voiding the ticket or removing the assignment. A revoked card keeps its number and stays on the roster, because a verifier must be able to tell a revoked badge from one that never existed (D-331). Undone by re-issuing, which takes a new number — not by un-revoking. |
+| `/v1/events/{eventId}/badges/{userId}.pdf` | GET `?size=` | Manager | One badge, print-ready. Defaults to `lanyard`. The reprint path for a single lost lanyard. |
+
+**A stored artefact belongs to the size it was rendered at (D-385).** Issued PDFs and PNGs are keyed
+`events/{eventId}/id-cards/{cardId}/{sizeKey}/card.{pdf,png}`, and the sheet and single-badge routes reuse
+a stored artefact **only** when it matches the size being asked for. Before that the size in the key was
+absent and a lanyard raster was served for a CR80 request, drawn into the landscape slot at 34.4×54mm
+instead of 85.6×54mm — the selector silently stopped working the moment anything was issued.
+
+**A field with no value prints nothing, never its own key (D-385).** The shared renderer draws
+`{holder_name}` for an empty `dynamicfield` — the right prompt while designing a certificate, a printed
+defect on an issued badge. `BadgeLayout` drops such fields, and `IdCardService` falls back from
+`User.Name` to `User.Username` first.
 
 **QR payloads differ by kind, and that is load-bearing.** An attendee badge carries the holder's existing
 `Ticket.Code`, exactly as `/v1/tickets/{code}/qr.png` encodes it — so a printed badge scans through
 `GateEntryService` with no change to the gate. Staff hold no ticket, so their badge carries
 `staff:{assignmentId}:{sig}` where `sig = HMAC(TICKET_HMAC_SECRET, "staff-pass|" + assignmentId)`:
 domain-separated from `SignTicketCode` so neither can be replayed as the other, and derived rather than
-stored, so revocation stays on the assignment's own `Status`. **The gate does not yet accept a staff
-pass** — minting and printing work; recording a staff scan needs a `staff_gate_entries` table (D-362).
+stored, so revocation stays on the assignment's own `Status`. The gate accepts one at
+[`/v1/gate/{eventId}/scan-staff`](#the-gate) (D-385).
 
 ## Realtime (SignalR)
 

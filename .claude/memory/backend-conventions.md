@@ -110,6 +110,7 @@ An `Api` handler that reaches for an EF type or writes a raw `DbContext` query f
 - One endpoint = interface method + Infrastructure implementation + `Kurx.Api/Endpoints` map + DTO + validator + integration test (the five steps in `.claude/memory/api-conventions.md`).
 - Request DTOs validated with FluentValidation via the generic `WithValidation<T>()` `IEndpointFilter` — never manual `if` guards in the handler, never `FluentValidation.AspNetCore` (MVC-only, D-017).
 - Handlers stay thin: validate (filter) → call service → map result → return. No orchestration logic in the endpoint.
+- **A typed response record is not a mechanical rewrite of the anonymous object it replaces (D-259).** The records in `Kurx.Application.Abstractions` serialize snake_case *by namespace* (`SnakeCaseResponseConverter`), and they are constructed positionally — so dropping a member and letting the next same-typed argument slide into its slot compiles clean and silently changes the wire. `AdminEventResponse` lost `OrgName` exactly that way: the mapper passed `RepresentingOrgId` twice, `AdminEventView.OrgName` was fetched by the query and read by nobody, and the admin console rejected every row. **The committed OpenAPI cannot catch this** — it is generated *from* the record, so the contract agreed with the bug. The only thing that catches it is an integration test asserting the *field on the JSON* (`ValueKind == String`, so absent and null both fail), which is why a wire contract needs one.
 
 ## Services
 

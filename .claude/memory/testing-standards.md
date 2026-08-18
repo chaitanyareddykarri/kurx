@@ -22,7 +22,7 @@ MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
    dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
 ```
 
-**Current baseline: 1912 tests — 1911 passing, 1 skipped, 0 failing (2026-08-16).** Measured in the
+**Current baseline: 2379 tests — 2378 passing, 1 skipped, 0 failing (2026-08-17).** Measured in the
 SDK container with clamd up. **Zero is the standard now — a red test is a defect, not "the environment."**
 
 **Do not run two suites at once on this box.** `web/test/event-creation.test.tsx` drives an

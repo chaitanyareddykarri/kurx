@@ -22,6 +22,7 @@ code, a comment, a diagram or a doc, **this file wins** and the other is drift �
 | Public / Private as a form field | **`EventProduct`, derived from the Type's `ProductClass`** | The gate *filters* Types; it never overrides the derivation. D-266 M1 + D-305. |
 | Public / Private confused with Listed / Unlisted / InviteOnly | **`EventProduct` ≠ `EventVisibility`** | Two separate concepts; neither is merged or renamed. D-305. |
 | My Organizations | **Representing** | Representation details, not a navigation hub. D-267. |
+| "Register the organization" as a **link out of** Create Event | **The registration form, rendered on the Representing step** | D-389. Linking out of a wizard holding ten steps of unsaved answers is how someone loses the event they are creating — and since D-379 made an organization mandatory, that hit every organiser who represented none. |
 | Organization Events (as a container) | **Hosted Events** (a status view over your own events) | Status filters, never containers. D-267. |
 | Organization Account · Organizer Account · Organization Owner | **User** + a **seat** in an organization (`OrgRole`) | No account types exist. D-074. |
 | Personal Organization · PersonalOrg · `GetOrCreatePersonalOrgAsync` | **Representing = Personal** | The FK-satisfying row is persistence, never domain. D-268. |
@@ -91,6 +92,7 @@ a manager, and requiring one is a silent lockout. That mistake is what D-272 fix
 | `Organization.IsPersonal` | **Legacy but acceptable** | Marks the self-representation persistence row. Server-filtered out of every user-facing list. |
 | `OrgEventRow` / `orgEventRowSchema` | **Legacy but acceptable** | An organizer's event row; the admin console's per-org list still needs it. |
 | `/representing/:orgId` routes | **Correct** | The id *is* the organization's, and those surfaces (verification, payouts) are genuinely about the organization. |
+| `Workspace → Representing` (a tab, or `/events/{id}/manage/representing`) | *(nothing — deleted, D-389)* | Representation is answered **once**, on Create Event's Representing step. The only thing that re-opens it is a reviewer asking for changes, which is an **edit of the event** — web's Details tab, Flutter's `/events/:eventId/edit/representing` — and is gated on that verdict. A standing workspace section was a second permanent place to answer a question creation had already answered, which is what made organisers believe creation had not finished. |
 | `ApprovalService.RoleAsync` | **Correct** | An approval step names an exact `OrgRole`; the authority ladder deliberately cannot express that. |
 | `OrgService` / `OrgInvitationService` / `OrgVerificationService` `RoleAsync` | **Correct** | Organization RBAC with Owner-only rules — a different policy domain from event authority. |
 | `AnalyticsService.HasAccess` · `RefundService.HasFinancialAccessForOrderAsync` · `WalletService.HasFinancialAccess` | **Correct** | The financial bar is `Owner`-or-`Finance` — the *inverse* of the event ladder, which puts `Finance` at `None`. Routing it through `IEventAuthority` would lock Finance out of the money it owns. |

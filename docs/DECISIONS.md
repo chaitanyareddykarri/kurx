@@ -16214,6 +16214,36 @@ measure, it is a dead end waiting for the one user whose state it excludes. Befo
 check what the server actually refuses — here the server refused less than the UI did, and the gap was
 the whole bug.
 
+### Three defects the move surfaced, and what each one teaches
+
+**1 · The letterhead upload could never have worked** (`TypeError: fetch failed`). `CreateOrgForm` did
+presign → PUT → stage entirely inside a **server action**. The presigned URL is browser-facing
+(`http://localhost:5080/...`); a server action runs inside the Next.js container, where that host is
+`ECONNREFUSED`, and undici reports it as a bare "fetch failed" with nothing pointing at the cause. This
+was **pre-existing on `/host/representing/new`** and was inherited the moment that component was reused
+inline. `AuthorizationForm` and the wizard had always done presign → **browser** PUT → submit for the
+letter; the odd one out was the one nobody had exercised. Split into
+`presignRepresentationDocAction` + `fileRepresentationRequestAction`, with the PUT in the client, and
+pinned: `org-actions.ts` must not contain `fetch(presigned.url)`, and the component must.
+
+*The open-redirect guard moved with it.* `returnTo` is attacker-supplied and the redirect is now
+client-side, so `safeReturnTo` became a leaf module applied at the point of **use** rather than only by
+the page that read it — a guard that lives only on the far side of a refactor is a guard that leaves.
+
+**2 · A field was nearly deleted with the page that held it.** The signatory's optional Kurx account
+(`representativeUserId`) existed **only** on the workspace Representing form. Removing that surface
+without moving the field would have removed the capability from the product silently — no error, no
+test, just a column that stopped being written. **Deleting a surface is not the same as deleting its
+job:** enumerate what a page collects before removing it, not what it looks like.
+
+**3 · The same field had never existed on Flutter at all** — no picker, and no user search of any kind
+to build one from. Cross-platform parity was being measured against the wrong baseline: "web has it,
+mobile does not" reads as drift, but here the drift was invisible because *neither* Flutter screen had
+it, so nothing looked inconsistent from inside Flutter. `RepresentativePicker` and
+`EventContentRemoteDataSource.searchUsers` close it on both Flutter surfaces, matching web field for
+field. It stays **a link, never a grant** (D-269) and optional everywhere, so a failed lookup cannot
+block filing the letter.
+
 ---
 
 ## D-390 — `POST /v1/orgs` is deleted, because it was an unreviewed org-minting path held shut by an accident

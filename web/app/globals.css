@@ -16,6 +16,7 @@ html {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh; /* iOS URL-bar-aware; the vh line above is the fallback */
   background: rgb(var(--color-background));
   color: rgb(var(--color-text));
   font-family: ui-sans-serif, system-ui, sans-serif;

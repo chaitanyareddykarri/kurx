@@ -23,7 +23,9 @@ export default async function EventAttendeesPage({ params }: { params: { id: str
       {items.length === 0 ? (
         <Card><p className="text-sm text-muted">No attendees yet.</p></Card>
       ) : (
-        <Card className="overflow-x-auto p-0">
+        <Card className="p-0">
+          {/* Focusable scroll region, same shape as DataTable: the table is wider than a phone. */}
+          <div tabIndex={0} aria-label="Attendees" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted">
@@ -64,6 +66,7 @@ export default async function EventAttendeesPage({ params }: { params: { id: str
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       )}
     </section>

@@ -195,7 +195,7 @@ export function SecurityCenter({ accessToken }: { accessToken: string }) {
 
       {/* 3 — Passkeys */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold">Passkeys</h2>
             <p className="text-sm text-muted">Sign in with {platformName} instead of a code. Passkeys can&apos;t be phished.</p>
@@ -231,7 +231,7 @@ export function SecurityCenter({ accessToken }: { accessToken: string }) {
                     {[b.browser, b.operatingSystem].filter(Boolean).join(" · ") || b.label || "Browser"}
                     {b.isCurrent ? <span className="ml-2 text-xs text-muted">(this browser)</span> : null}
                   </p>
-                  <p className="text-xs text-muted">
+                  <p className="break-words text-xs text-muted">
                     {[b.approxLocation ?? b.ip, b.lastUsedAt ? `last used ${relativeTime(b.lastUsedAt)}` : `added ${relativeTime(b.createdAt)}`]
                       .filter(Boolean)
                       .join(" · ")}
@@ -248,7 +248,7 @@ export function SecurityCenter({ accessToken }: { accessToken: string }) {
 
       {/* 6 — Active sessions */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Where you&apos;re signed in</h2>
           {sessions.length > 0 ? (
             <Button type="button" variant="secondary" disabled={busy === "signout"} onClick={signOutAll}>
@@ -284,7 +284,7 @@ export function SecurityCenter({ accessToken }: { accessToken: string }) {
         {freshCodes ? (
           <div className="space-y-3 rounded-lg border border-border p-4">
             <p className="text-sm font-medium">Save these now — they won&apos;t be shown again. Generating them revoked any previous set.</p>
-            <ul className="grid grid-cols-2 gap-2 font-mono text-sm">
+            <ul className="grid grid-cols-2 gap-2 break-all font-mono text-sm">
               {freshCodes.map((c) => (
                 <li key={c}>{c}</li>
               ))}

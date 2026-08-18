@@ -286,7 +286,7 @@ function ChoiceCard({
             : "border-border hover:border-accent/60"
       }`}
     >
-      <span className="flex items-center gap-2 text-text">
+      <span className="flex flex-wrap items-center gap-2 text-text">
         {icon}<strong>{title}</strong>
         {/* Selectable while unverified, deliberately: choosing it is how the person SEES what is
             missing. Continue is what refuses, not the card. */}

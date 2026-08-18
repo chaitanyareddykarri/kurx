@@ -25,11 +25,11 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
       {data.certificates.map((certificate) => (
         <li key={certificate.certificate_id} className="rounded-lg border border-border p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-text">{certificate.event_title}</h3>
+            <div className="min-w-0">
+              <h3 className="break-words font-semibold text-text">{certificate.event_title}</h3>
               <p className="mt-0.5 text-sm text-muted">
                 Issued {new Date(certificate.issued_at).toLocaleDateString()} ·{" "}
-                <span className="font-mono text-xs">{certificate.certificate_id}</span>
+                <span className="break-all font-mono text-xs">{certificate.certificate_id}</span>
               </p>
             </div>
             <StatusBadge status={certificate.status} />
@@ -59,17 +59,17 @@ export function ParticipantCertificateList({ data }: { data: ParticipantCertific
             {certificate.download_pdf_url && (
               <a
                 href={certificate.download_pdf_url}
-                className="rounded-md bg-accent px-3 py-1.5 font-semibold text-on-accent"
+                className="inline-flex min-h-11 items-center rounded-md bg-accent px-3 py-1.5 font-semibold text-on-accent lg:min-h-0"
               >
                 Download PDF
               </a>
             )}
             {certificate.download_png_url && (
-              <a href={certificate.download_png_url} className="rounded-md border border-border-strong px-3 py-1.5">
+              <a href={certificate.download_png_url} className="inline-flex min-h-11 items-center rounded-md border border-border-strong px-3 py-1.5 lg:min-h-0">
                 Download image
               </a>
             )}
-            <a href={certificate.verification_url} className="self-center underline">
+            <a href={certificate.verification_url} className="inline-flex min-h-11 items-center self-center underline lg:min-h-0">
               Verification page
             </a>
           </div>

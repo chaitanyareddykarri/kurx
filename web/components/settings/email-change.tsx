@@ -51,7 +51,7 @@ export function EmailChange({ current }: { current?: string | null }) {
             <span className="mb-1 block text-xs text-muted">
               Code sent to {sentTo}
             </span>
-            <input name="code" inputMode="numeric" required className={inputCls} placeholder="6-digit code" />
+            <input name="code" inputMode="numeric" autoComplete="one-time-code" required className={inputCls} placeholder="6-digit code" />
           </label>
           <Submit label="Confirm" />
         </form>

@@ -322,7 +322,8 @@ function RepresentativePicker({ linked, onChange }: {
         <span className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
           <AtSign size={13} aria-hidden className="text-muted" />
           <span className="flex-1 truncate text-sm text-text">{linked.username}</span>
-          <button type="button" aria-label="Unlink this account" className="text-muted hover:text-text"
+          <button type="button" aria-label="Unlink this account"
+            className="-my-2 inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-text lg:my-0 lg:min-h-0 lg:min-w-0"
             onClick={() => { onChange(null); setQ(""); }}>
             <X size={14} aria-hidden />
           </button>

@@ -25,7 +25,8 @@ export default async function CertificateTemplatePage(
 
   return (
     <div className="space-y-4">
-      <Link href={`/host/events/${params.id}/certificates`} className="text-sm text-accent-text hover:underline">
+      <Link href={`/host/events/${params.id}/certificates`}
+        className="inline-flex min-h-11 items-center text-sm text-accent-text hover:underline lg:min-h-0">
         ← Back to Certificates
       </Link>
       <CertificateTemplateEditor template={template} canManage={canManage} pageSizes={pageSizes} />

@@ -226,7 +226,7 @@ function OverviewTab({ event: e, data, isSuperAdmin }: { event: AdminEvent; data
       */}
       <div className="rounded-lg border border-border">
         <Row label="Event" value={e.title} />
-        <Row label="Reference" value={<span className="font-mono text-xs">{e.slug}</span>} />
+        <Row label="Reference" value={<span className="break-all font-mono text-xs">{e.slug}</span>} />
         <Row label="Visibility" value={<Badge tone="neutral">{e.visibility}</Badge>} />
         <Row label="Category" value={e.category ?? "—"} />
         <Row label="Subcategory" value={e.subcategory ?? "—"} />

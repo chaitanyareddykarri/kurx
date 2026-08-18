@@ -132,7 +132,9 @@ export default async function EventTicketsPage({
           {fields.length === 0 ? (
             <Card><p className="text-sm text-muted">No custom fields. Buyers just provide the built-in contact details.</p></Card>
           ) : (
-            <Card className="overflow-x-auto p-0">
+            <Card className="p-0">
+              {/* Focusable like DataTable's wrapper, so keyboard users can scroll the table. */}
+              <div tabIndex={0} aria-label="Registration form fields" className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-muted">
@@ -189,6 +191,7 @@ export default async function EventTicketsPage({
                   ))}
                 </tbody>
               </table>
+              </div>
             </Card>
           )}
           {canManage ? (

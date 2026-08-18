@@ -92,7 +92,7 @@ export function StaffManager({
           e.preventDefault();
           run(() => grantStaffAction(phone, role), "Role granted.", () => setPhone(""));
         }}
-        className="grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-[14rem_16rem_auto] sm:items-end"
+        className="grid gap-3 rounded-lg border border-border bg-surface p-4 md:grid-cols-[14rem_16rem_auto] md:items-end"
       >
         {/* Country picker, not a bare tel box: the value goes straight to NormalizePhone, which reads
             digits with no '+' in the legacy region — so a staff member's overseas number would be

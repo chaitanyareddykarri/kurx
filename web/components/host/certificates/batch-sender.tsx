@@ -75,7 +75,7 @@ export function BatchSender({ eventId, batch }: { eventId: string; batch: Certif
           type="button"
           disabled={busy || draining}
           onClick={() => void send()}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+          className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50 lg:min-h-0"
         >
           {busy ? "Queueing…" : nothingSentYet ? "Email these certificates" : "Send any not yet sent"}
         </button>
@@ -117,7 +117,7 @@ export function BatchSender({ eventId, batch }: { eventId: string; batch: Certif
       {summary && summary.failed > 0 && (
         <div role="alert" className="rounded-md bg-danger/10 p-3 text-sm text-danger">
           <p>{summary.failed.toLocaleString()} could not be sent.</p>
-          <ul className="mt-2 space-y-1">
+          <ul className="mt-2 space-y-1 break-words">
             {summary.recent
               .filter((d) => d.status === "failed")
               .slice(0, 5)

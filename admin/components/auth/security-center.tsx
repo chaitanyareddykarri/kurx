@@ -146,7 +146,7 @@ export function StaffSecurityCenter({
 
       {/* Sessions */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-text">Where you&apos;re signed in</h2>
           {sessions.length > 0 ? (
             <Button variant="secondary" disabled={busy === "signout"} onClick={signOutAll}>

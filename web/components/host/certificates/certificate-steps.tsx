@@ -35,7 +35,7 @@ export function CertificateSteps({ steps, current, onGo }: {
 }) {
   return (
     <nav aria-label="Steps to make your certificate">
-      <ol className="flex flex-wrap items-stretch gap-2">
+      <ol className="flex items-stretch gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible">
         {steps.map((step, index) => {
           const isCurrent = step.id === current;
           const state = isCurrent ? "Now" : step.done ? "Done" : "To do";
@@ -68,7 +68,7 @@ export function CertificateSteps({ steps, current, onGo }: {
           const shared = "flex flex-1 basis-44 items-center gap-3 rounded-xl border px-3 py-3 min-h-[68px]";
 
           return (
-            <li key={step.id} className="flex flex-1 basis-44">
+            <li key={step.id} className="flex w-44 flex-none sm:w-auto sm:flex-1 sm:basis-44">
               {step.enabled ? (
                 <button
                   type="button"

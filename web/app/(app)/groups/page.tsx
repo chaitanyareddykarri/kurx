@@ -61,8 +61,8 @@ export default async function GroupsPage() {
             return (
               <Card key={g.id}>
                 <div className="flex items-center gap-2">
-                  <Users size={18} aria-hidden className="text-accent-text" />
-                  <h2 className="font-semibold">{g.display_name ?? `Group #${g.group_number}`}</h2>
+                  <Users size={18} aria-hidden className="shrink-0 text-accent-text" />
+                  <h2 className="min-w-0 break-words font-semibold">{g.display_name ?? `Group #${g.group_number}`}</h2>
                 </div>
                 <p className="mt-1 text-sm text-muted">
                   Join code: <span className="font-mono text-text">{g.join_code}</span>

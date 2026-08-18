@@ -134,12 +134,13 @@ export function ProfileForm({ initial }: { initial: Initial }) {
               name={`link_${slot}`}
               defaultValue={initial.links[slot] ?? ""}
               placeholder={slot === "website" ? "yoursite.com" : `${slot}.com/you`}
+              inputMode="url"
               className={inputClass}
             />
           </div>
         ))}
       </fieldset>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <SubmitButton />
         {state && "error" in state ? <p className="text-sm text-danger">{String(state.error)}</p> : null}
         {state && "ok" in state ? <p className="text-sm text-accent">Profile saved.</p> : null}

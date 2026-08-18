@@ -88,7 +88,9 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
 
       <section className="space-y-3">
         <h3 className="text-lg font-semibold">Revenue by ticket type</h3>
-        <Card className="overflow-x-auto p-0">
+        <Card className="p-0">
+          {/* Focusable like DataTable's wrapper, so keyboard users can scroll the table. */}
+          <div tabIndex={0} aria-label="Revenue by ticket type" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted">
@@ -111,6 +113,7 @@ export default async function EventAnalyticsPage({ params }: { params: { id: str
               )}
             </tbody>
           </table>
+          </div>
         </Card>
       </section>
     </div>

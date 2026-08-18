@@ -153,8 +153,8 @@ function OrgsList({ organizations }: { organizations: ProfileOrg[] }) {
     <div className="grid gap-3 sm:grid-cols-2">
       {organizations.map((o) => (
         <Card key={o.org_id}>
-          <div className="flex items-center gap-1.5">
-            <a href={`/o/${o.org_slug}`} className="font-semibold text-text hover:text-accent-text hover:underline">{o.org_name}</a>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <a href={`/o/${o.org_slug}`} className="min-w-0 break-words font-semibold text-text hover:text-accent-text hover:underline">{o.org_name}</a>
             {o.is_verified && <Badge tone="accent">Verified</Badge>}
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -181,8 +181,8 @@ function CertificatesList({ certificates }: { certificates: PublicCertificateCar
         <div key={c.id}>
           <Card className="transition duration-fast hover:border-accent/50">
             <div className="flex items-center gap-1.5">
-              <Medal size={16} className="text-accent" />
-              <p className="font-semibold text-text">{c.event_title}</p>
+              <Medal size={16} className="shrink-0 text-accent" />
+              <p className="min-w-0 break-words font-semibold text-text">{c.event_title}</p>
             </div>
             <p className="mt-1 text-xs text-muted">Issued {formatDate(c.issued_at)}</p>
           </Card>
@@ -199,9 +199,9 @@ function AchievementsList({ achievements }: { achievements: AchievementCard[] })
     <div className="grid gap-3 sm:grid-cols-2">
       {achievements.map((a, i) => (
         <Card key={i}>
-          <div className="flex items-center gap-1.5">
-            <Trophy size={16} className="text-accent" />
-            <p className="font-semibold text-text">{a.name}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Trophy size={16} className="shrink-0 text-accent" />
+            <p className="min-w-0 break-words font-semibold text-text">{a.name}</p>
             <Badge tone={a.source === "certificate" ? "accent" : "muted"}>
               {a.source === "certificate" ? "Achievement" : "Platform Recognition"}
             </Badge>

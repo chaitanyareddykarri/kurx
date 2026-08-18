@@ -37,7 +37,7 @@ export function SaveToLibrary({ eventId, template }: {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-sm underline">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-11 items-center text-sm underline lg:min-h-0">
         Save to my designs
       </button>
     );
@@ -64,6 +64,7 @@ export function SaveToLibrary({ eventId, template }: {
         <Button
           type="button"
           size="sm"
+          className="min-h-11 lg:min-h-0"
           disabled={busy}
           onClick={async () => {
             setBusy(true);
@@ -75,7 +76,8 @@ export function SaveToLibrary({ eventId, template }: {
         >
           {busy ? "Saving…" : "Save a copy"}
         </Button>
-        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>
+        <Button type="button" size="sm" variant="secondary" className="min-h-11 lg:min-h-0" disabled={busy}
+          onClick={() => setOpen(false)}>
           Cancel
         </Button>
       </div>
@@ -99,7 +101,7 @@ export function UseSavedDesign({ eventId, library }: {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-sm underline">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-11 items-center text-sm underline lg:min-h-0">
         Use one of my saved designs
       </button>
     );
@@ -115,14 +117,14 @@ export function UseSavedDesign({ eventId, library }: {
       <ul className="space-y-2">
         {library.map((template) => (
           <li key={template.id} className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               {template.background_url && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={template.background_url} alt="" aria-hidden="true"
-                     className="h-10 w-16 rounded border border-border object-cover" />
+                     className="h-10 w-16 shrink-0 rounded border border-border object-cover" />
               )}
-              <div>
-                <div className="text-sm font-medium text-text">{template.name}</div>
+              <div className="min-w-0">
+                <div className="break-words text-sm font-medium text-text">{template.name}</div>
                 <div className="text-xs text-muted">
                   {template.page_size === "a4-portrait" ? "A4 portrait" : "A4 landscape"} ·{" "}
                   {template.fields.length} {template.fields.length === 1 ? "field" : "fields"}
@@ -133,6 +135,7 @@ export function UseSavedDesign({ eventId, library }: {
               type="button"
               size="sm"
               variant="secondary"
+              className="min-h-11 lg:min-h-0"
               disabled={busy !== null}
               onClick={async () => {
                 setBusy(template.id);
@@ -150,7 +153,8 @@ export function UseSavedDesign({ eventId, library }: {
 
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
-      <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(false)}>
+      <Button type="button" size="sm" variant="secondary" className="min-h-11 lg:min-h-0"
+        onClick={() => setOpen(false)}>
         Cancel
       </Button>
     </div>

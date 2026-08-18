@@ -55,7 +55,7 @@ export default async function AccountSettingsPage() {
           <ul className="mt-3 divide-y divide-border text-sm">
             {usernameHistory.map((h) => (
               <li key={`${h.username}-${h.released_at}`} className="flex justify-between gap-4 py-2">
-                <span className="text-text">@{h.username}</span>
+                <span className="min-w-0 break-all text-text">@{h.username}</span>
                 <span className="text-muted">{formatDate(h.released_at)}</span>
               </li>
             ))}

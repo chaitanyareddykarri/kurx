@@ -186,7 +186,7 @@ function FixedTextRow({ field, selected, canManage, onSelect, onChangeText, onDe
           disabled={!canManage}
           onFocus={() => onSelect(field.id)}
           onChange={(e) => onChangeText(field.id, e.target.value)}
-          className="min-h-[44px] w-full flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          className="min-h-[44px] w-full min-w-0 flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-base text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
         {canManage ? <DeleteButton name={`“${shortName}”`} onClick={() => onDelete(field.id)} /> : null}
       </div>

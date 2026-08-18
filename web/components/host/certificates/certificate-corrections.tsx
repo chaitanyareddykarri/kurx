@@ -127,20 +127,20 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
             <button
               type="button"
               onClick={() => setMode("reissue")}
-              className="rounded-md border border-border-strong px-3 py-1.5 text-sm"
+              className="min-h-11 rounded-md border border-border-strong px-3 py-1.5 text-sm lg:min-h-0"
             >
               Correct
             </button>
             <button
               type="button"
               onClick={() => setMode("revoke")}
-              className="rounded-md border border-danger/40 px-3 py-1.5 text-sm text-danger"
+              className="min-h-11 rounded-md border border-danger/40 px-3 py-1.5 text-sm text-danger lg:min-h-0"
             >
               Withdraw
             </button>
           </>
         )}
-        <button type="button" onClick={() => void showHistory()} className="text-sm underline">
+        <button type="button" onClick={() => void showHistory()} className="min-h-11 text-sm underline lg:min-h-0">
           History
         </button>
       </div>
@@ -159,7 +159,7 @@ export function CertificateCorrections({ eventId, certificate, onChanged }: {
         <ol className="space-y-2 border-l border-border pl-4 text-sm">
           {lineage.map((link) => (
             <li key={link.id}>
-              <span className="font-mono text-xs">{link.certificate_id}</span>{" "}
+              <span className="break-all font-mono text-xs">{link.certificate_id}</span>{" "}
               <span className="text-muted">
                 — {link.recipient_name}, {statusWords(link.status)}
               </span>
@@ -198,7 +198,7 @@ export function BatchWithdrawal({ eventId, batchId, issuedCount, onChanged }: {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-sm text-danger underline">
+      <button type="button" onClick={() => setOpen(true)} className="min-h-11 text-left text-sm text-danger underline lg:min-h-0">
         Withdraw all {issuedCount.toLocaleString()} certificates from this run
       </button>
     );
@@ -258,7 +258,7 @@ function Form({ title, note, confirmLabel, busy, error, children, onCancel, onCo
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50"
+          className="min-h-11 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent disabled:opacity-50 lg:min-h-0"
         >
           {busy ? "Working…" : confirmLabel}
         </button>
@@ -266,7 +266,7 @@ function Form({ title, note, confirmLabel, busy, error, children, onCancel, onCo
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-md border border-border-strong px-3 py-1.5 text-sm"
+          className="min-h-11 rounded-md border border-border-strong px-3 py-1.5 text-sm lg:min-h-0"
         >
           Cancel
         </button>

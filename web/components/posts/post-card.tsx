@@ -46,7 +46,7 @@ export function PostCard({
       {post.event ? <EventAttachment event={post.event} /> : null}
       {post.shared_post ? <SharedPostCard post={post.shared_post} /> : null}
 
-      <div className="mt-3 flex items-center gap-1 border-t border-border pt-2">
+      <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-border pt-2 lg:gap-1">
         <Action
           label={post.liked_by_me ? "Unlike" : "Like"}
           icon={<Heart size={16} aria-hidden className={post.liked_by_me ? "fill-accent-text text-accent-text" : ""} />}
@@ -193,7 +193,7 @@ function Action({
   onClick?: () => void;
   href?: string;
 }) {
-  const cls = `inline-flex min-h-11 items-center gap-1.5 rounded-md px-2.5 text-xs transition duration-fast
+  const cls = `inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 text-xs transition duration-fast lg:px-2.5
     focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent
     ${active ? "text-accent-text" : "text-muted"} ${disabled ? "opacity-50" : "hover:bg-elevated hover:text-text"}`;
 

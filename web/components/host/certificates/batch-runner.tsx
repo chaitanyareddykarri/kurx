@@ -159,7 +159,7 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
             type="button"
             disabled={busy}
             onClick={() => void approve()}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50"
+            className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-50 lg:min-h-0"
           >
             {busy ? "Starting…" : `Generate ${batch.row_count.toLocaleString()} certificates`}
           </button>
@@ -167,7 +167,7 @@ export function BatchRunner({ eventId, template, fields, onFinished }: {
             type="button"
             disabled={busy}
             onClick={() => { setBatch(null); setStage("map"); setError(null); }}
-            className="rounded-md border border-border-strong px-4 py-2 text-sm"
+            className="min-h-11 rounded-md border border-border-strong px-4 py-2 text-sm lg:min-h-0"
           >
             Start over
           </button>
@@ -277,7 +277,7 @@ function RunningStage({ eventId, batch, busy, error, onCancel }: {
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="rounded-md border border-border-strong px-4 py-2 text-sm disabled:opacity-50"
+          className="min-h-11 rounded-md border border-border-strong px-4 py-2 text-sm disabled:opacity-50 lg:min-h-0"
         >
           Stop this run
         </button>

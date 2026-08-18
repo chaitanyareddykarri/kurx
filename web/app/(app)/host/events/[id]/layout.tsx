@@ -75,7 +75,7 @@ export default async function EventWorkspaceLayout({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           {/* The status was uppercased raw, so a host waiting on a decision read "PENDINGREVIEW",
               and the whole line sat on `text-accent-text` at 2.80:1 in the light theme. The status is a
               `Badge` now, which is the shape the rest of the product uses for it. */}
@@ -85,7 +85,7 @@ export default async function EventWorkspaceLayout({
             ) : null}
             <Badge tone={eventStatusOf(event.status).tone}>{eventStatusOf(event.status).label}</Badge>
           </div>
-          <h1 className="mt-1 text-3xl font-semibold text-text">{event.title}</h1>
+          <h1 className="mt-1 break-words text-3xl font-semibold text-text">{event.title}</h1>
         </div>
         {canEdit ? <EventStatusActions orgId={orgId} eventId={event.id} status={event.status} /> : null}
       </div>

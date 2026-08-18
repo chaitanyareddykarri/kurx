@@ -238,7 +238,7 @@ export function BadgeExport({ eventId, accessToken, sizes, recipients }: Props) 
                     )}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink flex-wrap items-center justify-end gap-2 lg:shrink-0 lg:flex-nowrap">
                   {r.card?.is_revoked && <Badge tone="danger">Revoked</Badge>}
                   {r.access_level && <Badge tone="warning">{r.access_level}</Badge>}
                   <Badge tone={r.kind === "staff" ? "accent" : "muted"}>

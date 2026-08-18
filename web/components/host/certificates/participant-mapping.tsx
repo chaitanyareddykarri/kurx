@@ -110,7 +110,7 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
         </h3>
         <button
           type="button"
-          className="text-sm underline"
+          className="min-h-11 text-sm underline lg:min-h-0"
           onClick={() => { setPreview(null); setMapping({}); }}
         >
           Upload a different file
@@ -126,7 +126,13 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
         </p>
       )}
 
-      <div className="overflow-x-auto">
+      {/* Focusable like DataTable's wrapper: a scroll region a keyboard can't reach hides columns. */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label="Columns from your file"
+        className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+      >
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
@@ -187,7 +193,7 @@ export function ParticipantMapping({ eventId, fields, onConfirmed, onFileSelecte
       ) : (
         <button
           type="button"
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
+          className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent lg:min-h-0"
           onClick={() => onConfirmed({ preview, mapping })}
         >
           Continue with this mapping

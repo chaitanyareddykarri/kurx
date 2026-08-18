@@ -84,7 +84,9 @@ export default async function FinancePage({ params }: { params: { orgId: string 
           {ledger.length === 0 ? (
             <Card><p className="text-sm text-muted">No ledger activity yet. Entries appear here as tickets are paid and funds settle.</p></Card>
           ) : (
-            <Card className="overflow-x-auto p-0">
+            <Card className="p-0">
+              {/* Focusable like DataTable's wrapper, so keyboard users can scroll the table. */}
+              <div tabIndex={0} aria-label="Transactions" className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-muted">
@@ -105,6 +107,7 @@ export default async function FinancePage({ params }: { params: { orgId: string 
                   ))}
                 </tbody>
               </table>
+              </div>
             </Card>
           )}
         </section>

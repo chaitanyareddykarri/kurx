@@ -81,7 +81,7 @@ export function AlliesManager({
                 key={c.id} name={c.other_name} username={c.other_username} avatarSrc={c.other_avatar_url}
                 href={c.other_username ? `/u/${c.other_username}` : undefined}
                 action={
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     {/* Four "Accept" buttons on one page are indistinguishable in a screen reader's
                         control list; the name has to carry whose request it is. */}
                     <Button aria-label={`Accept ${c.other_name}`} disabled={pending} onClick={() => accept(c)}>Accept</Button>

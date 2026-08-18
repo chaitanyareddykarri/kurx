@@ -116,7 +116,7 @@ export function InviteLinks({ eventId, links }: { eventId: string; links: Invite
 
                 <span className="flex gap-1">
                   <button type="button" onClick={() => copy(l.token)} disabled={revoked}
-                    className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-text hover:bg-elevated disabled:opacity-50">
+                    className="inline-flex h-11 items-center gap-1 rounded-md border border-border px-2 text-xs text-text hover:bg-elevated disabled:opacity-50 lg:h-8">
                     <Copy size={12} /> {copied === l.token ? "Copied" : "Copy"}
                   </button>
                   {revoked ? null : (

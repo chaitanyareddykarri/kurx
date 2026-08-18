@@ -148,6 +148,8 @@ export function ImageEditor({ slot, file, onSave, onCancel, saving }: {
       </p>
 
       <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
+        {/* aspectRatio, not a fixed height: when maxWidth shrinks the canvas below frameW on narrow
+            screens, a fixed CSS height would distort the crop and desync the drag geometry. */}
         <canvas
           ref={previewRef}
           role="img"
@@ -158,7 +160,7 @@ export function ImageEditor({ slot, file, onSave, onCancel, saving }: {
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onKeyDown={onKeyDown}
-          style={{ width: frameW, height: frameH, maxWidth: "100%", touchAction: "none" }}
+          style={{ width: frameW, maxWidth: "100%", aspectRatio: `${frameW} / ${frameH}`, touchAction: "none" }}
           className={`shrink-0 cursor-move border border-border bg-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${slot === "avatar" ? "rounded-full" : "rounded-md"}`}
         />
 
@@ -181,7 +183,7 @@ export function ImageEditor({ slot, file, onSave, onCancel, saving }: {
             </Button>
             <button
               type="button"
-              className="rounded-md px-2 py-2 text-sm text-muted underline disabled:no-underline disabled:opacity-50"
+              className="min-h-11 rounded-md px-2 py-2 text-sm text-muted underline disabled:no-underline disabled:opacity-50"
               disabled={isDefaultEdits(edits)}
               onClick={() => setEdits(DEFAULT_EDITS)}
             >

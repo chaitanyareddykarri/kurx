@@ -45,7 +45,7 @@ export function AssignmentsSection({ orgId, eventId, assignments, myUserId, ally
                 href={a.assignee_username ? `/u/${a.assignee_username}` : undefined}
                 subtitle={`${a.role}${a.custom_role ? ` (${a.custom_role})` : ""} · ${a.status}${a.notes ? ` · ${a.notes}` : ""}`}
                 action={
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
                     {a.user_id !== myUserId && (
                       <AllyConnectButton targetUserId={a.user_id} initialRelation={toAllyRelation(allyStatus[a.user_id])} initialConnectionId={null} />
                     )}

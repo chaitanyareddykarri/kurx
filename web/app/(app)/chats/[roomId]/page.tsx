@@ -43,7 +43,7 @@ export default async function ChatRoomPage({ params }: { params: { roomId: strin
   const title = eventRoom?.eventTitle ?? dm?.other_name ?? "Conversation";
 
   return (
-    <div className="grid h-[calc(100vh-10rem)] min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-border md:grid-cols-[20rem_1fr]">
+    <div className="grid h-[calc(100dvh-10rem)] min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-border md:grid-cols-[20rem_1fr]">
       {/* Sidebar is desktop-only; on small screens the room owns the viewport. */}
       <div className="hidden min-h-0 border-r border-border md:block">
         <RoomList rooms={eventRooms} activeRoomId={params.roomId} />

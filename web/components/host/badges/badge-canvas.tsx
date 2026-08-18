@@ -62,7 +62,9 @@ export function BadgeCanvas({
       data-testid="badge-canvas"
       onClick={onBackgroundClick}
       className="relative shrink-0 overflow-hidden rounded-lg bg-white shadow-[0_8px_30px_rgba(15,23,42,.14)] ring-1 ring-black/5"
-      style={{ width, height, touchAction: "none" }}
+      // aspect-ratio rather than a fixed height so max-width can shrink the card on narrow screens
+      // without distorting it — field positions are percentages, so they scale with it.
+      style={{ width, maxWidth: "100%", aspectRatio: `${width} / ${height}`, touchAction: "none" }}
     >
       {backgroundUrl && (
         // `contain` so the whole uploaded design is visible: the artwork is the one thing the organiser
@@ -162,7 +164,7 @@ function FieldBox({
             e.stopPropagation();
             onPointerDown?.(e, field.key, "resize");
           }}
-          className="absolute -bottom-1 -right-1 h-3 w-3 cursor-se-resize rounded-sm border border-white bg-accent"
+          className="absolute -bottom-2 -right-2 h-5 w-5 cursor-se-resize rounded-sm border border-white bg-accent lg:-bottom-1 lg:-right-1 lg:h-3 lg:w-3"
         />
       )}
     </div>

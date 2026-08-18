@@ -170,7 +170,7 @@ export function MessagesTabs({
 
   return (
     <div className="flex min-h-0 flex-col">
-      <nav className="flex gap-1 border-b border-border px-2" role="tablist">
+      <nav className="flex gap-1 overflow-x-auto border-b border-border px-2" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.key}

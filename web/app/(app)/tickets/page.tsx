@@ -49,7 +49,7 @@ export default async function TicketsPage() {
             return (
               <Card key={order.id} className="space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <h2 className="font-semibold text-text">{order.event_title ?? "Event"}</h2>
+                  <h2 className="min-w-0 break-words font-semibold text-text">{order.event_title ?? "Event"}</h2>
                   {/* The raw machine status was printed through `capitalize`, so a buyer read
                       "Awaitingpayment". Statuses are mapped to words, with a tone that does not
                       carry the meaning on its own. */}

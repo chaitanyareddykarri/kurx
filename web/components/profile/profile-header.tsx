@@ -110,7 +110,7 @@ export function ProfileHeader({
 
         <div className="mt-lg">
           <div className="flex flex-wrap items-center gap-sm">
-            <h1 className="text-3xl font-semibold tracking-tight text-text sm:text-4xl">{name}</h1>
+            <h1 className="min-w-0 break-words text-3xl font-semibold tracking-tight text-text sm:text-4xl">{name}</h1>
             {/* Teal, not accent: verification is an attestation (D-286). */}
             {identityVerified ? (
               <Badge tone="teal" icon={<ShieldCheck size={12} aria-hidden />}>Identity verified</Badge>

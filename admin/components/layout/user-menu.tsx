@@ -23,7 +23,7 @@ export function UserMenu({ name, roles }: { name: string; roles: PlatformRole[] 
   const primaryRole = roles.includes("SuperAdmin") ? "SuperAdmin" : roles[0];
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       <div className="hidden text-right sm:block">
         <p className="text-sm font-medium text-text">{name}</p>
         {primaryRole ? <p className="text-xs text-muted">{ROLE_LABELS[primaryRole]}</p> : null}

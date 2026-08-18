@@ -32,7 +32,7 @@ export default async function EventChatPage({ params }: { params: { id: string }
   }
 
   return (
-    <div className="h-[calc(100vh-16rem)] min-h-[26rem] overflow-hidden rounded-lg border border-border">
+    <div className="h-[calc(100dvh-16rem)] min-h-[26rem] overflow-hidden rounded-lg border border-border">
       <ChatRoomView roomId={room.roomId} title={room.eventTitle} currentUserId={session.me.id} />
     </div>
   );

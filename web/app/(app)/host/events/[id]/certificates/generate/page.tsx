@@ -23,7 +23,7 @@ export default async function GenerateCertificatesPage({ params }: { params: { i
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/host/events/${params.id}/certificates`} className="text-sm underline">
+        <Link href={`/host/events/${params.id}/certificates`} className="inline-flex min-h-11 items-center text-sm underline lg:min-h-0">
           ← Certificate designs
         </Link>
         <h1 className="mt-2 text-h2 text-text">Generate certificates</h1>

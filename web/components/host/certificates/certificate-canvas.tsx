@@ -303,10 +303,9 @@ function FieldBox({
           role="button"
           aria-label="Resize"
           onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(e, field.id, "resize"); }}
-          style={{
-            position: "absolute", right: -6, bottom: -6, width: 12, height: 12,
-            borderRadius: 3, background: ACCENT, border: `2px solid ${ON_ACCENT}`, cursor: "nwse-resize",
-          }}
+          // Geometry lives in classes so a finger gets a bigger grab below lg than the mouse's 12px.
+          className="absolute -bottom-3 -right-3 h-6 w-6 rounded-[3px] lg:-bottom-1.5 lg:-right-1.5 lg:h-3 lg:w-3"
+          style={{ background: ACCENT, border: `2px solid ${ON_ACCENT}`, cursor: "nwse-resize" }}
         />
       ) : null}
     </div>

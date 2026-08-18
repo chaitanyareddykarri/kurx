@@ -260,7 +260,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
             </div>
             <div
               className="flex items-center justify-center rounded-lg border border-border bg-surface-2 p-3"
-              style={{ width: CANVAS_W + 24, minHeight: canvasH }}
+              style={{ width: CANVAS_W + 24, maxWidth: "100%", minHeight: canvasH }}
             >
               {preview ? (
                 // eslint-disable-next-line @next/next/no-img-element -- blob: URL cannot use next/image
@@ -306,7 +306,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
                       type="number" min={4} max={72}
                       value={selectedField.fontSizePt ?? 10}
                       onChange={(e) => patchField(selectedField.key, { fontSizePt: Number(e.target.value) })}
-                      className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm text-text"
+                      className="h-11 w-full rounded-md border border-border bg-surface px-2 text-sm text-text lg:h-9"
                     />
                   </Field>
                   <Field label="Align">
@@ -330,7 +330,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
                     type="color"
                     value={selectedField.color ?? "#111827"}
                     onChange={(e) => patchField(selectedField.key, { color: e.target.value })}
-                    className="h-9 w-14 cursor-pointer rounded-md border border-border bg-surface"
+                    className="h-11 w-14 cursor-pointer rounded-md border border-border bg-surface lg:h-9"
                     aria-label="Field colour"
                   />
                 </div>
@@ -366,7 +366,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
                     const f = e.target.files?.[0];
                     if (f) void upload(f, "background");
                   }}
-                  className="text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-sm file:text-text"
+                  className="min-w-0 max-w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-sm file:text-text"
                 />
                 {spec.backgroundKey && (
                   <Button variant="ghost" onClick={() => { set({ backgroundKey: null }); setArtworkUrl(null); }}>
@@ -384,7 +384,7 @@ export function BadgeTemplateEditor({ eventId, accessToken, sizes }: Props) {
                     const f = e.target.files?.[0];
                     if (f) void upload(f, "logo");
                   }}
-                  className="text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-sm file:text-text"
+                  className="min-w-0 max-w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-3 file:px-3 file:py-2 file:text-sm file:text-text"
                 />
                 {spec.logoKey && (
                   <Button variant="ghost" onClick={() => set({ logoKey: null })}>Remove</Button>

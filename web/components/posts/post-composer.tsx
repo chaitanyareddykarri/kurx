@@ -133,7 +133,7 @@ export function PostComposer({
                     type="button"
                     aria-label={`Remove ${d.name}`}
                     onClick={() => setDrafts((cur) => cur.filter((x) => x.id !== d.id))}
-                    className="text-muted hover:text-text"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-text lg:min-h-0 lg:min-w-0"
                   >
                     <X size={12} />
                   </button>
@@ -166,11 +166,11 @@ export function PostComposer({
                   type="button"
                   disabled={pollOptions.length >= 6}
                   onClick={() => setPollOptions((cur) => [...cur, ""])}
-                  className="text-xs text-accent disabled:opacity-40"
+                  className="inline-flex min-h-11 items-center text-xs text-accent disabled:opacity-40 lg:min-h-0"
                 >
                   + Add option
                 </button>
-                <label className="flex items-center gap-1.5 text-xs text-muted">
+                <label className="flex min-h-11 items-center gap-1.5 text-xs text-muted lg:min-h-0">
                   <input
                     type="checkbox"
                     checked={pollMultiple}
@@ -182,7 +182,7 @@ export function PostComposer({
             </div>
           ) : null}
 
-          <div className="mt-3 flex items-center gap-2 border-t border-border pt-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-2">
             <input
               ref={fileRef}
               type="file"
@@ -195,7 +195,7 @@ export function PostComposer({
               type="button"
               aria-label="Add media"
               onClick={() => fileRef.current?.click()}
-              className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-text"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-muted hover:bg-elevated hover:text-text lg:min-h-0 lg:min-w-0"
             >
               <ImagePlus size={16} />
             </button>
@@ -204,7 +204,7 @@ export function PostComposer({
               aria-label="Add poll"
               aria-pressed={pollOpen}
               onClick={() => setPollOpen((o) => !o)}
-              className={`rounded-md p-1.5 hover:bg-elevated hover:text-text ${pollOpen ? "text-accent" : "text-muted"}`}
+              className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 hover:bg-elevated hover:text-text lg:min-h-0 lg:min-w-0 ${pollOpen ? "text-accent" : "text-muted"}`}
             >
               <BarChart3 size={16} />
             </button>
@@ -216,7 +216,7 @@ export function PostComposer({
               id="composer-visibility"
               value={visibility}
               onChange={(e) => setVisibility(e.target.value as PostVisibility)}
-              className="rounded-md border border-border-strong bg-background px-2 py-1 text-xs text-muted"
+              className="min-h-11 rounded-md border border-border-strong bg-background px-2 py-1 text-xs text-muted lg:min-h-0"
             >
               {POST_VISIBILITIES.filter((v) => v !== "event_participants" || eventId).map((v) => (
                 <option key={v} value={v}>
@@ -226,14 +226,16 @@ export function PostComposer({
             </select>
 
             <span className="flex-1" />
-            <span className="text-xs tabular-nums text-muted">
+            {/* ml-auto is inert while the flex-1 spacer shares the row; it right-aligns the pair
+                only when the toolbar wraps below lg. */}
+            <span className="ml-auto text-xs tabular-nums text-muted">
               {body.length}/{POST_BODY_MAX}
             </span>
             <button
               type="button"
               onClick={submit}
               disabled={!canSubmit}
-              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+              className="min-h-11 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50 lg:min-h-0"
             >
               {pending ? "Posting…" : "Post"}
             </button>

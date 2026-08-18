@@ -126,7 +126,8 @@ export function Topbar({
           >
             <Menu size={18} />
           </button>
-          <div className="lg:hidden">
+          {/* At 320px the icon cluster alone fills the bar; the wordmark returns at xs. */}
+          <div className="hidden xs:block lg:hidden">
             <KurxAdminLogo compact />
           </div>
 

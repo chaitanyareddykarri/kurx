@@ -37,7 +37,7 @@ export default async function ChatsPage() {
     );
 
   return (
-    <div className="grid h-[calc(100vh-10rem)] min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-border md:grid-cols-[20rem_1fr]">
+    <div className="grid h-[calc(100dvh-10rem)] min-h-0 grid-cols-1 overflow-hidden rounded-lg border border-border md:grid-cols-[20rem_1fr]">
       <div className="flex min-h-0 flex-col border-r border-border">
         {/* D-295 — search spans every room, so it sits above the tabs rather than inside one. */}
         <ChatSearch />

@@ -125,7 +125,7 @@ export function ImageUpload({ slot, name, initialKey, initialUrl, label, preview
           </div>
         )}
 
-        <label className="cursor-pointer rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-elevated focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
+        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-border px-3 py-2 text-sm text-text hover:bg-elevated focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent lg:min-h-0">
           {value ? "Replace image" : "Upload image"}
           <input
             ref={inputRef}

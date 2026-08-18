@@ -146,7 +146,7 @@ export function VoiceRecorder({ onRecorded }: { onRecorded: (file: File) => void
         onClick={stop}
         aria-label="Finish recording"
         title="Finish recording"
-        className="text-muted hover:text-text"
+        className="inline-flex h-10 w-10 items-center justify-center text-muted hover:text-text lg:h-auto lg:w-auto"
       >
         <Square size={14} aria-hidden />
       </button>
@@ -155,7 +155,7 @@ export function VoiceRecorder({ onRecorded }: { onRecorded: (file: File) => void
         onClick={discard}
         aria-label="Discard recording"
         title="Discard recording"
-        className="text-muted hover:text-text"
+        className="inline-flex h-10 w-10 items-center justify-center text-muted hover:text-text lg:h-auto lg:w-auto"
       >
         <Trash2 size={14} aria-hidden />
       </button>

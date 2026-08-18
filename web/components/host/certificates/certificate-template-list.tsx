@@ -64,14 +64,14 @@ export function CertificateTemplateList({ eventId, templates, canManage, library
         <div className="flex flex-wrap items-end gap-2">
           {creating ? (
             <>
-              <label className="text-xs text-muted">
+              <label className="w-full text-xs text-muted sm:w-auto">
                 Design name
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Participation certificate"
                   aria-label="Design name"
-                  className="mt-1 block h-10 w-64 rounded-md border border-border bg-background px-3 text-sm text-text"
+                  className="mt-1 block h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-text sm:w-64"
                 />
               </label>
               <Button type="button" disabled={pending} onClick={create}>
@@ -111,12 +111,16 @@ export function CertificateTemplateList({ eventId, templates, canManage, library
           {templates.map((t) => (
             <li key={t.id}>
               <Card>
-                <CertificateCanvas
-                  pageSize={t.page_size} pageWidthMm={t.page_width_mm} pageHeightMm={t.page_height_mm}
-                  backgroundUrl={t.background_url}
-                  fields={t.fields.map(toDraft)}
-                  width={280}
-                />
+                {/* The canvas is a fixed 280px; at 320px viewports the card is narrower than that, so
+                    the thumbnail scrolls inside the card rather than stretching the page. */}
+                <div className="overflow-x-auto">
+                  <CertificateCanvas
+                    pageSize={t.page_size} pageWidthMm={t.page_width_mm} pageHeightMm={t.page_height_mm}
+                    backgroundUrl={t.background_url}
+                    fields={t.fields.map(toDraft)}
+                    width={280}
+                  />
+                </div>
                 <div className="mt-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="truncate font-semibold text-text">{t.name}</h3>
@@ -131,11 +135,12 @@ export function CertificateTemplateList({ eventId, templates, canManage, library
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
                       href={`/host/events/${eventId}/certificates/${t.id}`}
-                      className="inline-flex h-9 items-center rounded-md border border-border-strong bg-surface px-3 text-caption font-semibold text-text hover:bg-elevated"
+                      className="inline-flex h-9 min-h-11 items-center rounded-md border border-border-strong bg-surface px-3 text-caption font-semibold text-text hover:bg-elevated lg:min-h-0"
                     >
                       Edit
                     </Link>
                     <Button type="button" variant="ghost" size="sm" disabled={pending}
+                      className="min-h-11 lg:min-h-0"
                       onClick={() => archive(t.id)}>
                       Archive
                     </Button>

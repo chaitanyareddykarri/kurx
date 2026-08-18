@@ -68,7 +68,7 @@ export function CertificateDashboardPanel({ eventId, data }: {
         {/* A plain link, not a fetch: the browser downloads it with the filename the server chose. */}
         <a
           href={`/api/events/${eventId}/certificates/export`}
-          className="rounded-md border border-border-strong px-3 py-1.5"
+          className="inline-flex min-h-11 items-center rounded-md border border-border-strong px-3 py-1.5 lg:min-h-0"
         >
           Download the full record (CSV)
         </a>

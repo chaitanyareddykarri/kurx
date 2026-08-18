@@ -34,7 +34,7 @@ export function VenueSection({ orgId, eventId, venueName }: { orgId: string; eve
         <input name="city" placeholder="City" className={inputClass} />
         <input name="address" placeholder="Address" aria-label="Address" className={`${inputClass} sm:col-span-2`} />
         <input name="capacity" type="number" min={1} placeholder="Capacity" className={inputClass} />
-        <input name="googleMapsUrl" placeholder="Google Maps URL" className={inputClass} />
+        <input name="googleMapsUrl" placeholder="Google Maps URL" inputMode="url" className={inputClass} />
         <div className="sm:col-span-2"><AddButton label="Save Venue" /></div>
       </form>
       {state && "error" in state ? <p className="text-sm text-danger">{String(state.error)}</p> : null}
@@ -68,14 +68,14 @@ export function ScheduleSection({ orgId, eventId, sessions }: { orgId: string; e
           {sessions.map((s, i) => (
             <li key={s.id} className="rounded-md border border-border p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0 break-words">
                   <span className="font-medium">{s.title}</span>
                   <span className="ml-2 text-xs uppercase text-muted">{s.kind}</span>
                   <div className="text-muted">{new Date(s.starts_at).toLocaleString()} – {new Date(s.ends_at).toLocaleTimeString()}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button type="button" disabled={pending || i === 0} onClick={() => move(i, i - 1)} aria-label="Move up" className="rounded border border-border px-1.5 py-1 text-xs text-muted disabled:opacity-40">↑</button>
-                  <button type="button" disabled={pending || i === sessions.length - 1} onClick={() => move(i, i + 1)} aria-label="Move down" className="rounded border border-border px-1.5 py-1 text-xs text-muted disabled:opacity-40">↓</button>
+                  <button type="button" disabled={pending || i === 0} onClick={() => move(i, i - 1)} aria-label="Move up" className="min-h-11 min-w-11 rounded border border-border px-1.5 py-1 text-xs text-muted disabled:opacity-40 lg:min-h-0 lg:min-w-0">↑</button>
+                  <button type="button" disabled={pending || i === sessions.length - 1} onClick={() => move(i, i + 1)} aria-label="Move down" className="min-h-11 min-w-11 rounded border border-border px-1.5 py-1 text-xs text-muted disabled:opacity-40 lg:min-h-0 lg:min-w-0">↓</button>
                   <form action={deleteSessionAction.bind(null, orgId, eventId, s.id)}>
                     <ConfirmSubmitButton
                       label="Delete"
@@ -131,9 +131,9 @@ export function SpeakersSection({ orgId, eventId, speakers }: { orgId: string; e
           {speakers.map((s) => (
             <li key={s.id} className="rounded-md border border-border p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   {s.user_id && <Avatar name={s.name} src={s.avatar_url ?? undefined} size={28} />}
-                  <div>
+                  <div className="min-w-0 break-words">
                     <div className="flex items-center gap-1.5">
                       {s.user_id && s.username ? (
                         <a href={`/u/${s.username}`} className="font-medium hover:text-accent-text">{s.name}</a>
@@ -191,7 +191,7 @@ export function SponsorsSection({ orgId, eventId, sponsors }: { orgId: string; e
           {sponsors.map((s) => (
             <li key={s.id} className="rounded-md border border-border p-3 text-sm">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0 break-words">
                   <span className="font-medium">{s.name}</span>
                   <span className="ml-2 text-xs uppercase text-muted">{s.tier}</span>
                 </div>
@@ -215,7 +215,7 @@ export function SponsorsSection({ orgId, eventId, sponsors }: { orgId: string; e
                     <option value="Bronze">Bronze</option>
                     <option value="Partner">Partner</option>
                   </select>
-                  <input name="website" defaultValue={s.website} placeholder="Website" className="sm:col-span-2" />
+                  <input name="website" defaultValue={s.website} placeholder="Website" inputMode="url" className="min-w-0 max-w-full sm:col-span-2" />
                   <div className="sm:col-span-2"><Button type="submit" variant="secondary">Save sponsor</Button></div>
                 </form>
               </details>
@@ -232,7 +232,7 @@ export function SponsorsSection({ orgId, eventId, sponsors }: { orgId: string; e
           <option value="Bronze">Bronze</option>
           <option value="Partner">Partner</option>
         </select>
-        <input name="website" placeholder="Website" className="sm:col-span-2" />
+        <input name="website" placeholder="Website" inputMode="url" className="min-w-0 max-w-full sm:col-span-2" />
         <div className="sm:col-span-2"><AddButton label="Add Sponsor" /></div>
       </form>
       {state && "error" in state ? <p className="text-sm text-danger">{String(state.error)}</p> : null}
@@ -250,7 +250,7 @@ export function MediaSection({ orgId, eventId, media }: { orgId: string; eventId
         <ul className="space-y-2">
           {media.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
-              <span>
+              <span className="min-w-0 break-words">
                 <span className="text-xs uppercase text-muted">{m.kind}</span>
                 <span className="ml-2">{m.caption || m.key}</span>
               </span>
@@ -274,7 +274,7 @@ export function MediaSection({ orgId, eventId, media }: { orgId: string; eventId
           <option value="RulesPdf">Rules PDF</option>
         </select>
         <input name="caption" placeholder="Caption (optional)" className={inputClass} />
-        <input name="file" type="file" required className="sm:col-span-2 text-sm" />
+        <input name="file" type="file" required className="sm:col-span-2 min-w-0 max-w-full text-sm" />
         <div className="sm:col-span-2"><AddButton label="Upload" /></div>
       </form>
       {state && "error" in state ? <p className="text-sm text-danger">{String(state.error)}</p> : null}
@@ -326,7 +326,7 @@ export function BannerSection({
           type="file"
           required
           accept="image/jpeg,image/png,image/webp,image/avif"
-          className="block text-sm"
+          className="block max-w-full text-sm"
         />
         <p className="text-xs text-muted">JPEG, PNG, WebP or AVIF · up to 10 MB · shown at 3:2, so a wide image crops best.</p>
         <AddButton label={bannerUrl ? "Replace" : "Upload"} />

@@ -960,7 +960,7 @@ export function CreateEventWizard({
             </SelectCardGroup>
           ) : (
             <p className="flex items-center gap-2 text-xs text-muted">
-              <ShieldCheck size={14} aria-hidden />
+              <ShieldCheck size={14} aria-hidden className="shrink-0" />
               {selectedArchetype
                 ? "This kind of event doesn't support team entry, so people register individually."
                 : "People register individually."}
@@ -1441,7 +1441,7 @@ export function CreateEventWizard({
                 refusal names the field rather than arriving as a 400 after the event exists. */}
             <Field label="Official phone" required error={authErrors.officialPhone}
               helper={authErrors.officialPhone ? undefined : "International format, e.g. +919876543210."}>
-              <Input id="auth-phone" value={authorization.officialPhone} placeholder="+919876543210"
+              <Input id="auth-phone" type="tel" value={authorization.officialPhone} placeholder="+919876543210"
                 onChange={(e) => setAuthorization({ ...authorization, officialPhone: e.target.value })} />
             </Field>
           </div>

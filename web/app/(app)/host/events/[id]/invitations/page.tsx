@@ -40,7 +40,9 @@ export default async function EventInvitationsPage({ params }: { params: { id: s
         {items.length === 0 ? (
           <Card><p className="text-sm text-muted">No guests invited to this event yet.</p></Card>
         ) : (
-          <Card className="overflow-x-auto p-0">
+          <Card className="p-0">
+            {/* Focusable like DataTable's wrapper, so keyboard users can scroll the table. */}
+            <div tabIndex={0} aria-label="Invited guests" className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted">
@@ -84,6 +86,7 @@ export default async function EventInvitationsPage({ params }: { params: { id: s
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
       </section>

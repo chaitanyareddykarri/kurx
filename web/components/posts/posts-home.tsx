@@ -44,7 +44,7 @@ export function PostsHome({
             defaultValue={query ?? ""}
             placeholder="Search posts"
             aria-label="Search posts"
-            className="min-h-11 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-text placeholder:text-muted"
+            className="min-h-11 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-text placeholder:text-muted"
           />
           <button
             type="submit"
@@ -78,7 +78,9 @@ export function PostsHome({
         </div>
       </div>
 
-      <aside className="hidden lg:block">
+      {/* Below lg this is the only route to My/Saved posts and Trending, so it stacks under the
+          feed rather than disappearing. `sticky` is inert there — the grid cell is content-height. */}
+      <aside className="min-w-0">
         <div className="sticky top-20 space-y-4">
         <div className="rounded-lg border border-border bg-surface p-4">
           <h2 className="text-sm font-semibold text-text">Yours</h2>
@@ -103,7 +105,7 @@ export function PostsHome({
             <ul className="mt-2 space-y-1.5">
               {trending.map((t) => (
                 <li key={t.tag}>
-                  <Link href={`/posts/tag/${t.tag}`} className="block text-sm text-accent hover:underline">
+                  <Link href={`/posts/tag/${t.tag}`} className="block truncate text-sm text-accent hover:underline">
                     #{t.tag}
                     <span className="ml-1.5 text-xs text-muted">{t.post_count}</span>
                   </Link>

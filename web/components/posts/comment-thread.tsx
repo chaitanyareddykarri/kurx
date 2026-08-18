@@ -113,7 +113,7 @@ export function CommentThread({
               type="button"
               onClick={submit}
               disabled={pending || !body.trim()}
-              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+              className="min-h-11 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50 lg:min-h-0"
             >
               {pending ? "Posting…" : "Comment"}
             </button>
@@ -145,7 +145,7 @@ export function CommentThread({
         <button
           type="button"
           onClick={loadMore}
-          className="mt-3 w-full rounded-md border border-border py-1.5 text-xs text-muted hover:bg-elevated hover:text-text"
+          className="mt-3 min-h-11 w-full rounded-md border border-border py-1.5 text-xs text-muted hover:bg-elevated hover:text-text lg:min-h-0"
         >
           Load more comments
         </button>
@@ -185,12 +185,16 @@ function Comment({
             type="button"
             aria-label={comment.liked_by_me ? "Unlike comment" : "Like comment"}
             onClick={() => onLike(comment)}
-            className={`flex items-center gap-1 hover:text-text ${comment.liked_by_me ? "text-accent" : ""}`}
+            className={`flex min-h-11 items-center gap-1 hover:text-text lg:min-h-0 ${comment.liked_by_me ? "text-accent" : ""}`}
           >
             <Heart size={12} className={comment.liked_by_me ? "fill-accent" : ""} />
             {comment.like_count > 0 ? comment.like_count : null}
           </button>
-          <button type="button" onClick={() => onReply(comment)} className="hover:text-text">
+          <button
+            type="button"
+            onClick={() => onReply(comment)}
+            className="inline-flex min-h-11 items-center hover:text-text lg:min-h-0"
+          >
             Reply
           </button>
           {comment.can_delete ? (
@@ -198,7 +202,7 @@ function Comment({
               type="button"
               aria-label="Delete comment"
               onClick={() => onDelete(comment)}
-              className="flex items-center gap-1 hover:text-danger"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1 hover:text-danger lg:min-h-0 lg:min-w-0"
             >
               <Trash2 size={12} />
             </button>

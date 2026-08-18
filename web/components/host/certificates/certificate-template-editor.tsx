@@ -107,7 +107,24 @@ export function CertificateTemplateEditor({ template: initial, canManage, pageSi
   const dirty = !same(initial.fields.map(toDraft), fields) || name !== template.name;
 
   const aspect = pageAspect(template.page_size, template.page_width_mm, template.page_height_mm);
-  const width = 720;
+  // Below lg the canvas takes its column's real width, so a phone never scrolls the page sideways. At lg
+  // and up it stays its designed 720px (a narrow desktop column still scrolls it, as before). Drag maths
+  // and type scaling both divide by this same width, so they stay correct at any size for free.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [fitWidth, setFitWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const measure = () =>
+      setFitWidth(desktop.matches || !el.clientWidth ? null : Math.min(720, el.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    desktop.addEventListener("change", measure);
+    return () => { observer.disconnect(); desktop.removeEventListener("change", measure); };
+  }, []);
+  const width = fitWidth ?? 720;
   const height = Math.round(width / aspect);
   const backgroundUrl = localBackground ?? template.background_url ?? null;
 
@@ -335,7 +352,7 @@ export function CertificateTemplateEditor({ template: initial, canManage, pageSi
   ];
 
   return (
-    <div className="space-y-7">
+    <div ref={rootRef} className="space-y-7">
       <header className="space-y-2">
         <h1 className="text-2xl font-bold text-text">Make your certificate</h1>
         <label className="sr-only" htmlFor="template-name">Certificate name</label>
@@ -380,7 +397,7 @@ export function CertificateTemplateEditor({ template: initial, canManage, pageSi
           preview={
             <CertificateCanvas pageSize={template.page_size}
               pageWidthMm={template.page_width_mm} pageHeightMm={template.page_height_mm} backgroundUrl={backgroundUrl}
-              fields={[]} width={480} interactive={false} />
+              fields={[]} width={Math.min(480, width - 48)} interactive={false} />
           }
         />
       ) : null}

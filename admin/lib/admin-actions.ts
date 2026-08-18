@@ -17,7 +17,8 @@ import {
   computeStageResults, publishStageResults, advanceStage,
   createSpeaker, updateSpeaker, deleteSpeaker, assignSpeakerToEvent, removeSpeakerFromEvent,
   createSponsor, updateSponsor, deleteSponsor, assignSponsorToEvent, removeSponsorFromEvent,
-  setReviewChecklistItem, reviewEventAuthorization, recordFinancialReview   // D-266 M7
+  setReviewChecklistItem, reviewEventAuthorization, recordFinancialReview,   // D-266 M7
+  decideChangeRequest                                                        // D-388
 } from "@/lib/api";
 
 // Every action re-reads the live session; the backend also enforces VerificationReviewer on each
@@ -122,6 +123,34 @@ export async function reviewEventAction(orgId: string, eventId: string, _: unkno
   // The action rides back so the toast can name where the event went. Without it the row simply
   // vanished from the tab and the reviewer had no confirmation of their own decision.
   return { ok: true as const, action };
+}
+
+/**
+ * D-388 — a reviewer's verdict on a proposed change to a LIVE event.
+ *
+ * Separate from `reviewEventAction` because it decides a different thing: that one moves the EVENT
+ * through its lifecycle, this one decides a proposal ABOUT an event whose lifecycle does not move at all.
+ * Collapsing them would need a status enum that means both, which is exactly what the change-request
+ * lifecycle is kept out of `Event.Status` to avoid.
+ *
+ * No validation here. The backend refuses a rejection with no reason code, a stale proposal
+ * (`version_conflict`) and a self-approval (`cannot_review_own_request`); re-implementing any of those
+ * is how the console and the server come to disagree about what was allowed.
+ */
+export async function decideChangeRequestAction(
+  orgId: string, eventId: string, changeRequestId: string, _: unknown, formData: FormData
+) {
+  const t = await token();
+  if (!t) return { error: "Session expired." };
+  const approve = str(formData, "decision") === "approve";
+  try {
+    await decideChangeRequest(t, orgId, eventId, changeRequestId, approve,
+      str(formData, "reasonCode") || undefined, str(formData, "notes") || undefined);
+  } catch (err) {
+    return { error: apiErrorMessage(err) };
+  }
+  revalidatePath("/events/review");
+  return { ok: true as const, approved: approve };
 }
 
 /** D-266 M7 — tick or untick one checklist item. The backend refuses a key that is not on this event's

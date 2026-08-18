@@ -122,7 +122,12 @@ public class OrderTests : IClassFixture<KurxApiFactory>
             isAllAccess = false,
             isCompetition,
         };
-        var res = await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{eventId}/ticket-types", body);
+        // D-388 froze ticket types on a live PUBLIC event. This suite's fixtures publish first, because
+        // ordering — the thing actually under test — only happens on a live event, so the write is made
+        // with the status momentarily suspended and the real endpoint still runs. See
+        // `LiveStatusSuspension`. A test whose subject is the live-edit rule must not use this helper.
+        var res = await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{eventId}/ticket-types", body));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         return (await Json(res)).GetProperty("id").GetGuid();
     }

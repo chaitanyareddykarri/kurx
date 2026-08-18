@@ -85,10 +85,11 @@ public class TicketTransferTests : IClassFixture<KurxApiFactory>
             endsAt = DateTime.UtcNow.AddDays(30).AddHours(8),
         }));
         _eventId = ev.GetProperty("id").GetGuid();
-        _factory.SeedApprovedEventAuthorization(_eventId);   // D-266 M5 — fixture needs a published event
-        var published = await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{_eventId}/transition", new { action = "publish" });
-        Assert.Equal(HttpStatusCode.OK, published.StatusCode);
-
+        // D-388 — the ticket type is created BEFORE the event goes live, which is the order the platform
+        // now requires: a live Public event's ticket types are frozen behind an approved change request.
+        // This fixture only ever needed "a published event that sells one free ticket", and configuring
+        // then publishing reaches that state the way a real organiser does. Nothing about transfers —
+        // this suite's actual subject — depends on the order these two setup calls were made in.
         var ttRes = await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{_eventId}/ticket-types", new
         {
             name = "Free",
@@ -102,6 +103,10 @@ public class TicketTransferTests : IClassFixture<KurxApiFactory>
             isAllAccess = false,
         });
         Assert.Equal(HttpStatusCode.OK, ttRes.StatusCode);
+
+        _factory.SeedApprovedEventAuthorization(_eventId);   // D-266 M5 — fixture needs a published event
+        var published = await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{_eventId}/transition", new { action = "publish" });
+        Assert.Equal(HttpStatusCode.OK, published.StatusCode);
         var ticketTypeId = (await Json(ttRes)).GetProperty("id").GetGuid();
 
         var order = await Json(await _sender.PostAsJsonAsync($"/v1/events/{_eventId}/orders", new { ticketTypeId }));

@@ -30,6 +30,12 @@ class EventManageDto with _$EventManageDto {
     @Default(0) int capacity,
     @JsonKey(name: 'revenue_paise') @Default(0) int revenuePaise,
     @JsonKey(name: 'checked_in') @Default(0) int checkedIn,
+    // D-388 — the two facts that decide whether this event's details are frozen behind admin approval.
+    // Defaulted rather than required, like everything else detail-only here: `GET /v1/me/events` rows
+    // do not carry them, and a required field the row projection omits is what made every parse throw
+    // before (see the class remarks).
+    @Default('Public') String product,
+    @Default(1) int version,
     // Detail-only (`ToEventJson`).
     @JsonKey(name: 'banner_key') String? bannerKey,
     @JsonKey(name: 'view_count') @Default(0) int viewCount,

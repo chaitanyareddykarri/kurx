@@ -24,6 +24,8 @@ _$EventManageDtoImpl _$$EventManageDtoImplFromJson(Map<String, dynamic> json) =>
       capacity: (json['capacity'] as num?)?.toInt() ?? 0,
       revenuePaise: (json['revenue_paise'] as num?)?.toInt() ?? 0,
       checkedIn: (json['checked_in'] as num?)?.toInt() ?? 0,
+      product: json['product'] as String? ?? 'Public',
+      version: (json['version'] as num?)?.toInt() ?? 1,
       bannerKey: json['banner_key'] as String?,
       viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
       representation: json['representation'] == null
@@ -51,6 +53,8 @@ Map<String, dynamic> _$$EventManageDtoImplToJson(
   'capacity': instance.capacity,
   'revenue_paise': instance.revenuePaise,
   'checked_in': instance.checkedIn,
+  'product': instance.product,
+  'version': instance.version,
   'banner_key': instance.bannerKey,
   'view_count': instance.viewCount,
   'representation': instance.representation,

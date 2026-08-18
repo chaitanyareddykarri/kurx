@@ -1,25 +1,48 @@
 import { ShieldCheck } from "lucide-react";
 import { requireEventOrg } from "@/lib/event-org";
 import {
-  listCategories, listSubcategories, listOrgVenues, getEventAuthorization, getRepresentativeRoles
+  listCategories, listSubcategories, listOrgVenues, getEventAuthorization, getRepresentativeRoles,
+  listEventChangeRequests
 } from "@/lib/api";
 import { Card } from "@kurx/ui";
+import { liveProtected } from "@/lib/event-protection";
 import { EditEventForm } from "@/components/host/edit-event-form";
+import { EventDetailsReadonly } from "@/components/host/event-details-readonly";
+import { PendingChangeRequest, DecidedChangeRequest } from "@/components/host/change-request-panel";
+import { RequestChangesDisclosure } from "@/components/host/request-changes-disclosure";
 import { AuthorizationForm } from "@/components/host/authorization-form";
 import { VenueSection } from "@/components/host/event-sections";
 import { VenueManager } from "@/components/host/venue-manager";
 
 export default async function EventDetailsPage({ params }: { params: { id: string } }) {
   const { session, orgId, event, caps } = await requireEventOrg(params.id);
-  const [categories, subcategories, venues, authorization, roles] = await Promise.all([
+  const [categories, subcategories, venues, authorization, roles, changeRequests] = await Promise.all([
     listCategories(),
     listSubcategories(),
     listOrgVenues(session.accessToken, orgId).catch(() => []),
     getEventAuthorization(session.accessToken, event.id).catch(() => null),
     // The vocabulary the server validates against. Empty on failure is honest: the form then offers
     // nothing rather than a stale guess the API would reject.
-    getRepresentativeRoles(session.accessToken).catch(() => [] as string[])
+    getRepresentativeRoles(session.accessToken).catch(() => [] as string[]),
+    // D-388. Swallowed to empty rather than failing the page: a details page that renders without its
+    // change history beats one that 500s, and the protected/editable decision below does not depend on
+    // this call — it is the event's own product and status.
+    listEventChangeRequests(session.accessToken, orgId, event.id).catch(() => [])
   ]);
+
+  /*
+   * D-388 — a live PUBLIC event's details are a record, not a form.
+   *
+   * `liveProtected` mirrors the server's `EventStatusWorkflow.IsLiveProtected`; the server is what
+   * actually refuses a direct PATCH (`change_request_required`), and this only decides which of the two
+   * experiences to draw. A draft, an approved-but-unpublished event, and every Private event fall
+   * through to the editable form exactly as before — nothing about the creation flow changes.
+   */
+  const protectedNow = liveProtected(event.product, event.status);
+  const pending = changeRequests.find((c) => c.status === "pending") ?? null;
+  const decided = changeRequests.filter((c) => c.status !== "pending").slice(0, 5);
+  const categoryName = categories.find((c) => c.id === event.category_id)?.name;
+  const typeName = subcategories.find((c) => c.id === event.type_id)?.name;
 
   /*
    * Representation is answered once, on Create Event's Representing step. It re-appears HERE — inside
@@ -41,8 +64,45 @@ export default async function EventDetailsPage({ params }: { params: { id: strin
   return (
     <div className="space-y-6">
       <Card>
-        <h2 className="mb-4 text-lg font-semibold">Event details</h2>
-        <EditEventForm orgId={orgId} event={event} categories={categories} subcategories={subcategories} />
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Event details</h2>
+          {protectedNow ? (
+            <span className="text-xs text-muted">Live · version {event.version}</span>
+          ) : null}
+        </div>
+
+        {!protectedNow ? (
+          <EditEventForm orgId={orgId} event={event} categories={categories} subcategories={subcategories} />
+        ) : pending ? (
+          // A pending proposal replaces the form entirely. Showing both would let a second edit silently
+          // overwrite the values a reviewer is reading — see the panel's own remarks.
+          <PendingChangeRequest orgId={orgId} eventId={event.id} request={pending} />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              This event is live. Its details are what a reviewer approved and what your attendees have
+              seen, so changes to them go back through approval — your event stays exactly as it is
+              until then.
+            </p>
+            <EventDetailsReadonly event={event} categoryName={categoryName} typeName={typeName} />
+            <RequestChangesDisclosure>
+              <EditEventForm
+                orgId={orgId}
+                event={event}
+                categories={categories}
+                subcategories={subcategories}
+                mode="proposal"
+              />
+            </RequestChangesDisclosure>
+          </div>
+        )}
+
+        {decided.length > 0 ? (
+          <div className="mt-6 space-y-2">
+            <h3 className="text-sm font-semibold text-text">Past change requests</h3>
+            {decided.map((c) => <DecidedChangeRequest key={c.id} request={c} />)}
+          </div>
+        ) : null}
       </Card>
 
       {needsCorrection ? (

@@ -110,6 +110,44 @@ event was created under (D-323).
 The predicate tests *presence in the payload*, not *change of value*, so a client that posts the whole
 record on every save re-reviews on every save from that form.
 
+### Once it is LIVE, an edit is a proposal (D-388)
+
+D-363 §4 above covers `Approved`, which is reviewed but **not public**. `Published`/`Scheduled`/`Live`
+had no guard at all — reproduced over HTTP, the owner of a published event retitled it and moved its start
+date by eight weeks in one PATCH: 200 OK, no reviewer, no audit row, and the people already holding
+tickets were told nothing.
+
+**On a live PUBLIC event a protected edit is refused with `change_request_required` (409)**, and the host
+proposes instead:
+
+```
+LIVE EVENT (version N)
+   │  host edits a protected field
+   ▼
+EventChangeRequest  ── proposed values · base_version = N · live event UNTOUCHED
+   │
+   ▼  admin decides, in ONE transaction
+   ├─ approve ─▶ ApplyUpdateAsync → version N+1, authoritative everywhere
+   ├─ reject  ─▶ live event byte-identical; reason shown to the host
+   └─ stale   ─▶ `version_conflict`; the newer approved values are never overwritten
+```
+
+Refused rather than re-queued, unlike `Approved`: returning a live event to the queue would either take
+it off the public site mid-sale or leave unreviewed values live while it waited. **Private products are
+exempt entirely** — they are never reviewed.
+
+| Surface | Live public event |
+|---|---|
+| the event row | `change_request_required` → `POST .../change-requests` |
+| ticket price / quantity | `change_request_required` (proposal support is follow-up work) |
+| eligibility (audience rule) | `change_request_required` (same) |
+| legal / authorization letter | `change_request_required` (same) |
+
+The change request has **its own status enum** (`Pending`/`Approved`/`Rejected`/`Withdrawn`); `Event.Status`
+never represents it, and a live event stays `Published` whichever way its request goes. Decisions are
+written to the same `VerificationReview` store as every other verdict — still no second review table.
+Full reasoning, field policy and concurrency rules: [D-388](../DECISIONS.md).
+
 **Two of the material fields are not on the event row**, and are governed by their own services calling
 the same shared reopen (`EventReviewReopen.IfApprovedAsync`):
 
@@ -201,6 +239,7 @@ A test asserts the two agree; if they diverge again the build fails.
 | `GET /v1/admin/events/pending` | The review queue (`PendingReview` + `UnderReview`) |
 | `GET /v1/admin/events/review-counts` | Queue tab counts, derived in one pass |
 | `GET /v1/admin/events/{id}/review-history` | That event's decisions, newest first |
+| `GET /v1/admin/events/change-requests` | D-388 — pending proposals on LIVE events. A **read**; the verdict goes through the org-scoped route below, for the same reason every other reviewer action does |
 
 **There is no admin-side workflow route.** Every reviewer action goes through the org-scoped
 `POST /v1/orgs/{orgId}/events/{eventId}/transition`, which a reviewer may drive on any org's event. A
@@ -230,6 +269,11 @@ with the enum; nothing here fails loudly when it drifts.
 | Web | `app/(app)/workspace/page.tsx` (`AWAITING_REVIEW_STATES`), `components/host/event-status-actions.tsx` |
 | Admin | `lib/event-tabs.ts`, `components/admin/events-workspace/{events-table,event-workspace-sheet}.tsx`, `app/(console)/events/review/**` |
 | Mobile | `workspace/…/workspace_hub_page.dart`, `organizer/…/event_status_page.dart` |
+
+**D-388's live-protected predicate is written three times and must move as one** — the server's
+`EventStatusWorkflow.IsLiveProtected`, web's `lib/event-protection.ts`, Flutter's
+`core/utils/event_protection.dart`. The server is the enforcement; a client that disagrees either offers
+an action the API refuses or hides one the host is entitled to. Same discipline as `OPEN_HOST_STATES`.
 
 **"Pending approval" means `PendingReview + UnderReview` on every surface** — with the platform, awaiting a
 decision. `ChangesRequested` and `Rejected` are decided outcomes the host must act on, not a queue.

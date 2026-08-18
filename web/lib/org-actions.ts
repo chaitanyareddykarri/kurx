@@ -1,96 +1,62 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
 import { presignRepresentationDoc, submitRepresentationRequest, searchOrganizations, updateOrg, apiErrorMessage } from "@/lib/api";
 
-function str(formData: FormData, key: string): string | undefined {
-  const v = formData.get(key);
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-}
-
-// Register a not-yet-verified institution as a representation request (event-first, D-074/D-075). The proof
-// is uploaded via the user-scoped representation presign (the org doesn't exist yet), then the request stages
-// a hidden placeholder org (PendingReview) with the caller as a *pending* Representative. The event
-// publishes once an admin approves.
-//
-// D-267: this no longer sets an "active organization" cookie and no longer bounces the caller into event
-// creation. The new representation simply joins the list the Representing step offers, so registering an
-// institution and creating an event are independent acts rather than one funnel.
-export async function submitRepresentationRequestAction(_: unknown, formData: FormData) {
-  const filed = await fileRepresentationRequest(formData);
-  if ("error" in filed) return filed;
-
-  revalidatePath("/host/representing");
-  // D-382 — back to the event the caller came from, when they came from one. `safeReturnTo` is what
-  // keeps a form field from becoming an open redirect: only an in-app host path is ever followed.
-  redirect(safeReturnTo(str(formData, "returnTo")) ?? "/host/representing");
-}
+// Register a not-yet-verified institution as a representation request (event-first, D-074/D-075): stages a
+// hidden placeholder org (PendingReview) with the caller as a *pending* Representative, which an admin
+// approves into the registry. Two steps, because the proof upload has to happen in the browser — see below.
 
 /**
- * The same request, filed WITHOUT navigating: returns the staged organization so the caller can carry
- * on where it stands.
+ * Presign the proof of affiliation. **The upload itself is NOT done here.**
  *
- * Create Event's Representing step registers an institution inline, so a redirect is the one thing it
- * must not do — leaving the wizard is what discards ten steps of unsaved answers. The action above
- * still redirects because the standalone page has nowhere else to go; both file the identical request
- * through `fileRepresentationRequest`, so there is one code path and one set of rules.
+ * The presigned URL is browser-facing (`API_BASE`, e.g. `http://localhost:5080/...`). A server action
+ * runs inside the Next.js container, where that host does not exist — `fetch` there dies with
+ * `TypeError: fetch failed` (ECONNREFUSED), which is what "fetch failed" on the letterhead upload was.
+ * The caller PUTs from the browser, exactly as `AuthorizationForm` and the create-event wizard already
+ * do for the authorization letter, and passes the returned `key` to `fileRepresentationRequestAction`.
  */
-export async function registerRepresentationInlineAction(formData: FormData) {
-  const filed = await fileRepresentationRequest(formData);
-  if ("error" in filed) return filed;
-
-  revalidatePath("/host/representing");
-  // Shaped as a `Representation` — the wizard's picker reads that, not `OrgDetail`, and converting here
-  // keeps the client from knowing two shapes for one thing. A freshly staged org is PendingReview by
-  // construction, so both flags are false: draftable, not publishable, never paid-capable.
-  const org = filed.org;
-  return {
-    organization_id: org.id,
-    name: org.name,
-    slug: org.slug,
-    logo_key: org.logo_key,
-    authority: org.role,
-    is_verified: false,
-    can_back_paid_event: false
-  };
-}
-
-/// Presign → PUT → stage. Shared so the inline and standalone callers cannot drift apart on what a
-/// representation request requires.
-async function fileRepresentationRequest(formData: FormData) {
+export async function presignRepresentationDocAction(contentType: string, sizeBytes: number) {
   const session = await requireSession();
-  const name = str(formData, "name");
-  if (!name) return { error: "Organization name is required." };
-
-  const file = formData.get("letterhead");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Proof of affiliation is required to register an organization." };
-  }
-
   try {
-    const presigned = await presignRepresentationDoc(
-      session.accessToken, file.type || "application/octet-stream", file.size
-    );
-    await fetch(presigned.url, { method: "PUT", headers: presigned.headers, body: await file.arrayBuffer() });
-    const org = await submitRepresentationRequest(session.accessToken, {
-      name,
-      type: str(formData, "type"),
-      primaryDomain: str(formData, "primaryDomain"),
-      documents: [{ docType: "letterhead", storageKey: presigned.key }]
-    });
-    return { org };
+    return await presignRepresentationDoc(session.accessToken, contentType || "application/octet-stream", sizeBytes);
   } catch (err) {
     return { error: apiErrorMessage(err) };
   }
 }
 
-/// A `returnTo` is a redirect target supplied by the browser, so it is treated as untrusted input.
-/// Only a same-app path under `/host/` is followed, which is also why the test is not the usual
-/// `startsWith("/")`: that admits protocol-relative `//evil.example` as a "path".
-function safeReturnTo(value: string | undefined): string | undefined {
-  return value?.startsWith("/host/") ? value : undefined;
+/// Stage the institution against an already-uploaded proof. Returns the organization shaped as a
+/// `Representation`, because that is what the Representing step's picker reads.
+export async function fileRepresentationRequestAction(input: {
+  name: string; type?: string; primaryDomain?: string; storageKey: string;
+}) {
+  const session = await requireSession();
+  const name = input.name.trim();
+  if (!name) return { error: "Organization name is required." };
+  if (!input.storageKey) return { error: "Proof of affiliation is required to register an organization." };
+
+  try {
+    const org = await submitRepresentationRequest(session.accessToken, {
+      name,
+      type: input.type || undefined,
+      primaryDomain: input.primaryDomain || undefined,
+      documents: [{ docType: "letterhead", storageKey: input.storageKey }]
+    });
+    revalidatePath("/host/representing");
+    // A freshly staged org is PendingReview by construction: draftable, never paid-capable.
+    return {
+      organization_id: org.id,
+      name: org.name,
+      slug: org.slug,
+      logo_key: org.logo_key,
+      authority: org.role,
+      is_verified: false,
+      can_back_paid_event: false
+    };
+  } catch (err) {
+    return { error: apiErrorMessage(err) };
+  }
 }
 
 // Registry search (D-074) for the "who are you representing?" step — returns the VERIFIED institutions a

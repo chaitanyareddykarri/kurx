@@ -11,7 +11,8 @@ import {
   updateOrgSpeaker, removeEventSpeaker, updateOrgSponsor, removeEventSponsor,
   deleteEventMedia, exportEventAnalyticsCsv, apiErrorMessage, searchPublicUsers,
   presignAuthorizationDocument, submitEventAuthorization,
-  createInviteLink, revokeInviteLink
+  createInviteLink, revokeInviteLink,
+  createEventChangeRequest, withdrawEventChangeRequest
 } from "@/lib/api";
 
 /** Resolves the optional "link to a Kurx account" field on a speaker form to a userId — an exact
@@ -126,8 +127,11 @@ export type CreateEventValues = {
 /// there is reported without discarding the event: the draft exists and the host can finish it in the
 /// Tickets tab, which is strictly better than losing eleven steps of work to a ticket-shaped error.
 ///
-/// `representingOrgId` null = Personal: the backend resolves the caller's own "just me" org (D-267).
-/// No organization is chosen before this point — it is a field on the request, not a path segment.
+/// `representingOrgId` is required — null is `representation_required`, not "Personal" (D-379 retired
+/// self-representation). The parameter stays nullable because the wizard holds it as "not answered yet";
+/// the Representing step is what makes it non-null, registering the institution in place if the caller
+/// represents none (D-389). No organization is chosen before this point — it is a field on the request,
+/// not a path segment.
 export async function createEventWizardAction(
   representingOrgId: string | null,
   values: CreateEventValues,
@@ -240,6 +244,72 @@ export async function updateEventAction(orgId: string, eventId: string, _: unkno
   } catch (err) {
     return { error: apiErrorMessage(err) };
   }
+}
+
+/*
+ * D-388 — the host's proposal on a LIVE event.
+ *
+ * Deliberately a SEPARATE action from `updateEventAction` rather than a branch inside it. The two do
+ * different things — one changes the event, one asks to — and a single action choosing between them on a
+ * status read would mean the form could not tell the host, before they typed anything, which of the two
+ * their save was going to do.
+ *
+ * The field list is the PROTECTED set. Contact details, website, banner and the registration windows are
+ * absent because they stay directly editable on a live event and go through `updateEventAction`.
+ */
+export async function requestEventChangesAction(orgId: string, eventId: string, _: unknown, formData: FormData) {
+  const session = await requireSession();
+  try {
+    const cr = await createEventChangeRequest(session.accessToken, orgId, eventId, {
+      title: str(formData, "title"),
+      subtitle: str(formData, "subtitle"),
+      description: str(formData, "description"),
+      categoryId: str(formData, "categoryId"),
+      typeId: str(formData, "typeId"),
+      venueName: str(formData, "venueName"),
+      venueAddress: str(formData, "venueAddress"),
+      city: str(formData, "city"),
+      startsAt: str(formData, "startsAt"),
+      endsAt: str(formData, "endsAt"),
+      capacity: num(formData, "capacity"),
+      visibility: str(formData, "visibility"),
+      reason: str(formData, "reason")
+    });
+    revalidatePath(`/host/events/${eventId}/details`);
+    return { ok: true, changeRequestId: cr.id };
+  } catch (err) {
+    return { error: changeRequestErrorMessage(err) };
+  }
+}
+
+export async function withdrawEventChangesAction(orgId: string, eventId: string, changeRequestId: string) {
+  const session = await requireSession();
+  try {
+    await withdrawEventChangeRequest(session.accessToken, orgId, eventId, changeRequestId);
+    revalidatePath(`/host/events/${eventId}/details`);
+    return { ok: true };
+  } catch (err) {
+    return { error: changeRequestErrorMessage(err) };
+  }
+}
+
+/// D-388 refusals, in the organiser's words. Same discipline as TRANSITION_ERRORS below: the server's
+/// code is the contract and this only translates it, so an unmapped code still surfaces rather than
+/// becoming a generic failure.
+const CHANGE_REQUEST_ERRORS: Record<string, string> = {
+  no_changes: "Nothing changed — edit a field before submitting for approval.",
+  not_live_protected:
+    "This event isn't live yet, so you can edit it directly — no approval needed.",
+  change_request_decided:
+    "A reviewer has already decided on this request. Refresh to see the outcome.",
+  version_conflict:
+    "This event changed after you started editing. Refresh and make your changes again so a reviewer sees the current values.",
+  forbidden: "You don't have permission to change this event."
+};
+
+function changeRequestErrorMessage(err: unknown): string {
+  const raw = apiErrorMessage(err);
+  return CHANGE_REQUEST_ERRORS[raw] ?? raw;
 }
 
 /// Organiser-facing copy for the transition refusals a host can actually act on. The server's code is the

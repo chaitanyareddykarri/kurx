@@ -291,7 +291,7 @@ export function AuthorizationForm({ eventId, existing, eventStatus, roles }: {
  * known person rather than a name typed into a form. Reads the same user index the invite picker uses, so
  * a signatory who is not discoverable simply cannot be linked, and the letter stands on its own.
  */
-function RepresentativePicker({ linked, onChange }: {
+export function RepresentativePicker({ linked, onChange }: {
   linked: { id: string; username: string } | null;
   onChange: (v: { id: string; username: string } | null) => void;
 }) {

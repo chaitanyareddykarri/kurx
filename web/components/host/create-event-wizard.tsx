@@ -6,6 +6,7 @@ import { Globe, EyeOff, Lock, Ticket, ShieldCheck, Check } from "lucide-react";
 import { Button, DateTimeField, Field, FormSteps, Input, Select, Spinner, Textarea, controlClass } from "@kurx/ui";
 import { SelectCard, SelectCardGroup } from "@/components/host/select-card-group";
 import { CreateOrgForm } from "@/components/host/create-org-form";
+import { RepresentativePicker } from "@/components/host/authorization-form";
 import { createEventWizardAction, CreateEventValues,
   submitAuthorizationAction, uploadAuthorizationDocumentAction } from "@/lib/event-actions";
 import type { Category, FieldPreset, Representation } from "@/lib/api";
@@ -150,6 +151,11 @@ export function CreateEventWizard({
   /// the server's list; the server stays the authority on what is verified.
   const [representations, setRepresentations] = useState<Representation[]>(initialRepresentations);
 
+  /// The inline registration form's disclosure. Open from the start when the caller represents nothing,
+  /// because there is nothing else on the step to answer; collapsed otherwise, so someone who already
+  /// represents an organization is not made to scroll past a form they do not need.
+  const [orgFormOpen, setOrgFormOpen] = useState(initialRepresentations.length === 0);
+
   /// null until an organization is chosen. There is no "Personal" answer to fall back to (D-379), so
   /// this opens on the first organization that could carry the event all the way — a verified one —
   /// rather than on a pending one whose selection Continue would accept but publish would later stop.
@@ -254,6 +260,13 @@ export function CreateEventWizard({
   /// D-351 — the institution's written consent, collected in-flow. The letter is held as a File until
   /// the event exists, because both presign and submit are keyed on an eventId that only the final POST
   /// produces. Nothing is uploaded until then, so abandoning the wizard leaves no orphaned object.
+  /// The signatory's Kurx account — optional, and a LINK, never a grant (D-269 owns authority). It lets
+  /// a reviewer see the signatory is a known person rather than a name typed into a form. It was on the
+  /// workspace's Representing form and nowhere in creation, so moving representation into the wizard
+  /// would have quietly dropped the field; the same picker component is mounted here.
+  const [representativeUser, setRepresentativeUser] =
+    useState<{ id: string; username: string } | null>(null);
+
   const [authorization, setAuthorization] = useState({
     headName: "",
     headDesignation: "",
@@ -686,6 +699,7 @@ export function CreateEventWizard({
             const filed = await submitAuthorizationAction(createdId, {
               ...authorization,
               representativeRoleOther: authorization.representativeRoleOther || undefined,
+              representativeUserId: representativeUser?.id,
               letterheadDocumentKey
             });
             if ("error" in filed) authError = filed.error ?? "The authorization could not be filed.";
@@ -795,7 +809,15 @@ export function CreateEventWizard({
             not finish an event without starting over. The staged organization is appended to the list
             and selected on the spot, so the step completes without the flow ever leaving.
           */}
-          <details className="rounded-lg border border-border bg-surface p-4" open={selectableReps.length === 0}>
+          {/* `open` is STATE, not a derived expression. Derived, it recomputed on every wizard render —
+              and the authorization fields below are wizard state, so a keystroke there would slam this
+              shut mid-typing. `onToggle` keeps the user's own open/close authoritative. Flutter's
+              `_orgFormOpen` is the twin. */}
+          <details
+            className="rounded-lg border border-border bg-surface p-4"
+            open={orgFormOpen}
+            onToggle={(e) => setOrgFormOpen(e.currentTarget.open)}
+          >
             <summary className="cursor-pointer text-sm font-medium text-text">
               {selectableReps.length === 0
                 ? "Add your college or organization"
@@ -812,6 +834,9 @@ export function CreateEventWizard({
                   setRepresentations((prev) =>
                     prev.some((r) => r.organization_id === rep.organization_id) ? prev : [...prev, rep]);
                   setRepresentingOrgId(rep.organization_id);
+                  // Collapsed once it has served its purpose: the organization is now a card in the
+                  // picker above, selected, and the letter is the next thing to answer.
+                  setOrgFormOpen(false);
                 }}
               />
             </div>
@@ -1463,6 +1488,13 @@ export function CreateEventWizard({
                 onChange={(e) => setAuthorization({ ...authorization, representativeRoleOther: e.target.value })} />
             </Field>
           ) : null}
+
+          <Field
+            label="Their Kurx account"
+            helper="Optional. Links the letter to a known person for the reviewer — it grants them nothing."
+          >
+            <RepresentativePicker linked={representativeUser} onChange={setRepresentativeUser} />
+          </Field>
 
           <div>
             <label className="text-sm font-medium text-text" htmlFor="auth-letter">Authorization letter</label>

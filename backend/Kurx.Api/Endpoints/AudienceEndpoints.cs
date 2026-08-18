@@ -76,8 +76,12 @@ public static class AudienceEndpoints
     {
         "forbidden" or "not_eligible" => ProblemResults.Problem(error, StatusCodes.Status403Forbidden),
         "not_found" => ProblemResults.Problem(error, StatusCodes.Status404NotFound),
-        // As on the event's own PATCH (D-363 §4) — the state refuses, not the request.
-        "event_under_review" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
+        // As on the event's own PATCH (D-363 §4) — the state refuses, not the request. D-388 joins it
+        // one state later: on a LIVE public event the rule change needs approval. Both are 409 because
+        // both are well-formed requests a state forbids; a 400 sends an organiser hunting for a typo
+        // that is not there.
+        "event_under_review" or "change_request_required"
+            => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

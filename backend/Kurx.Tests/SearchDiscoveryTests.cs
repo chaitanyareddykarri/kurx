@@ -367,15 +367,21 @@ public class SearchDiscoveryTests : IClassFixture<KurxApiFactory>
         var before = Titles(await Json(await attendee.GetAsync("/v1/events/for-you?limit=50")));
         Assert.Contains($"{token} Gated", before);        // no rule yet → visible
 
+        // D-388 — this suite's subject is that a mutation FLOWS INTO THE INDEX through the outbox, so the
+        // mutation has to genuinely execute: seeding rows would test nothing. Every fixture here publishes
+        // first because discovery only surfaces live events, so the writes below run with the status
+        // momentarily suspended and the real endpoint — and the reindex it enqueues — still fire.
         // Add an Owner-only rule via the API (no manual reindex) — the outbox must carry the change.
-        await owner.PutAsJsonAsync($"/v1/orgs/{orgId}/events/{gated}/audience", new { roleIn = new[] { "Owner" }, externalOrgsAllowed = false });
+        await _factory.WithLiveStatusSuspendedAsync(gated, () =>
+            owner.PutAsJsonAsync($"/v1/orgs/{orgId}/events/{gated}/audience", new { roleIn = new[] { "Owner" }, externalOrgsAllowed = false }));
         await DrainOutboxAsync();
         var after = Titles(await Json(await attendee.GetAsync("/v1/events/for-you?limit=50")));
         Assert.Contains($"{token} Open", after);
         Assert.DoesNotContain($"{token} Gated", after);   // the API rule change flowed into the index
 
         // Remove the rule via the API → it becomes open again.
-        await owner.DeleteAsync($"/v1/orgs/{orgId}/events/{gated}/audience");
+        await _factory.WithLiveStatusSuspendedAsync(gated, () =>
+            owner.DeleteAsync($"/v1/orgs/{orgId}/events/{gated}/audience"));
         await DrainOutboxAsync();
         Assert.Contains($"{token} Gated", Titles(await Json(await attendee.GetAsync("/v1/events/for-you?limit=50"))));
     }
@@ -393,12 +399,13 @@ public class SearchDiscoveryTests : IClassFixture<KurxApiFactory>
         Assert.Contains(id, (await Json(await pub.GetAsync($"/v1/events?price=free&orgId={orgId}"))).GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()));
 
         // Add a priced ticket type through the API (no manual reindex).
-        var res = await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types", new
+        var res = await _factory.WithLiveStatusSuspendedAsync(id, () =>
+            owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types", new
         {
             name = "VIP", pricePaise = 50000L, pricingUnit = "PerTicket", registrationMode = "Individual",
             groupMin = (int?)null, groupMax = (int?)null, quantity = 10,
             saleStarts = DateTime.UtcNow.AddDays(-1), saleEnds = DateTime.UtcNow.AddDays(30), perUserLimit = 5, isAllAccess = false,
-        });
+        }));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         await DrainOutboxAsync();
         Assert.Contains(id, (await Json(await pub.GetAsync($"/v1/events?price=paid&orgId={orgId}"))).GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()));
@@ -454,7 +461,8 @@ public class SearchDiscoveryTests : IClassFixture<KurxApiFactory>
         await Publish(owner, orgId, id);
         await DrainOutboxAsync();   // clear the create + publish messages
 
-        await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{id}", new { description = "an updated description" });
+        await _factory.WithLiveStatusSuspendedAsync(id, () =>
+            owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{id}", new { description = "an updated description" }));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();

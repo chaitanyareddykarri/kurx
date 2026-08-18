@@ -1,5 +1,6 @@
 import { Card, LinkButton } from "@kurx/ui";
 import { CreateOrgForm } from "@/components/host/create-org-form";
+import { safeReturnTo } from "@/lib/safe-return-to";
 
 // Request to represent a not-yet-registered organization (event-first, D-074/D-075). Submitting stages a
 // hidden org an admin verifies; the caller becomes a Verified Representative on approval — never an owner,
@@ -12,11 +13,10 @@ export default function RequestRepresentationPage({
   /// at request time — a 500 on a URL anyone can type.
   searchParams?: { [key: string]: string | string[] | undefined };
 }) {
-  // D-382 — the event context, when the caller arrived from one. Only a `/host/` path is carried, and
-  // the redirect target is re-validated in the action; this is presentation, not the guard.
-  const raw = searchParams?.returnTo;
-  const candidate = Array.isArray(raw) ? raw[0] : raw;
-  const returnTo = candidate?.startsWith("/host/") ? candidate : undefined;
+  // D-382 — the event context, when the caller arrived from one. `safeReturnTo` handles both hazards:
+  // the repeated-parameter array, and a protocol-relative `//evil.example` that `startsWith("/")` would
+  // wave through. The form re-applies it before navigating, so neither side is the sole guard.
+  const returnTo = safeReturnTo(searchParams?.returnTo);
 
   return (
     <div className="space-y-4">

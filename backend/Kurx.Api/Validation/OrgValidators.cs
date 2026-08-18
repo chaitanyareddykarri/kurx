@@ -5,23 +5,11 @@ using Kurx.Domain.Enums;
 
 namespace Kurx.Api.Validation;
 
-public class CreateOrgBodyValidator : AbstractValidator<CreateOrgBody>
-{
-    public CreateOrgBodyValidator()
-    {
-        RuleFor(x => x.Name).NotEmpty().Length(2, 120);
-        RuleFor(x => x.Type)
-            .IsEnumName(typeof(OrganizationType), caseSensitive: false)
-            .When(x => x.Type is not null);
-        RuleFor(x => x.LegalName).MaximumLength(200);
-        RuleFor(x => x.PrimaryDomain).MaximumLength(253);   // full domain-format check is in the service
-        RuleFor(x => x.Bio).MaximumLength(2000);
-        RuleFor(x => x.LinksJson)
-            .Must(OrgValidationHelpers.IsValidJson)
-            .WithMessage("links_json must be valid JSON.")
-            .When(x => x.LinksJson is not null);
-    }
-}
+// `CreateOrgBodyValidator` went with `POST /v1/orgs` (D-390). The one route that may still name a new
+// institution — `POST /v1/orgs/representation-requests` — carries no `WithValidation<>`: the same rules
+// (name 2..120, domain format, blacklist, domain dedup) are enforced inside
+// `OrgService.SubmitRepresentationRequestAsync`, which is where they were already duplicated. Nothing is
+// lost by this deletion; the boundary check that remains is the service's.
 
 public class UpdateOrgBodyValidator : AbstractValidator<UpdateOrgBody>
 {

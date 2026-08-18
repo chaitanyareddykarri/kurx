@@ -10,6 +10,7 @@ import '../../data/models/event_content_dto.dart';
 import '../../domain/event_wizard_payload.dart';
 import '../providers/event_content_providers.dart';
 import '../providers/organizer_providers.dart';
+import '../widgets/representative_picker.dart';
 
 /// **Edit Event ▸ Representing** — the correction path, and nothing else.
 ///
@@ -41,6 +42,10 @@ class _EventRepresentationPageState extends ConsumerState<EventRepresentationPag
   final _officialEmail = TextEditingController();
   final _officialPhone = TextEditingController();
   final _representativeRoleOther = TextEditingController();
+
+  /// The signatory's Kurx account — optional, a LINK and never a grant (D-269). Asked on the wizard's
+  /// Representing step too, so a correction can change it rather than only being able to clear it.
+  UserSearchDto? _representativeUser;
   String? _representativeRole;
 
   List<int>? _letterBytes;
@@ -151,6 +156,7 @@ class _EventRepresentationPageState extends ConsumerState<EventRepresentationPag
         'representativeRoleOther': _representativeRoleOther.text.trim().isEmpty
             ? null
             : _representativeRoleOther.text.trim(),
+        'representativeUserId': _representativeUser?.id,
         'letterheadDocumentKey': letterheadDocumentKey,
       });
       // One row per event: re-filing REPLACES what is on file rather than adding a second record.
@@ -271,6 +277,16 @@ class _EventRepresentationPageState extends ConsumerState<EventRepresentationPag
                 _field(_representativeRoleOther, 'Describe your role',
                     errors['representativeRoleOther']),
               ],
+
+              const SizedBox(height: KSpace.lg),
+              RepresentativePicker(
+                linked: _representativeUser,
+                onChanged: (u) => setState(() => _representativeUser = u),
+              ),
+              const SizedBox(height: KSpace.xs),
+              Text('Optional. Links the letter to a known person for the reviewer — it grants them '
+                  'nothing.',
+                  style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
 
               const SizedBox(height: KSpace.lg),
               Text('Authorization letter',

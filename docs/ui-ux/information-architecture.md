@@ -206,11 +206,13 @@ Host
       └ finance   /host/representing/[orgId]/finance
 ```
 
-Two of those tabs are one concept split by responsibility (D-382). **Representing** is the only
-event-facing place representation is entered — the organization the event is run on behalf of, and
-that organization's authorization letter. **Readiness** reports the resulting state and links to it;
-it collects nothing. The same pair exists on mobile as `/events/{id}/manage/representing` and the
-Overview entry that points at it. `badges` is D-362.
+There is **no Representing tab** (D-389). Representation — the organization the event is run on behalf
+of, its registration if it is not on Kurx yet, and that event's own authorization letter — is entered once
+on **Create Event ▸ Representing** and nowhere else. **Readiness** reports the resulting state and
+collects nothing; when a reviewer rejects the letter or asks for changes, the form appears on **Details**
+(Edit Event) at `#representing`, gated on that verdict. Mobile mirrors it exactly: the wizard's step,
+and `/events/:eventId/edit/representing` reached from Event Status for the same verdict — `/manage/representing`
+is deleted. `badges` is D-362.
 
 The tab list is **derived from live capabilities**, never hardcoded — `layout.tsx` gates each group
 on `events:update`, `attendees:view`, `analytics:view`, `volunteers:view`. Phase 21 preserves that

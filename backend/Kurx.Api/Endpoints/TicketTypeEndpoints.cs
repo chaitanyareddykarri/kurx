@@ -132,7 +132,9 @@ public static class TicketTypeEndpoints
         // Same code, same status as the event's own PATCH (D-363 §4): the request is well formed and the
         // caller is allowed — the event's state is what refuses. A 400 would read as "you sent something
         // wrong" and send an organiser looking for a typo.
-        "event_under_review" => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
+        // D-388 sits beside it: on a LIVE public event, what the event costs needs approval too.
+        "event_under_review" or "change_request_required"
+            => ProblemResults.Problem(error, StatusCodes.Status409Conflict),
         _ => ProblemResults.Problem(error, StatusCodes.Status400BadRequest),
     };
 }

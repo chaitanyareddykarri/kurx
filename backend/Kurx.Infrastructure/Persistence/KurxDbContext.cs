@@ -1076,9 +1076,11 @@ public class KurxDbContext : DbContext
             // At most ONE pending request per event, enforced by the database rather than by a read: two
             // pending proposals make "what is waiting for approval" unanswerable, and a check-then-insert
             // in application code loses the race that a partial unique index simply cannot.
+            // The filter is the enum's NAME, not its ordinal: OnModelCreating stores every enum as text
+            // (see the top of this method), so `"Status" = 0` would be a type error against a text column.
             e.HasIndex(x => x.EventId)
                 .IsUnique()
-                .HasFilter($"\"Status\" = {(int)EventChangeRequestStatus.Pending}");
+                .HasFilter($"\"Status\" = '{nameof(EventChangeRequestStatus.Pending)}'");
             // The queue read: pending first, oldest first.
             e.HasIndex(x => new { x.Status, x.CreatedAt });
             e.Property(x => x.ProposedJson).HasColumnType("jsonb");

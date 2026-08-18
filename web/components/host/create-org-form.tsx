@@ -1,23 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useFormState, useFormStatus } from "react-dom";
-import { registerRepresentationInlineAction, submitRepresentationRequestAction } from "@/lib/org-actions";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { fileRepresentationRequestAction, presignRepresentationDocAction } from "@/lib/org-actions";
 // The vocabulary from the leaf module and the type as a type-only import: both erase to nothing at
 // runtime, so this client component never pulls `lib/api`'s axios client and React `cache` calls in.
 import { organizationTypes } from "@/lib/org-types";
+import { safeReturnTo } from "@/lib/safe-return-to";
 import type { Representation } from "@/lib/api";
 import { Button, Field, Input, Select, Spinner } from "@kurx/ui";
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? <Spinner size={16} decorative /> : null}
-      {pending ? "Submitting…" : label}
-    </Button>
-  );
-}
 
 /**
  * Register a not-yet-listed institution (event-first, D-074/D-075): name + type + required proof.
@@ -25,21 +16,23 @@ function SubmitButton({ label }: { label: string }) {
  * registry; the caller becomes a *pending* Representative (never Owner) and can draft (not publish) an
  * event meanwhile.
  *
- * **Rebuilt onto `Field` in Phase 21.** Phase 7 closed audit S1-1 by making `Field` wire
- * `aria-describedby`, `aria-invalid` and `aria-required` onto its child, and reached 86 call sites —
- * none of them on the host surface, which hand-rolled 160 controls across 21 files and used `Field`
- * exactly zero times.
+ * **The proof is uploaded from the BROWSER, in three steps.** This form used to be a plain server
+ * action that presigned, PUT the bytes and staged the org all server-side — and the PUT could never
+ * work: the presigned URL is browser-facing (`http://localhost:5080/...`), while a server action runs
+ * inside the Next.js container where that host is ECONNREFUSED. Node reports it as a bare
+ * `TypeError: fetch failed`, which is exactly what uploading a letterhead did. `AuthorizationForm` and
+ * the create-event wizard have always done presign → browser PUT → submit for the authorization letter;
+ * this now matches them.
  *
- * The cost here was concrete. Both explanatory paragraphs — the one telling somebody what counts as
- * an organization, and the one telling them what document to upload — were `<p>` siblings that no
- * control referenced, so a screen-reader user focused on either field was told nothing about what to
- * put in it. The submission error was a bare red `<p>`: colour only, and never announced.
+ * **Rebuilt onto `Field` in Phase 21** — `Field` wires `aria-describedby`, `aria-invalid` and
+ * `aria-required` onto its child. Both explanatory paragraphs used to be `<p>` siblings no control
+ * referenced, so a screen-reader user focused on either field was told nothing about what to put in it.
  */
 export function CreateOrgForm({ returnTo, onRegistered }: {
   /// D-382 — where to land after the request is filed, when the caller arrived from an event. Without it
   /// they were dropped on the account-level representation list and had to rediscover the event they
-  /// were in the middle of. Validated server-side in `submitRepresentationRequestAction`, never trusted
-  /// as a redirect target just because it reached the form.
+  /// were in the middle of. Re-checked with `safeReturnTo` before navigating: it reaches this component
+  /// from a URL query parameter, so it is untrusted at the point of use, not just at the point of read.
   returnTo?: string;
   /// Inline mode: hand the staged organization back instead of navigating anywhere.
   ///
@@ -50,31 +43,58 @@ export function CreateOrgForm({ returnTo, onRegistered }: {
   onRegistered?: (rep: Representation) => void;
 } = {}) {
   const inline = onRegistered !== undefined;
-  const [state, formAction] = useFormState(
-    inline
-      ? (async (_: unknown, fd: FormData) => registerRepresentationInlineAction(fd))
-      : submitRepresentationRequestAction,
-    null);
-  const error = state && "error" in state ? String(state.error) : undefined;
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | undefined>();
 
-  // Fires once per staged organization: `state` is the action's return value, so re-renders that do not
-  // re-run the action see the same object and must not re-announce it.
-  //
-  // The shape is CHECKED, not assumed. "Not an error" is not the same as "a representation": anything
-  // else coming back — a bare `{ ok: true }`, a future field rename — would otherwise be handed to the
-  // caller as an organization and select an `undefined` id, leaving the step looking answered when
-  // nothing was registered. An id is the one thing that makes this a representation.
-  const announced = useRef<unknown>(null);
-  useEffect(() => {
-    if (!state || "error" in state || announced.current === state) return;
-    if (typeof (state as Representation).organization_id !== "string") return;
-    announced.current = state;
-    onRegistered?.(state as Representation);
-  }, [state, onRegistered]);
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") ?? "").trim();
+    const file = fd.get("letterhead");
+
+    if (!name) return setError("Organization name is required.");
+    if (!(file instanceof File) || file.size === 0) {
+      return setError("Proof of affiliation is required to register an organization.");
+    }
+
+    setPending(true);
+    setError(undefined);
+    try {
+      const presigned = await presignRepresentationDocAction(
+        file.type || "application/octet-stream", file.size);
+      if ("error" in presigned) throw new Error(presigned.error);
+
+      // The PUT that has to happen here rather than on the server — see the note above the component.
+      const put = await fetch(presigned.url, {
+        method: "PUT", headers: presigned.headers, body: file
+      });
+      if (!put.ok) throw new Error("The proof could not be uploaded. Try again.");
+
+      const filed = await fileRepresentationRequestAction({
+        name,
+        type: String(fd.get("type") ?? "") || undefined,
+        primaryDomain: String(fd.get("primaryDomain") ?? "") || undefined,
+        storageKey: presigned.key
+      });
+      if ("error" in filed) throw new Error(filed.error);
+
+      if (inline) {
+        formRef.current?.reset();
+        onRegistered?.(filed as Representation);
+      } else {
+        router.push(safeReturnTo(returnTo) ?? "/host/representing");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The request could not be submitted.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
-      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
+    <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
       <Field
         label="Organization name"
         required
@@ -121,7 +141,10 @@ export function CreateOrgForm({ returnTo, onRegistered }: {
       ) : null}
       {/* Inline, the button is one of several on the step, so it says what it does to THIS step rather
           than naming the whole workflow. */}
-      <SubmitButton label={inline ? "Save organization" : "Register for verification"} />
+      <Button type="submit" disabled={pending}>
+        {pending ? <Spinner size={16} decorative /> : null}
+        {pending ? "Submitting…" : inline ? "Save organization" : "Register for verification"}
+      </Button>
     </form>
   );
 }

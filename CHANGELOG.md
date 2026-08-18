@@ -2689,3 +2689,46 @@ and raises CI to the standard the remaining seventeen phases are verified agains
   clean-sheet domain where weaker.
 - Approved implementation order: M0 → M2 → M1 → M3 → M4 → M5 → M6 → M7 → M8 →
   M9 → M10 → M11 → M12 → M13.
+
+### Representing moves inside Create Event (D-389)
+
+- **Create Event ▸ Representing now registers the organisation in place.** The step used to link out to
+  `/host/representing/new` (web) or push `/representing/new` (Flutter) for anyone who did not already
+  represent an institution — a navigation away from a wizard holding ten steps of unsaved answers. Since
+  D-379 made an organisation mandatory, that hit every unverified organiser. The registration form (name,
+  type, email domain, proof of affiliation) is rendered on the step, submits the same
+  `POST /v1/orgs/representation-requests`, and the staged organisation is selected on the spot.
+- **A pending organisation may back a draft.** Client-side only: the server has always allowed it, and
+  publication is still refused until an admin verifies the institution. The paid bar is unchanged and
+  now sits on its own set (`paidCapableReps` / `_representingPaidCapable`).
+- **Event Workspace ▸ Representing is removed** on both surfaces — `/host/events/{id}/representing` and
+  `/events/:eventId/manage/representing` are deleted. A reviewer's "changes requested" is corrected in
+  **Edit Event** instead: `/host/events/{id}/details#representing` on web, `/events/:eventId/edit/representing`
+  on Flutter, reached from Event Status. Gated on the verdict, never standing.
+- **The admin review queue names the organisation's own standing**, so a reviewer approving an event
+  whose institution is still `PendingReview` knows that approval does not make it publishable.
+- No new endpoints, no schema change, no backend code change.
+
+### `POST /v1/orgs` deleted (D-390)
+
+- The route demanded `personal: true` while `OrgService.CreateAsync` refused exactly that, so **every call
+  failed** — dead by accident, not by design. Behind it sat the only code that minted an `OrgRole.Owner`
+  seat, a wallet and a payout schedule for an organisation no reviewer had seen, and `Owner` satisfies the
+  representation-vacancy check on publish. Tidying either guard would have reopened it.
+- Deleted: the route, `CreateOrgBody`, `CreateOrgBodyValidator`, `IOrgService.CreateAsync` and its
+  implementation. The path now 404s, and three tests assert that rather than its two old error strings.
+- `docs/api/README.md` had documented the route as "creates a personal org only (`personal: true`)" — the
+  one call it could never serve. Corrected.
+- No caller existed in web, admin or Flutter. Organisations are created only by an admin approving a
+  representation request, which is unchanged.
+
+### The authorization's account link reaches Flutter (D-389 follow-up)
+
+- The signatory's optional Kurx account (`representativeUserId`) existed only on web's authorization
+  form. Representation moving into Create Event surfaced it: the field lived on the workspace page being
+  removed, so it had to be added to the wizard — and Flutter had never had it on *any* screen.
+- Added `RepresentativePicker` plus the first user search on Flutter
+  (`GET /v1/users/search`), mounted on both the wizard's Representing step and
+  `/events/:eventId/edit/representing`, matching web's field order.
+- A link, never a grant (D-269), and optional everywhere: a failed lookup does not block filing the
+  letter. Debounced 300 ms, two-character floor, 8 results — the same page size web uses.

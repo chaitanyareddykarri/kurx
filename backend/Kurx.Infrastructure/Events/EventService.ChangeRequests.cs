@@ -302,7 +302,7 @@ public partial class EventService
             .ToListAsync(ct);
 
         return new EventChangeRequestView(
-            cr.Id, cr.EventId, ev.Title, cr.RequestedBy,
+            cr.Id, cr.EventId, ev.Title, ev.RepresentingOrgId, cr.RequestedBy,
             names.FirstOrDefault(n => n.Id == cr.RequestedBy)?.Name,
             cr.BaseVersion, ev.Version,
             // Only a PENDING request can be stale in a way that matters — a decided one is history, and

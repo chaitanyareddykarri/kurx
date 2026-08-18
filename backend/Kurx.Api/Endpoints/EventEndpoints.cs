@@ -270,8 +270,12 @@ public static class EventEndpoints
         var publicEvents = app.MapGroup("/v1/events").WithTags("public-events");
 
         // Create Event needs no organization in the path — representation is a field inside the request,
-        // chosen during creation (D-267). Omitting `representingOrgId` means **Personal**: the user
-        // represents themselves. The event's owner is the caller, always (D-268).
+        // chosen during creation (D-267). `representingOrgId` is REQUIRED: omitting it is
+        // `representation_required`, not "Personal". D-379 retired self-representation and D-389 moved the
+        // registration of a not-yet-listed institution onto the same wizard step, so a caller who
+        // represents nothing acquires an organization there rather than creating an unrepresented event.
+        // The event's owner is still the caller, always (D-268) — ownership and representation are
+        // different things.
         publicEvents.MapPost("/", async (CreateEventBody body, ClaimsPrincipal principal,
             IEventService svc, CancellationToken ct) =>
         {
@@ -552,7 +556,11 @@ public static class EventEndpoints
         e.Media.Select(m => new EventMediaResponse(m.Id, m.Kind.ToLowerInvariant(), m.Key, m.Caption, m.Sort)).ToList(),
         e.CreatedAt,
         e.PublishedAt,
-        e.UpdatedAt);
+        e.UpdatedAt,
+        // D-388. Public on the wire because the change-request rule is Public AND publicly live — a client
+        // reading only the status would offer "Request changes" on a Private event the server then refuses.
+        e.Product,
+        e.Version);
 
     internal static EventSummaryResponse ToSummaryJson(EventSummary e) => new(
         e.Id,

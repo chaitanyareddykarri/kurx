@@ -240,7 +240,7 @@ public class AudienceRuleTests : IClassFixture<KurxApiFactory>
         await SetRuleAsync(owner, orgId, eventId, new { externalOrgsAllowed = false });
         Assert.Equal(HttpStatusCode.Forbidden, (await FreeOrderAsync(stranger, eventId, ttId)).StatusCode);
 
-        Assert.Equal(HttpStatusCode.OK, (await owner.DeleteAsync($"/v1/orgs/{orgId}/events/{eventId}/audience")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await DeleteRuleAsync(owner, orgId, eventId)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await FreeOrderAsync(stranger, eventId, ttId)).StatusCode);
     }
 
@@ -337,8 +337,89 @@ public class AudienceRuleTests : IClassFixture<KurxApiFactory>
 
     // ── helpers ─────────────────────────────────────────────────────────────
 
-    private Task<HttpResponseMessage> SetRuleAsync(HttpClient client, Guid orgId, Guid eventId, object body)
-        => client.PutAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/audience", body);
+    /*
+     * D-388 — this suite is about how a rule is EVALUATED, not about when one may be written.
+     *
+     * Every fixture here publishes the event first, because registration (the thing being gated) only
+     * happens on a live one. D-388 then froze the audience rule on a live PUBLIC event, so fourteen tests
+     * began failing on `change_request_required` — none of them because their subject had changed, all of
+     * them because their SETUP now collided with a rule about a different question.
+     *
+     * The rule is written with the event momentarily back in `Draft`, then the status is restored. The
+     * real endpoint still runs — its authorization, its validation and its role/JSON canonicalisation are
+     * all still under test, which seeding the row directly would have thrown away, and which is exactly
+     * where this suite has caught defects before. Nothing is weakened: only the incidental dependency on
+     * "the event happened to be live while the rule was written" is removed.
+     *
+     * `Setting_a_rule_requires_a_manage_role` and `Rule_validation_rejects_bad_input` are unaffected:
+     * both assert refusals (403/400) reached before any status gate, and both go through this helper.
+     *
+     * When a change request grows to carry eligibility (D-388's follow-up), this helper is what should be
+     * replaced by the proposal flow — not the assertions below it.
+     */
+    private async Task<HttpResponseMessage> SetRuleAsync(HttpClient client, Guid orgId, Guid eventId, object body)
+    {
+        var restore = await SuspendLiveStatusAsync(eventId);
+        try { return await client.PutAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/audience", body); }
+        finally { await RestoreStatusAsync(eventId, restore); }
+    }
+
+    /// <summary>The delete leg, through the same suspension as <see cref="SetRuleAsync"/> and for the same
+    /// reason — removing a rule opens a live event to everyone, which D-388 freezes just as firmly as
+    /// setting one. The test below is about what deletion does to REGISTRATION, not about when it may
+    /// happen; the guard itself is asserted in <c>Setting_a_rule_on_a_live_event_needs_approval</c>.</summary>
+    private async Task<HttpResponseMessage> DeleteRuleAsync(HttpClient client, Guid orgId, Guid eventId)
+    {
+        var restore = await SuspendLiveStatusAsync(eventId);
+        try { return await client.DeleteAsync($"/v1/orgs/{orgId}/events/{eventId}/audience"); }
+        finally { await RestoreStatusAsync(eventId, restore); }
+    }
+
+    /// <summary>Puts a live event back in <c>Draft</c> for the duration of one write, returning the status
+    /// it had. Null when it was not live-protected, in which case nothing is restored.</summary>
+    private async Task<EventStatus?> SuspendLiveStatusAsync(Guid eventId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var ev = await db.Events.FirstOrDefaultAsync(e => e.Id == eventId);
+        if (ev is null || !Kurx.Infrastructure.Events.EventStatusWorkflow.IsLiveProtected(ev.Product, ev.Status))
+            return null;
+        var was = ev.Status;
+        ev.Status = EventStatus.Draft;
+        await db.SaveChangesAsync();
+        return was;
+    }
+
+    private async Task RestoreStatusAsync(Guid eventId, EventStatus? status)
+    {
+        if (status is not { } s) return;
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var ev = await db.Events.FirstAsync(e => e.Id == eventId);
+        ev.Status = s;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>D-388 — the guard itself, asserted here rather than only in
+    /// <c>EventChangeRequestTests</c>: this is the suite that owns the audience endpoint, and a guard on
+    /// it that only a distant test knows about is one nobody maintaining this file would see.</summary>
+    [Fact]
+    public async Task Setting_a_rule_on_a_live_event_needs_approval()
+    {
+        var (owner, orgId, _) = await LoginOrgAsync("9700002099", "Live Rule Org");
+        var (eventId, _) = await PublishFreeEventAsync(owner, orgId);
+
+        // Straight at the endpoint, with no status suspension — the real organiser path.
+        var res = await owner.PutAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/audience",
+            new { externalOrgsAllowed = false });
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        Assert.Equal("change_request_required", (await Json(res)).GetProperty("error").GetString());
+
+        // And nothing was written: a refused rule must not silently gate registration.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        Assert.False(await db.AudienceRules.AnyAsync(r => r.EventId == eventId));
+    }
 
     private async Task<string> GroupJoinCodeAsync(Guid eventId)
     {

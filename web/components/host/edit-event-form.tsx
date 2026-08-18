@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { updateEventAction } from "@/lib/event-actions";
+import { updateEventAction, requestEventChangesAction } from "@/lib/event-actions";
 import { toLocalInput, withUtcTimes } from "@/lib/event-wizard";
 import { Alert, Button, Spinner, controlClass } from "@kurx/ui";
 import type { Category, EventDetail } from "@/lib/api";
@@ -10,27 +10,61 @@ import type { Category, EventDetail } from "@/lib/api";
 const inputClass = controlClass;
 const textareaClass = controlClass;
 
-function SaveButton() {
+/// D-388 — the same form serves two different acts, and the button has to say which one.
+type FormMode = "direct" | "proposal";
+
+function SaveButton({ mode }: { mode: FormMode }) {
   const { pending } = useFormStatus();
+  const idle = mode === "proposal" ? "Submit changes for approval" : "Save changes";
+  const busy = mode === "proposal" ? "Submitting…" : "Saving…";
   return (
     <Button type="submit" disabled={pending}>
       {pending ? <Spinner size={16} decorative /> : null}
-      {pending ? "Saving…" : "Save changes"}
+      {pending ? busy : idle}
     </Button>
   );
 }
 
-export function EditEventForm({ orgId, event, categories, subcategories = [] }: { orgId: string; event: EventDetail; categories: Category[]; subcategories?: Category[] }) {
-  const [state, formAction] = useFormState(updateEventAction.bind(null, orgId, event.id), null);
+/**
+ * D-388 — `mode` decides which server action the form posts to, and it is a PROP rather than something
+ * this component derives from `event.status`.
+ *
+ * The page already has to decide whether to render a read-only view instead of this form at all, and that
+ * decision is the same rule. Deriving it twice — once to choose the view, once to choose the action — is
+ * how a page ends up showing "Save changes" on a form whose save the server will refuse.
+ */
+export function EditEventForm({
+  orgId,
+  event,
+  categories,
+  subcategories = [],
+  mode = "direct"
+}: {
+  orgId: string;
+  event: EventDetail;
+  categories: Category[];
+  subcategories?: Category[];
+  mode?: FormMode;
+}) {
+  const action = mode === "proposal" ? requestEventChangesAction : updateEventAction;
+  const [state, formAction] = useFormState(action.bind(null, orgId, event.id), null);
   const [categoryId, setCategoryId] = useState(event.category_id);
   const subs = subcategories.filter((s) => s.parent_id === categoryId);
 
   return (
     <form action={(formData) => formAction(withUtcTimes(formData))} className="space-y-4">
+      {/* D-388 — stated before the first field, not next to the button. A host who reads it only on the
+          way out has already spent ten minutes believing they were editing the live event. */}
+      {mode === "proposal" ? (
+        <Alert tone="info" title="These changes go to a reviewer">
+          Your event stays exactly as it is now. Nothing here reaches the public listing, your attendees
+          or your ticket page until an admin approves it.
+        </Alert>
+      ) : null}
       {/* D-363 §4 — this form posts the whole record on every save (title, dates, venue, capacity all
           go in the payload), so ANY save from here reads as a material edit and returns an approved
           event to the queue. Finding that out afterwards, from a status badge, is the wrong way. */}
-      {event.status === "approved" ? (
+      {mode === "direct" && event.status === "approved" ? (
         <Alert tone="warning" title="This event is approved">
           Saving a change here returns it to review — a reviewer approved what it says now. Publish it
           first if you are ready to go live.
@@ -128,6 +162,16 @@ export function EditEventForm({ orgId, event, categories, subcategories = [] }: 
         Both live above the button rather than below it: after a form this long the submit control is
         where the eye already is, and a message under it is off-screen on a phone.
       */}
+      {mode === "proposal" ? (
+        <div>
+          <label className="text-sm font-medium text-text" htmlFor="reason">
+            Why are you making these changes? <span className="text-muted">(optional)</span>
+          </label>
+          <textarea id="reason" name="reason" rows={2} maxLength={1000} className={`mt-1 ${textareaClass}`}
+            placeholder="e.g. The venue moved us to the main auditorium." />
+          <p className="mt-1 text-xs text-muted">A reviewer reads this next to the changes.</p>
+        </div>
+      ) : null}
       {state && "error" in state ? (
         <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
           {String(state.error)}
@@ -135,10 +179,10 @@ export function EditEventForm({ orgId, event, categories, subcategories = [] }: 
       ) : null}
       {state && "ok" in state ? (
         <p role="status" className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
-          Changes saved.
+          {mode === "proposal" ? "Submitted for approval. Your event is unchanged until a reviewer approves." : "Changes saved."}
         </p>
       ) : null}
-      <SaveButton />
+      <SaveButton mode={mode} />
     </form>
   );
 }

@@ -43,7 +43,13 @@ mixin _$EventManageDto {
   @JsonKey(name: 'revenue_paise')
   int get revenuePaise => throw _privateConstructorUsedError;
   @JsonKey(name: 'checked_in')
-  int get checkedIn => throw _privateConstructorUsedError; // Detail-only (`ToEventJson`).
+  int get checkedIn => throw _privateConstructorUsedError; // D-388 — the two facts that decide whether this event's details are frozen behind admin approval.
+  // Defaulted rather than required, like everything else detail-only here: `GET /v1/me/events` rows
+  // do not carry them, and a required field the row projection omits is what made every parse throw
+  // before (see the class remarks).
+  String get product => throw _privateConstructorUsedError;
+  int get version =>
+      throw _privateConstructorUsedError; // Detail-only (`ToEventJson`).
   @JsonKey(name: 'banner_key')
   String? get bannerKey => throw _privateConstructorUsedError;
   @JsonKey(name: 'view_count')
@@ -83,6 +89,8 @@ abstract class $EventManageDtoCopyWith<$Res> {
     int capacity,
     @JsonKey(name: 'revenue_paise') int revenuePaise,
     @JsonKey(name: 'checked_in') int checkedIn,
+    String product,
+    int version,
     @JsonKey(name: 'banner_key') String? bannerKey,
     @JsonKey(name: 'view_count') int viewCount,
     EventRepresentationDto? representation,
@@ -119,6 +127,8 @@ class _$EventManageDtoCopyWithImpl<$Res, $Val extends EventManageDto>
     Object? capacity = null,
     Object? revenuePaise = null,
     Object? checkedIn = null,
+    Object? product = null,
+    Object? version = null,
     Object? bannerKey = freezed,
     Object? viewCount = null,
     Object? representation = freezed,
@@ -173,6 +183,14 @@ class _$EventManageDtoCopyWithImpl<$Res, $Val extends EventManageDto>
             checkedIn: null == checkedIn
                 ? _value.checkedIn
                 : checkedIn // ignore: cast_nullable_to_non_nullable
+                      as int,
+            product: null == product
+                ? _value.product
+                : product // ignore: cast_nullable_to_non_nullable
+                      as String,
+            version: null == version
+                ? _value.version
+                : version // ignore: cast_nullable_to_non_nullable
                       as int,
             bannerKey: freezed == bannerKey
                 ? _value.bannerKey
@@ -234,6 +252,8 @@ abstract class _$$EventManageDtoImplCopyWith<$Res>
     int capacity,
     @JsonKey(name: 'revenue_paise') int revenuePaise,
     @JsonKey(name: 'checked_in') int checkedIn,
+    String product,
+    int version,
     @JsonKey(name: 'banner_key') String? bannerKey,
     @JsonKey(name: 'view_count') int viewCount,
     EventRepresentationDto? representation,
@@ -270,6 +290,8 @@ class __$$EventManageDtoImplCopyWithImpl<$Res>
     Object? capacity = null,
     Object? revenuePaise = null,
     Object? checkedIn = null,
+    Object? product = null,
+    Object? version = null,
     Object? bannerKey = freezed,
     Object? viewCount = null,
     Object? representation = freezed,
@@ -325,6 +347,14 @@ class __$$EventManageDtoImplCopyWithImpl<$Res>
             ? _value.checkedIn
             : checkedIn // ignore: cast_nullable_to_non_nullable
                   as int,
+        product: null == product
+            ? _value.product
+            : product // ignore: cast_nullable_to_non_nullable
+                  as String,
+        version: null == version
+            ? _value.version
+            : version // ignore: cast_nullable_to_non_nullable
+                  as int,
         bannerKey: freezed == bannerKey
             ? _value.bannerKey
             : bannerKey // ignore: cast_nullable_to_non_nullable
@@ -362,6 +392,8 @@ class _$EventManageDtoImpl implements _EventManageDto {
     this.capacity = 0,
     @JsonKey(name: 'revenue_paise') this.revenuePaise = 0,
     @JsonKey(name: 'checked_in') this.checkedIn = 0,
+    this.product = 'Public',
+    this.version = 1,
     @JsonKey(name: 'banner_key') this.bannerKey,
     @JsonKey(name: 'view_count') this.viewCount = 0,
     this.representation,
@@ -407,6 +439,16 @@ class _$EventManageDtoImpl implements _EventManageDto {
   @override
   @JsonKey(name: 'checked_in')
   final int checkedIn;
+  // D-388 — the two facts that decide whether this event's details are frozen behind admin approval.
+  // Defaulted rather than required, like everything else detail-only here: `GET /v1/me/events` rows
+  // do not carry them, and a required field the row projection omits is what made every parse throw
+  // before (see the class remarks).
+  @override
+  @JsonKey()
+  final String product;
+  @override
+  @JsonKey()
+  final int version;
   // Detail-only (`ToEventJson`).
   @override
   @JsonKey(name: 'banner_key')
@@ -423,7 +465,7 @@ class _$EventManageDtoImpl implements _EventManageDto {
 
   @override
   String toString() {
-    return 'EventManageDto(id: $id, title: $title, slug: $slug, status: $status, representingOrgId: $representingOrgId, orgId: $orgId, startsAt: $startsAt, endsAt: $endsAt, ticketsSold: $ticketsSold, capacity: $capacity, revenuePaise: $revenuePaise, checkedIn: $checkedIn, bannerKey: $bannerKey, viewCount: $viewCount, representation: $representation, createdAt: $createdAt)';
+    return 'EventManageDto(id: $id, title: $title, slug: $slug, status: $status, representingOrgId: $representingOrgId, orgId: $orgId, startsAt: $startsAt, endsAt: $endsAt, ticketsSold: $ticketsSold, capacity: $capacity, revenuePaise: $revenuePaise, checkedIn: $checkedIn, product: $product, version: $version, bannerKey: $bannerKey, viewCount: $viewCount, representation: $representation, createdAt: $createdAt)';
   }
 
   @override
@@ -449,6 +491,8 @@ class _$EventManageDtoImpl implements _EventManageDto {
                 other.revenuePaise == revenuePaise) &&
             (identical(other.checkedIn, checkedIn) ||
                 other.checkedIn == checkedIn) &&
+            (identical(other.product, product) || other.product == product) &&
+            (identical(other.version, version) || other.version == version) &&
             (identical(other.bannerKey, bannerKey) ||
                 other.bannerKey == bannerKey) &&
             (identical(other.viewCount, viewCount) ||
@@ -475,6 +519,8 @@ class _$EventManageDtoImpl implements _EventManageDto {
     capacity,
     revenuePaise,
     checkedIn,
+    product,
+    version,
     bannerKey,
     viewCount,
     representation,
@@ -512,6 +558,8 @@ abstract class _EventManageDto implements EventManageDto {
     final int capacity,
     @JsonKey(name: 'revenue_paise') final int revenuePaise,
     @JsonKey(name: 'checked_in') final int checkedIn,
+    final String product,
+    final int version,
     @JsonKey(name: 'banner_key') final String? bannerKey,
     @JsonKey(name: 'view_count') final int viewCount,
     final EventRepresentationDto? representation,
@@ -554,7 +602,14 @@ abstract class _EventManageDto implements EventManageDto {
   int get revenuePaise;
   @override
   @JsonKey(name: 'checked_in')
-  int get checkedIn; // Detail-only (`ToEventJson`).
+  int get checkedIn; // D-388 — the two facts that decide whether this event's details are frozen behind admin approval.
+  // Defaulted rather than required, like everything else detail-only here: `GET /v1/me/events` rows
+  // do not carry them, and a required field the row projection omits is what made every parse throw
+  // before (see the class remarks).
+  @override
+  String get product;
+  @override
+  int get version; // Detail-only (`ToEventJson`).
   @override
   @JsonKey(name: 'banner_key')
   String? get bannerKey;

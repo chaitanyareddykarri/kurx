@@ -348,7 +348,7 @@ builder.Services.AddSwaggerGen(o =>
 {
     o.SwaggerDoc("v1", new OpenApiInfo { Title = "Kurx API", Version = "v1" });
     // D-259: without this the spec describes CLR shape only, so a request rule tightening (e.g.
-    // CreateOrgBody.Type gaining an enum constraint) was invisible to the contract and to the drift gate.
+    // AddMemberBody.Role carrying an enum constraint) is invisible to the contract and to the drift gate.
     o.SchemaFilter<FluentValidationSchemaFilter>();
     // Must mirror SnakeCaseResponseConverter exactly — the converter applies the response convention at
     // runtime and Swashbuckle cannot see it, so without this the spec would advertise camelCase for

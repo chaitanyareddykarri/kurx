@@ -16149,3 +16149,303 @@ dev database was checked for families holding more than one live draft before th
 **Generalisation worth carrying:** a uniqueness comment that says "the constraint is authoritative" is a
 claim to verify, not a note to trust. Ask what the index key actually is, then ask whether two racers can
 land on *different* keys and still both be wrong.
+
+---
+
+## D-389 — Representing is a step of Create Event, not a place you are sent to
+
+**Date:** 2026-08-18 · **Status:** Accepted · **Supersedes on this point:** the D-382 half that gave the
+Event Workspace its own Representing page.
+
+> **Numbered 389, not 388.** D-388 was claimed in code by a concurrent workstream (change requests on a
+> live event) across ~30 files before its log entry existed. `docs/DECISIONS.md` alone said 387 was the
+> maximum, which is why the tree — not the log — is the thing to grep before claiming a number.
+
+**The rule.** There is exactly **one** event-level representation workflow, and it lives inside Create
+Event. Everything the platform needs in order to know *who is answerable for this event* — the
+organisation, and this event's own authorisation letter — is asked on the Representing step and nowhere
+else. The step never navigates: no redirect, no `push`, no `returnTo`, no second form parked in a
+workspace tab.
+
+**What was wrong.** Three separate places asked for, or sent you to, representation:
+
+| Where | What it did |
+|---|---|
+| Create Event ▸ Representing | picked a verified organisation, collected the letter — and **linked out** to `/host/representing/new` (web) or pushed `/representing/new` (Flutter) for anyone who represented nothing yet |
+| Event Workspace ▸ Representing | a standing tab rendering the same authorisation form again |
+| Readiness | reported the state and linked at the workspace tab |
+
+The link-out is the defect that made the flow unfinishable. The wizard holds ten steps of unsaved
+answers; navigating away discards them. Since [D-379](#d-379) no event can be created without an
+organisation, so **every** organiser who did not already represent one hit a step whose only exit threw
+their event away. The workspace tab is the defect that made the flow *feel* unfinished: a second
+permanent place to answer a question creation had already answered reads as "creation did not take".
+
+**What changed, and what deliberately did not.**
+
+- The organisation-registration form is **rendered inside the step** on both surfaces. Same fields, same
+  two API calls (`POST /v1/orgs/representation-requests/media/presign`, then
+  `POST /v1/orgs/representation-requests`), same component — web's `CreateOrgForm` grew an `onRegistered`
+  callback that suppresses the redirect; Flutter's vocabulary moved to `kOrgTypes` so both mounts read
+  one list. **No new endpoint, no new table, no schema change.**
+- **A pending organisation may now be selected.** This is a client change only. The server has always
+  allowed it: `EventService.CreateAsync` refuses a self-representation row or a deleted one and nothing
+  else, and `ResolveOrgAsync` grants `Manager` off the pending `Representative` seat. Filtering pending
+  organisations out of the picker enforced no rule — it only stranded whoever had just registered one.
+- **Publication is untouched.** `pending_org_verification` still refuses the transition until an admin
+  verifies the institution, `representation_vacant` still applies, and the paid bar still demands a
+  verified organisation — the wizard keeps that on a separate `paidCapableReps` set, because "may draft"
+  and "may charge" are different questions and collapsing them is what caused this.
+- **The correction path moved into Edit Event.** `/host/events/{id}/representing` and
+  `/events/:eventId/manage/representing` are deleted. When a reviewer rejects the letter or asks for
+  changes, the form appears on web's Details (Edit Event) page and on Flutter's
+  `/events/:eventId/edit/representing`, reached from Event Status where that verdict is shown. Gated on
+  the verdict, never standing — an ungated section is the workspace tab under a new name.
+- **The admin review queue now names the organisation's own standing.** An event can reach the queue
+  while its institution is still `PendingReview`. Approving it is legitimate and does *not* make it
+  publishable, so the reviewer is told that on the row rather than leaving the organiser to discover it
+  at the publish button.
+
+**Every event still gets its own authorisation.** `event_authorizations` stays `UNIQUE(EventId)`. The
+same college may back any number of events; last month's letter can never stand in for this month's.
+
+**Generalisation worth carrying:** a client-side filter that mirrors no server rule is not a safety
+measure, it is a dead end waiting for the one user whose state it excludes. Before tightening a picker,
+check what the server actually refuses — here the server refused less than the UI did, and the gap was
+the whole bug.
+
+---
+
+## D-390 — `POST /v1/orgs` is deleted, because it was an unreviewed org-minting path held shut by an accident
+
+**Date:** 2026-08-18 · **Status:** Accepted · **Completes:** [D-075](#d-075) / [D-379](#d-379)
+
+**The finding.** `POST /v1/orgs` could not succeed by any input:
+
+```
+OrgEndpoints.cs   if (body.Personal != true) return Fail("use_representation_request");
+OrgService.cs     if (isPersonal)            return Fail("personal_org_not_supported");   // D-379
+```
+
+The route demanded `personal: true`; the service refused exactly that. Two guards pointing opposite
+ways, added by different decisions, that happened to meet in the middle.
+
+**Why that is worse than dead code, not better.** Behind those guards sat `OrgService.CreateAsync` — the
+only code on the platform that minted an `OrgRole.Owner` seat, an `OrganizationWallet` and a
+`PayoutSchedule` for an organization **no reviewer had ever seen**. D-074/D-075/D-379 exist to make
+institutions reachable only through an admin-approved representation request, where the submitter becomes
+a *pending Representative*, never an Owner. And `OrgRole.Owner` is not inert: `EventAuthority.LevelFor`
+maps it to `Manager`, and it satisfies the `representation_vacant` check on publish
+(`EventService.cs` — `m.Role == OrgRole.Representative && m.IsVerified || m.Role == OrgRole.Owner`).
+
+So the closure was a **coincidence, not a design**. The `isPersonal` guard reads exactly like dead code
+to anyone tidying up; deleting it, or relaxing the route's `Personal != true` to let institutions through,
+would each have reopened an unreviewed org-minting endpoint. Meanwhile `docs/api/README.md` documented
+the route as *"creates a personal org only (`personal: true`)"* — telling integrators to make precisely
+the call that always failed.
+
+**The decision.** Delete the whole path rather than repair either half: the route, `CreateOrgBody`,
+`CreateOrgBodyValidator`, `IOrgService.CreateAsync` and its implementation. `POST /v1/orgs` now returns
+**404**, and the three tests that asserted its two error strings assert the 404 instead — a deletion a
+future cleanup cannot silently undo.
+
+**Nothing was orphaned and nothing regressed.** Every helper `CreateAsync` used is shared with
+`SubmitRepresentationRequestAsync` (`UniqueSlugAsync`, `NormalizeDomain`, `DomainRegex`,
+`IsUniqueConstraintViolation`), and `Tier1AdvancePct`/`Tier1CapPaise`/`Tier1ReservePct` are still read by
+`OrgVerificationService`, which does the legitimate provisioning **once, on admin approval**. No client
+called the route: a repo-wide search for `POST /v1/orgs` across web, admin and Flutter found zero callers.
+
+**Generalisation worth carrying:** when two guards on the same path refuse opposite values, the path is
+not *safe* — it is *unreachable*, and those are different properties. Safety survives someone editing one
+guard; unreachability does not. Whenever the answer to "why can't this be called?" needs two files to
+explain, delete the path instead of documenting the coincidence.
+
+## D-388 — A live event's substance is not its host's to change; it is proposed and approved
+
+**Date:** 2026-08-18 · **Status:** Accepted · **Extends D-363 §4**
+
+### The defect
+
+Reproduced over HTTP against the running dev API, as the owner of a `Published`, `Public` event:
+
+```
+BEFORE   Leak Probe Alpha      | Published | 2026-11-03 18:05
+PATCH /v1/orgs/{org}/events/{id}
+        {"title":"HIJACKED LIVE TITLE","startsAt":"2027-01-01T10:00Z"}
+        -> 200 OK
+AFTER    HIJACKED LIVE TITLE   | Published | 2027-01-01 10:00
+```
+
+No reviewer. No notification to the people holding tickets. **No audit row at all** — the organiser edit
+path writes none, and `event.material_change` (V3 §14.5) fires only when registrations already exist
+*and* the date/venue/mode moved. Title, description, capacity and visibility changed silently.
+
+The hole was one shared early return. `EventReviewReopen.IfApprovedAsync` opens with
+`if (status != Approved) return false`, and **four services inherit it** — `EventService`,
+`TicketTypeService`, `AudienceService`, `EventAuthorizationService`. All four were guarded at `Approved`
+and none at `Published`. One blind spot, not four bugs — D-363 §3's lesson repeating one state later.
+
+### The rule
+
+**A live PUBLIC event's protected fields change only through an approved change request.**
+
+| Status | Product | Host edit of a protected field |
+|---|---|---|
+| `Draft` / `ChangesRequested` / `Rejected` | any | applied directly |
+| `PendingReview` / `UnderReview` | any | `event_under_review` (409) — D-266 M4, unchanged |
+| `Approved` | Public | applied, event returns to the queue — **D-363 §4, unchanged** |
+| `Published` / `Scheduled` / `Live` | **Public** | **`change_request_required` (409)** |
+| any | Private | applied directly |
+
+**Why `Approved` keeps its old behaviour.** It is reviewed but *not public* (D-377): nobody has seen it,
+it can hold no orders, so applying an edit and re-queueing loses nothing. Freezing it too would have been
+tidier to describe and wrong — it would make correcting an unpublished event need an admin.
+
+**Why `Published` is refused rather than re-queued.** Re-queueing a live event would either pull it off
+the public site mid-sale or leave the unreviewed values live while it waited. Neither is acceptable once
+people hold tickets. The event does not move at all; a proposal is made beside it.
+
+**Why Private is exempt.** A Private product is never reviewed — its host is its only audience. Putting
+an admin between a family and their own wedding page is an absurdity, not a safeguard.
+
+### Field policy
+
+Classified deliberately, not as "everything on the row":
+
+| Tier | Fields | On a live public event |
+|---|---|---|
+| **A · Protected** | title, **subtitle**, **description**, category, type, audience level, template, starts/ends, timezone, venue (id/name/address/city), mode, online URL, capacity, visibility, eligibility, legal, commerce | change request |
+| **B · Operational** | contact email/phone, website, socials, banner/logo/thumbnail/promo, tagline, short description, rules, FAQ, language, registration & check-in windows, `AutoClose`, meeting password | direct edit |
+| **C · Locked** | `Product`, `RepresentingOrgId` | not on `UpdateEventInput` at all (D-323) |
+| **D · Admin-only** | `IsFeatured`, `IsSuspended`, `IsHidden`, financial review, review claim | never in a host proposal; **stripped** from one |
+
+Tier A is `EventStatusWorkflow.RequiresFreshReview` — the set a reviewer demonstrably assesses — **plus
+subtitle and description**. Those two are Tier B before publication and Tier A after, which is not an
+inconsistency: before an event is public, prose is draft copy and a re-review to fix a typo is a rule
+organisers route around; after it is public, the description is what an attendee read before paying, and
+swapping it out is a bait-and-switch no other guard catches.
+
+Tier B stays free because an organiser fixing a phone number on the morning of their event cannot be made
+to wait for an admin.
+
+### Shape
+
+`EventChangeRequest` — **references the event, never duplicates it.** A second event row would have had
+to answer "which one do registrations point at", and would have needed the whole apply path
+re-implemented against it.
+
+```
+event_id · requested_by · base_version · proposed_json · previous_json · reason
+status (Pending|Approved|Rejected|Withdrawn) · reviewed_by · reviewed_at
+review_reason_code · review_notes · applied_at
+```
+
+`proposed_json` is a serialized `UpdateEventInput` — *the exact shape the apply path already takes*
+(D-191). A bespoke diff type was rejected: it would be a second definition of "an event edit", drifting
+the first time a field was added to one and not the other. The reviewer-facing diff is **derived** from it
+server-side (`changes[]`, `current`/`proposed` pre-formatted), so all three clients read one comparison
+rather than three attempts at the same formatting.
+
+**Its own status enum, not `Event.Status`.** One enum for two lifecycles makes "approved" ambiguous, and
+the two move independently — the event stays `Published` throughout, whichever way its request goes.
+
+**One pending request per event**, enforced by a partial unique index (`WHERE "Status" = 'Pending'`), not
+by a read. A check-then-insert loses the race a constraint cannot.
+
+### Version and concurrency — no lost approved changes
+
+`Event.Version` (new `int`, backfilled to 1) increments inside `ApplyUpdateAsync` — the one apply path —
+so *every* content write moves it: a draft edit, an approved proposal, a Super Admin emergency edit.
+Bumping it at each caller instead would make staleness only as honest as the least disciplined writer.
+
+A request records the `BaseVersion` it was authored against. If the event has moved since, approval is
+refused with **`version_conflict`** and the host proposes again from the current values. Rebasing was
+rejected: a reviewer approved specific values in a specific context, and a merged result is something
+nobody read.
+
+`UpdatedAt` could not serve as the token — the D-363 §4 review reopen bumps it without changing content,
+so a pending request would go stale for a reason its author could not see.
+
+### Atomicity
+
+Approval runs in one `BeginTransactionAsync`, and the verdict is **claimed in SQL** inside it
+(`UPDATE … WHERE Status = 'Pending'`), the same compare-and-swap the review transitions use. If
+`ApplyUpdateAsync` refuses anything, the whole transaction rolls back — including the claim — so the
+request is still `Pending` and the live event carries none of the proposed values. Never the new title
+beside the old date.
+
+Approval calls `ApplyUpdateAsync` rather than writing columns, which is what makes propagation free: the
+search-index outbox reindex, the §14.5 refund window and registrant notification, capability
+rematerialization and every validation happen exactly as they do for a draft edit.
+
+### Propagation — "everywhere" is one row plus one projection
+
+`events` is the single source of truth; every other surface joins to it. The one denormalised copy is
+`event_search_documents`, outbox-fed and re-enqueued by the apply path. There is no cache layer (no
+`IMemoryCache`/Redis on event reads). `IdCards` and `IssuedCertificate.FieldValuesJson` snapshot at issue
+time and are **deliberately not** updated — a certificate must render as it was issued.
+
+### Security
+
+Host may propose only for events they can manage · a host cannot approve their own request even holding a
+reviewer role (`cannot_review_own_request`) · non-reviewers are refused before anything about the event is
+read (`reviewer_required`) · the **requester's** authority is re-checked at approval time
+(`requester_no_longer_authorized`), because a pending request outlives the seat it was made from · every
+decision writes both an `AuditLog` row and a `VerificationReview` row (the store the event review already
+uses — no second review table) · a rejection never writes to the event at all.
+
+### API
+
+Org-scoped, on the same group as the event's own routes, because REVIEW_LIFECYCLE.md's rule stands: there
+is no admin-side workflow route, and a duplicate admin action endpoint is how two workflows drift apart.
+
+```
+POST   /v1/orgs/{orgId}/events/{eventId}/change-requests
+GET    /v1/orgs/{orgId}/events/{eventId}/change-requests
+DELETE /v1/orgs/{orgId}/events/{eventId}/change-requests/{id}
+POST   /v1/orgs/{orgId}/events/{eventId}/change-requests/{id}/decision
+GET    /v1/admin/events/change-requests          <- queue READ only
+```
+
+`EventDetailResponse` gains `product` and `version`: the rule is *Public AND live*, so a client reading
+only the status would offer "Request changes" on a Private event the server then refuses.
+
+### Clients
+
+Web hosts the proposal flow: a live event's Details tab renders the approved values **read-only** (a
+definition list, not a disabled form — a greyed input reads as "not yet", a record reads as a record),
+with **Request changes** opening the same `EditEventForm` in `mode="proposal"`. A pending request replaces
+the form entirely; leaving both would let a second edit silently overwrite what a reviewer is reading.
+Admin gets a **Change requests** tab in the existing review console showing CURRENT vs PROPOSED, with
+Approve disabled on a stale request. Flutter has no event-details editor to lock, so it carries the
+read-only notice and the refusal copy; inventing a dead "Request changes" button there would be worse than
+naming where the change is actually made.
+
+### Scope, and what is deferred
+
+The **event row** gets the full change-request flow. Ticket types, audience rules and the authorization
+letter are **refused** on a live public event (`change_request_required`) by the same shared predicate —
+they were completely unguarded before, which mattered most for price. Carrying them *inside* a change
+request is deliberate follow-up work, not part of this decision.
+
+`EmergencyUpdateAsync` (Super Admin, D-191) still bypasses everything here, unchanged and deliberate.
+
+### An adjacent hole this does NOT close
+
+A **free public** event still reaches `Published` straight from `Draft` with no reviewer: the paid gate
+(`paid_event_requires_review`) is the only thing forcing review from `Draft`, and the
+`EventReviewPolicy.RequiresReview` that two comments cite **does not exist**. Recorded here because it was
+found while mapping this path; it needs its own decision, not a silent fix inside this one.
+
+### What this cost, and the generalisation
+
+Fourteen `AudienceRuleTests` began failing — every one on setup, none on subject. They publish first
+(registration only happens on a live event) and then set the rule. Their helper now writes the rule with
+the event momentarily back in `Draft`; the endpoint still runs, so its authorization, validation and
+canonicalisation stay under test, and no assertion was weakened.
+
+**Generalisation worth carrying:** a guard shared through one early return is also a *blind spot* shared
+through one early return. `if (status != Approved) return false` reads as a precise rule and was in fact
+the reason four separate endpoints all stopped guarding at exactly the same wrong place. When several
+services delegate a rule to one helper, the states that helper declines to handle are the states nobody
+owns.

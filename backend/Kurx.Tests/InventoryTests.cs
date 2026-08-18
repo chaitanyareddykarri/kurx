@@ -325,12 +325,17 @@ public class InventoryTests : IClassFixture<KurxApiFactory>
         var (owner, orgId, _) = await LoginOrgAsync("9700004019", "Quantity Org");
         var (eventId, ttId) = await PublishFreeEventAsync(owner, orgId, quantity: 30);
 
-        var res = await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}", new
+        // D-388 — the subject here is the POOL staying in step with the ticket's quantity, not when a
+        // ticket type may be edited. `PublishFreeEventAsync` publishes because inventory only matters on
+        // a live event, so the update runs with the status momentarily suspended and the real PATCH —
+        // including the pool-sync side effect being asserted — still executes.
+        var res = await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}", new
         {
             name = "Free", pricePaise = 0L, pricingUnit = "PerTicket", registrationMode = "Individual",
             groupMin = (int?)null, groupMax = (int?)null, quantity = 75,
             saleStarts = DateTime.UtcNow.AddDays(-1), saleEnds = DateTime.UtcNow.AddDays(30), perUserLimit = 50, isAllAccess = false,
-        });
+        }));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         Assert.Equal(75, (await PoolAsync(ttId)).Total);
     }

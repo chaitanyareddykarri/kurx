@@ -13,14 +13,12 @@
 exactly like catastrophic breakage. `dotnet build` is unaffected and is a valid pre-flight gate.
 
 Authoritative local verification is a .NET 10 SDK container sharing the Postgres container's network
-namespace (so `localhost:5432` resolves the way `KurxApiFactory` hard-codes it):
+namespace (so `localhost:5432` resolves the way `KurxApiFactory` hard-codes it).
 
-```bash
-MSYS_NO_PATHCONV=1 docker run --rm --network container:kurx-postgres \
-  -v "/d/event/kurx:/src" -w /src/backend mcr.microsoft.com/dotnet/sdk:10.0 bash -c \
-  "dotnet build Kurx.sln -c Debug -warnaserror -p:ArtifactsPath=/tmp/artifacts --nologo -v q && \
-   dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
-```
+> **The command lives in [`docs/TESTING.md`](../../docs/TESTING.md).** It was written out three
+> times in this file and the copies had drifted apart — `--rm` against `-d --name`, different
+> mounts and flags, a shared `kurx_test_template` the code stopped using. This file owns the
+> *rules and the baselines*; the runbook owns the *commands*.
 
 **Current baseline: 2440 tests — 2439 passing, 1 skipped, 0 failing (2026-08-18).** Measured in the
 SDK container with clamd up, 23m27s, on a tree carrying the in-flight D-378→D-386 work. **Zero is the
@@ -98,16 +96,7 @@ busy runner just means the current class is CPU-bound, not that it is stuck.
 > can attribute every failure.** Diff the tree first (`git status --short`), group failures by class, and
 > read one failure to its cause before claiming or disclaiming a regression.
 
-Run it exactly like this; the two `-e` flags are what the ClamAV class needs and nothing else supplies:
-
-```bash
-docker compose up -d clamav                         # in the default stack since D-339; ~1 min to healthy
-MSYS_NO_PATHCONV=1 docker run --rm --memory=4g --network container:kurx-postgres \
-  -e CLAMAV_HOST=clamav -e CLAMAV_PORT=3310 \
-  -v "/d/event/Kurx:/src" -w /src/backend mcr.microsoft.com/dotnet/sdk:10.0 bash -c \
-  "dotnet build Kurx.sln -c Debug -warnaserror -p:ArtifactsPath=/tmp/artifacts --nologo -v q && \
-   dotnet test Kurx.sln --no-build -c Debug -p:ArtifactsPath=/tmp/artifacts --logger 'console;verbosity=minimal'"
-```
+The two `-e` ClamAV flags are what that class needs and nothing else supplies.
 
 `--memory=4g` is not decoration. With the six-service dev stack up, the SDK container competes with it for
 Docker's memory and the build dies mid-copy with `MSB3026 … Cannot allocate memory` — which reads like a
@@ -282,23 +271,14 @@ browser verification remains the check for anything the suites do not assert.
 
 State test count before → after and name what's newly covered, so drift in coverage is visible over time (see project-state memory for historical counts as a sanity check, e.g. 19→35→52).
 
-
 ## Running the suite in the SDK container
 
 Windows Application Control blocks the host runner (`dotnet test` and `dotnet ef` both fail with
 `0x800711C7`), so both run in the SDK container. `KurxApiFactory` hard-codes `Host=localhost` — only the
 port is configurable — so the container has to share Postgres's own network namespace; a user-defined
-network does not work, because `localhost` inside the container is the container:
+network does not work, because `localhost` inside the container is the container.
 
-```
-docker run -d --name kurx-suite --network "container:kurx-postgres" \
-  -v "D:/event/Kurx:/src" -v "kurx-nuget:/root/.nuget/packages" \
-  -e CLAMAV_HOST=clamav \
-  -w //src/backend mcr.microsoft.com/dotnet/sdk:10.0 \
-  bash -lc "dotnet restore Kurx.sln && dotnet test Kurx.Tests/Kurx.Tests.csproj -c Debug"
-```
-
-Four things in that line are load-bearing, each learned from a wasted run (2026-08-09):
+Four flags in that command are load-bearing, each learned from a wasted run (2026-08-09):
 
 - **Mount the REPO ROOT, not `backend/`.** `InternationalPhoneTests` loads `docs/api/phone-conformance.json`
   by walking up from the assembly; mounting `backend:/src` puts it above the mount and the test fails
@@ -331,9 +311,11 @@ is in host startup, before any test code runs, so it cannot be a regression in t
 Fix: delete `bin/` and `obj/` for all five projects and let the container do the build. Better, never run
 a host `dotnet build` while a container run is the thing you intend to trust — build in one place only.
 
-Never run two suites at once: every class clones the **shared** `kurx_test_template`, so a second run
-racing the first corrupts both. Killing a run leaves `kurx_test_<guid>` databases behind; drop them before
-the next run.
+Never run two suites at once against one Postgres. Each process makes its own template
+(`kurx_test_tmpl_<guid>`, a fresh `Guid` per run — `KurxApiFactory.cs:245`) and clones a
+`kurx_test_<guid>` per class, so two runs will not corrupt each other's data, but they will fight for the
+same box and neither number is then attributable. Killing a run leaves both kinds behind: 135 had piled
+up by 2026-08-18. Drop them before a run you intend to trust.
 
 ## A red suite in a shared checkout: read the ERROR before you read the test name (D-381, 2026-08-18)
 

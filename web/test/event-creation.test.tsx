@@ -7,8 +7,12 @@ vi.mock("@/lib/event-actions", () => ({ createEventWizardAction: vi.fn(), update
 // The Representing step registers an organization in place, so the wizard reaches the org actions too.
 // Mocked for the same reason as the event ones: they are server actions over a real API client.
 vi.mock("@/lib/org-actions", () => ({
-  registerRepresentationInlineAction: vi.fn(), submitRepresentationRequestAction: vi.fn()
+  presignRepresentationDocAction: vi.fn(), fileRepresentationRequestAction: vi.fn()
 }));
+// The Representing step mounts `RepresentativePicker` (the signatory's Kurx account), which reaches the
+// user index. Mocked for the same reason as the other action modules: they are server actions over a
+// real API client, and importing one drags `lib/api`'s React `cache` calls into jsdom.
+vi.mock("@/lib/invitation-actions", () => ({ searchUsersAction: vi.fn() }));
 
 // `useFormState` returns [state, action]; the state is what the form renders its outcome from.
 let formState: unknown = { ok: true };

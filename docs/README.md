@@ -32,6 +32,7 @@ Narrative: [`architecture/event-creation.md`](architecture/event-creation.md).
 | Trust / verification / fraud | [`../.claude/memory/trust-verification.md`](../.claude/memory/trust-verification.md) |
 | API reference & error model | [`api/README.md`](api/README.md) |
 | Database (tables) | [`database/DATABASE_TABLES.md`](database/DATABASE_TABLES.md) |
+| **Running the tests by hand** | [`TESTING.md`](TESTING.md) — the commands for all four surfaces, prerequisites, hygiene and troubleshooting. Rules and current baselines stay in [`../.claude/memory/testing-standards.md`](../.claude/memory/testing-standards.md) |
 | Build status (built vs not) | [`roadmap/README.md`](roadmap/README.md) |
 | Payments | [`architecture/overview.md`](architecture/overview.md) §Payments + DECISIONS D-049 |
 | Certificates | DECISIONS D-035 |

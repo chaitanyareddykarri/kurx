@@ -149,20 +149,30 @@ DigiLocker/penny-drop adapter ships; until then it is the only thing that makes 
 1. **Login** (phone OTP over SMS → JWT; D-281).
 2. **Profile → Create Event** → the gate above → the creation form (`POST /v1/events`) → event details
    (title, schedule, venue, category, …).
-3. **"Representing"** — a step of the form, not a gate in front of it. **Superseded in part by D-379/D-382:**
+3. **"Representing"** — a step of the form, not a gate in front of it, and **never a place you are sent
+   to** (D-389). Everything representation needs is asked here; nothing about it navigates.
+   **Superseded in part by D-379/D-382/D-389:**
    - ~~**Personal** (the default) → hosted under the creator's own name.~~ **Retired by D-379.** Every event
      represents a real organization Kurx has verified, whatever its product — visibility never decided who
      is answerable for an event. There is still nothing named "personal organization" anywhere a user or an
      API can see; what changed is that self-representation is no longer an option, not that it acquired a name.
-   - **An organization you already represent** → pick it from the list.
+   - **An organization you already represent** → pick it from the list. Since D-389 that list is **every**
+     representation you hold, a `PendingReview` one included: a staged organization can carry a *draft*
+     (the server grants `Manager` off the pending `Representative` seat) and what it cannot do is publish.
+     The card says exactly that, and the paid bar is separate — money still needs a verified institution.
    - **This event's own authorization letter** → asked on the SAME step, under the organization it
      authorises (D-379, and D-382 for the Flutter half, where it used to sit after `Legal` as step twelve).
      One row per event: `event_authorizations` is UNIQUE on `EventId`, so last month's letter can never
      stand in for this event's.
-   - **An institution you don't yet represent** → the request flow, reachable from the step itself rather
-     than only from *Profile → Representing* (`/host/representing/new`, Flutter `/representing/new`). Since
-     D-379 it **does** block the event you are creating, because an event cannot be created without a
-     verified organization. Search the **verified organization registry** (`GET /v1/orgs/search`).
+   - **An institution you don't yet represent** → the registration form is **rendered on the step itself**
+     (D-389), submitting the same `POST /v1/orgs/representation-requests` the standalone page uses. It used
+     to be a link to `/host/representing/new` (web) or a push to `/representing/new` (Flutter) — a
+     navigation out of a wizard holding ten steps of unsaved answers, so from D-379 onward (when an
+     organization became mandatory) every organiser who represented nothing had to discard their event to
+     get one. The staged organization is appended to the picker, selected, and the wizard carries on.
+     `/host/representing/new` and `/representing/new` still exist for the *Profile → Representing* path and
+     render the same form. Searching the **verified organization registry** (`GET /v1/orgs/search`) stays
+     on that account-level surface, where claiming a seat in an institution that already exists belongs.
 4. **If the organization exists** → select it and submit **proof of authority to represent it** — an
    evidence-backed **membership claim** (`POST /v1/orgs/{id}/membership-claims`), reviewed by an admin.
 5. **If the organization does not exist** → submit its details + supporting documents (letterhead,
@@ -203,8 +213,11 @@ all reused. Event-first is an **entry-flow + staging-entity** change, not a new 
   with **Create Event** as a direct action and status views (Hosted / Drafts / Pending approval / Archived)
   instead of an organization browser. The wizard's first step is **Representing** — which since D-379 asks
   for a verified organization (Personal is gone) and for that organization's authorization letter for this
-  event, and since D-382 is also the event workspace's own tab (`/host/events/{id}/representing`), the one
-  place representation is entered after creation; Readiness reports its state and links there. The
+  event — and since **D-389** that step also *registers* the organization inline, so nothing about
+  representation navigates away from the wizard. The event workspace has **no** Representing tab
+  (`/host/events/{id}/representing` is deleted); when a reviewer rejects the letter or asks for changes the
+  same form appears on **Edit Event** (`/host/events/{id}/details#representing`), gated on that verdict,
+  and Readiness links there. The
   `kurx_org` "current organization" cookie, its switcher, the organizer dashboard and `/host/organizations`
   are removed; event pages resolve their organization from the event. Registering an institution
   (a representation request with **required** proof, uploaded via the user-scoped
@@ -214,9 +227,11 @@ all reused. Event-first is an **entry-flow + staging-entity** change, not a new 
 - **Mobile — shipped (D-267):** the Flutter app is user-first. Create Event is `/events/create`, reachable
   from Workspace with no organisation chosen first; **Representing** is the wizard's first step (Personal
   retired by D-379; the letter is asked there too since D-382, not as a twelfth step after `Legal`).
-  Management is addressed by event (`/events/:eventId/manage/…`), which resolves its own organisation and
-  now includes `/manage/representing` — the only organiser screen that collects authorization details, and
-  the answer to a reviewer who requests changes. `/orgs`, `/org/create`, `/org/:orgId` and `/org/:orgId/events` are removed, along with the
+  Since **D-389** that step registers the organisation inline too — the push to `/representing/new` is
+  gone. Management is addressed by event (`/events/:eventId/manage/…`), which resolves its own organisation;
+  `/manage/representing` is **deleted** and its correction form now lives at
+  `/events/:eventId/edit/representing`, reached from Event Status only when a reviewer has requested changes
+  or rejected the letter. `/orgs`, `/org/create`, `/org/:orgId` and `/org/:orgId/events` are removed, along with the
   organisation analytics dashboard and member roster; what is left lives under `/representing/:orgId/…`
   (verification, reached from Profile → Representing; the payout account, reached from the event's
   payment-readiness check).

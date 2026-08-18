@@ -29,86 +29,14 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
     /// <see cref="OrgAuthorityOutbox"/> for why this is an outbox row and not an inline chat call.</summary>
     private void EnqueueAuthorityChanged(Guid orgId, Guid userId) => OrgAuthorityOutbox.Stage(db, orgId, userId);
 
-    public async Task<ServiceResult<OrgDetail>> CreateAsync(Guid userId, string name, OrganizationType type,
-        string? legalName, string? primaryDomain, string? bio, string? linksJson, bool isPersonal = false, CancellationToken ct = default)
-    {
-        /*
-         * D-379 — a personal organization can no longer be created.
-         *
-         * The parameter survives so the signature and every caller stay unchanged, but the only value it
-         * may now carry is `false`. `POST /v1/orgs { personal: true }` was a live route: the creation
-         * guard in `EventService` already refuses to REPRESENT such a row, so this closes no hole on its
-         * own — but rule 13 is that none may be created, and an endpoint that mints the one row type the
-         * platform forbids is a hidden path whether or not today's guards happen to cover it.
-         */
-        if (isPersonal) return ServiceResult<OrgDetail>.Fail("personal_org_not_supported");
-
-        name = name.Trim();
-        if (name.Length is < 2 or > 120)
-            return ServiceResult<OrgDetail>.Fail("invalid_name");
-
-        // A blacklisted org name (impersonation/fraud, M13) can't be (re)created.
-        if (await fraud.IsBlacklistedAsync(nameof(BlacklistKind.OrgName), name, ct))
-            return ServiceResult<OrgDetail>.Fail("org_blacklisted");
-
-        legalName = string.IsNullOrWhiteSpace(legalName) ? null : legalName.Trim();
-        primaryDomain = NormalizeDomain(primaryDomain);
-        if (primaryDomain is not null && !DomainRegex().IsMatch(primaryDomain))
-            return ServiceResult<OrgDetail>.Fail("invalid_domain");
-
-        // Hard dedup only on primary domain (a globally-unique identifier). Name dedup is a soft
-        // "did you mean?" surfaced by registry search; hard name-dedup is enforced at verification
-        // time (M5), so unverified same-named orgs may coexist until a reviewer picks the canonical one.
-        if (primaryDomain is not null &&
-            await db.Organizations.AnyAsync(o => o.PrimaryDomain == primaryDomain && o.DeletedAt == null, ct))
-            return ServiceResult<OrgDetail>.Fail("organization_domain_taken");
-
-        var org = new Organization
-        {
-            Name = name,
-            Slug = await UniqueSlugAsync(name, ct),
-            Type = type,
-            LegalName = legalName,
-            PrimaryDomain = primaryDomain,
-            NormalizedName = OrganizationRegistryService.Normalize(name),
-            Bio = bio,
-            LinksJson = linksJson,
-            IsPersonal = isPersonal,
-        };
-        org.CanonicalOrgId = org.Id;                    // a new org is its own canonical
-        db.Organizations.Add(org);
-        db.Memberships.Add(new Membership { OrgId = org.Id, UserId = userId, Role = OrgRole.Owner });
-        db.PayoutSchedules.Add(new PayoutSchedule
-        {
-            OrgId = org.Id,
-            Currency = org.SettlementCurrency,   // V3 §9.1
-            Tier = 1,
-            AdvancePct = Tier1AdvancePct,
-            CapPaise = Tier1CapPaise,
-            ReservePct = Tier1ReservePct,
-        });
-        // Seed a zero-balance wallet so financial reads never get "wallet_not_found".
-        db.OrganizationWallets.Add(new OrganizationWallet { OrgId = org.Id, Currency = org.SettlementCurrency });
-        db.AuditLogs.Add(new AuditLog
-        {
-            ActorType = "user", ActorId = userId,
-            Action = "org.create", Entity = "organizations", EntityId = org.Id,
-            DetailsJson = $"{{\"name\":\"{JsonEncodedText.Encode(name)}\",\"slug\":\"{org.Slug}\"}}",
-        });
-
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
-        {
-            // Two concurrent requests generated the same slug; caller may retry.
-            return ServiceResult<OrgDetail>.Fail("slug_conflict");
-        }
-
-        log.LogInformation("Org {OrgId} ({Slug}) created by {UserId}", org.Id, org.Slug, userId);
-        return ServiceResult<OrgDetail>.Success(ToDetail(org, 1, OrgRole.Owner));
-    }
+    // `CreateAsync` was deleted here (D-390). It was the only code that minted an `OrgRole.Owner` seat,
+    // an `OrganizationWallet` and a `PayoutSchedule` for an organization nobody had reviewed — and
+    // `OrgRole.Owner` satisfies the representation-vacancy check on publish. Its route
+    // (`POST /v1/orgs`) demanded `personal == true` while this method refused exactly that, so it was
+    // dead by accident: deleting either half alone would have brought an unreviewed org-minting path
+    // back. The provisioning it did legitimately now happens once, on admin approval, in
+    // `OrgVerificationService` — which is why `Tier1AdvancePct`/`Tier1CapPaise`/`Tier1ReservePct` above
+    // are still referenced.
 
     public async Task<ServiceResult<OrgDetail>> SubmitRepresentationRequestAsync(Guid userId, string name, OrganizationType type,
         string? legalName, string? primaryDomain, string? bio, string? linksJson,

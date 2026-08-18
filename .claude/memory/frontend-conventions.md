@@ -103,8 +103,15 @@ Applying it:
   asserts `<AuthorizationForm` appears in exactly one file, and that the reporting surface renders no
   `input`, no `form` and no `button`. A grep-based test is what stops the second copy coming back in a
   refactor — an import with no JSX would be the next version of the same bug.
-- **Cross-client, the same shape.** Flutter's pair is `/events/{id}/manage/representing` (collects) and
-  the manage Overview entry (reports).
+- **Cross-client, the same shape.** Flutter mirrors it: the wizard's Representing step collects, and
+  `/events/:eventId/edit/representing` is the correction surface.
+- **D-389 — the step never navigates.** The organization-registration form renders *inside* the
+  Representing step (`<CreateOrgForm onRegistered={…}>`), because a link out of a wizard holding ten steps
+  of unsaved answers is how someone loses the event they are creating. The workspace Representing tab is
+  gone; the correction path is Edit Event, gated on `Rejected`/`ChangesRequested`.
+- **Two representation sets, never one.** `selectableReps` (everything the caller represents — a
+  `PendingReview` organization can carry a *draft*) and `paidCapableReps` (verified only — money needs a
+  verified institution). Collapsing them is what blocked the free path on a bar only the paid path has.
 
 ## Known bug class to watch for
 

@@ -10,10 +10,12 @@ import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../events/domain/entities/event_category.dart';
 import '../../../events/presentation/providers/search_providers.dart';
+import '../../data/models/event_content_dto.dart';
 import '../../data/models/org_dto.dart';
 import '../../domain/event_wizard_payload.dart';
 import '../providers/event_content_providers.dart';
 import '../providers/organizer_providers.dart';
+import '../widgets/representative_picker.dart';
 
 /// Create an event — `POST /v1/events` (D-267).
 ///
@@ -95,6 +97,11 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   /// The inline registration form — the fields the standalone request screen asks for, rendered in
   /// place. It used to be `context.push('/representing/new')`: a navigation out of a wizard holding ten
   /// steps of unsaved answers, so anyone without a representation lost the event they were creating.
+  /// The signatory's Kurx account — optional, and a LINK, never a grant (D-269 owns authority). It was
+  /// on web's authorization form and on neither Flutter screen, so representation moving into the wizard
+  /// would have kept that asymmetry; the same field is asked on both surfaces now.
+  UserSearchDto? _representativeUser;
+
   bool _orgFormOpen = false;
   final _orgName = TextEditingController();
   final _orgDomain = TextEditingController();
@@ -545,6 +552,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           'representativeRole': _representativeRole ?? '',
           'representativeRoleOther':
               _representativeRoleOther.text.trim().isEmpty ? null : _representativeRoleOther.text.trim(),
+          'representativeUserId': _representativeUser?.id,
           'letterheadDocumentKey': letterheadDocumentKey,
         });
       } on ApiError catch (e) {
@@ -785,7 +793,7 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
             // The registration form, RENDERED HERE rather than pushed to. It was
             // `context.push('/representing/new')`: a navigation out of a wizard holding ten steps of
             // unsaved answers, so anyone without a representation lost the event they were creating.
-            _buildOrgRegistration(),
+            _buildOrgRegistration(noRepresentations: selectable.isEmpty),
             // D-382 — the letter, on the same step as the organization it authorises, and only once
             // one is actually chosen: it names that organization, so asking for it first is asking
             // about nothing. Was a twelfth step after Legal.
@@ -808,11 +816,15 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   /// calls — presign the proof, then `POST /v1/orgs/representation-requests`. What differs is only what
   /// happens next: nothing is navigated, the staged organisation is appended to the picker and
   /// selected, and the wizard carries on holding every answer given so far.
-  Widget _buildOrgRegistration() {
+  Widget _buildOrgRegistration({required bool noRepresentations}) {
     final c = context.kurx;
     final busy = _orgSubmitting || _submitting;
 
-    if (!_orgFormOpen) {
+    // Open from the start when there is nothing else to answer — the step would otherwise present a
+    // dead end plus a button, which is the shape the redirect had. Someone who already represents an
+    // organisation gets it collapsed instead of scrolling past a form they do not need. Web's
+    // `<details open={selectableReps.length === 0}>` is the twin; the two must not diverge.
+    if (!_orgFormOpen && !noRepresentations) {
       return Align(
         alignment: Alignment.centerLeft,
         child: TextButton(
@@ -1066,6 +1078,16 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           const SizedBox(height: KSpace.md),
           _field(_representativeRoleOther, 'Describe your role'),
         ],
+        const SizedBox(height: KSpace.lg),
+        // Optional, and a link rather than a grant — see `RepresentativePicker`. Placed with the
+        // signatory's other details and before the letter, matching web's field order.
+        RepresentativePicker(
+          linked: _representativeUser,
+          onChanged: (u) => setState(() => _representativeUser = u),
+        ),
+        const SizedBox(height: KSpace.xs),
+        Text('Optional. Links the letter to a known person for the reviewer — it grants them nothing.',
+            style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.35)),
         const SizedBox(height: KSpace.lg),
         _label('Authorization letter'),
         const SizedBox(height: KSpace.xs),

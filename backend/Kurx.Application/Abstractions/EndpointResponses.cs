@@ -448,7 +448,15 @@ public sealed record EventDetailResponse(
     IEnumerable<EventMediaResponse> Media,
     DateTime CreatedAt,
     DateTime? PublishedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    /// <summary>D-388 — "Public" or "Private". On the contract because the change-request rule is
+    /// <b>Public AND publicly live</b>, and a client that can read only the status would show a Private
+    /// published event a "Request changes" button the server then refuses. Trailing and defaulted so a
+    /// caller constructing this record positionally is unaffected.</summary>
+    string Product = "Public",
+    /// <summary>D-388 — the event's content version. Lets a client that is holding an open edit form
+    /// notice the event moved underneath it, rather than discovering it when the approval is refused.</summary>
+    int Version = 1);
 
 
 /// <summary><c>{"revoked": true}</c> — an ally connection or invitation that has been revoked.

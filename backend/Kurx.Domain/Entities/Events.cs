@@ -344,13 +344,17 @@ public class Event
     // root). Snapshot-applied at creation, so a later template edit never mutates this event.
     public int? CreatedFromTemplateVersion { get; set; }
 
-    /// <summary>D-388 — the content version, incremented by the one-and-only apply path
-    /// (<c>EventService.ApplyUpdateAsync</c>) on every change to the event row.
+    /// <summary>D-388 — the version of the event's <b>protected substance</b>, incremented by the
+    /// one-and-only apply path (<c>EventService.ApplyUpdateAsync</c>) whenever a protected field changes.
     ///
     /// <para>Exists so an <see cref="EventChangeRequest"/> can name the state it was authored against and
     /// be refused if the event has moved since. <see cref="UpdatedAt"/> could not serve: it is bumped by
     /// writes that change no content — the D-363 §4 review reopen sets it — so a pending request would go
     /// stale for a reason its author could not see.</para>
+    ///
+    /// <para><b>Operational edits do not move it.</b> A host correcting a contact email while a title
+    /// proposal is pending must not invalidate that proposal: staleness means "what was proposed against
+    /// has changed", not "something happened". Proved live before it was scoped this way.</para>
     ///
     /// <para>Not an EF concurrency token. It counts <i>content</i> changes for the approval workflow to
     /// reason about; making it <c>IsConcurrencyToken</c> would additionally fail unrelated concurrent

@@ -61,10 +61,11 @@ public record KycOutcome(string Status, string? Detail, string PayoutAccountStat
 /// </summary>
 public interface IOrgService
 {
-    /// <summary>Creates the org (registry: type + normalized name + canonical=self, M4), makes the caller
-    /// Owner, and seeds the T1 payout schedule (D-007, D-016). Hard-blocks a duplicate primary domain.</summary>
-    Task<ServiceResult<OrgDetail>> CreateAsync(Guid userId, string name, OrganizationType type, string? legalName,
-        string? primaryDomain, string? bio, string? linksJson, bool isPersonal = false, CancellationToken ct = default);
+    // There is no `CreateAsync` (D-390). It made the caller **Owner** and seeded a wallet and payout
+    // schedule with no evidence and no reviewer — the one path on the platform that could, and the exact
+    // thing D-075/D-379 exist to prevent. It was unreachable only because its route demanded
+    // `personal == true` while it refused that same value, which is a coincidence, not a design.
+    // An organization is created by `SubmitRepresentationRequestAsync` below plus an admin approval.
 
     /// <summary>D-075: event-first "who are you representing?" for a not-yet-registered institution.
     /// Creates a hidden placeholder org (PendingReview, no Owner/wallet/payout) + evidence, and makes the

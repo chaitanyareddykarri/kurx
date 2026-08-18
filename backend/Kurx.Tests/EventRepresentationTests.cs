@@ -212,14 +212,13 @@ public class EventRepresentationTests : IClassFixture<KurxApiFactory>
             .ToListAsync());
     }
 
-    /// <summary>#13 — and the route that used to mint one directly is refused.</summary>
+    /// <summary>#13 — and the route that used to mint one directly no longer exists (D-390).</summary>
     [Fact]
     public async Task Creating_a_personal_organization_over_the_api_is_refused()
     {
         var (client, _) = await LoginAsync("9700015005");
         var res = await client.PostAsJsonAsync("/v1/orgs/", new { name = "Just Me Too", personal = true });
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        Assert.Contains("personal_org_not_supported", await res.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
 
     // ── The submission boundary ───────────────────────────────────────────────

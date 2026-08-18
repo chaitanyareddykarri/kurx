@@ -161,6 +161,21 @@ class ApiError implements Exception {
     'tickets_already_sold':
         "This ticket type has already been sold, so it can't be deleted. Stop its sales instead by ending the sale period.",
 
+    // D-388 — the same class of refusal one state further on. Mapped on EVERY surface that can hit it,
+    // not just the one that prompted it: `change_request_required` is returned by the event PATCH, the
+    // ticket-type editor, the audience rule and the authorization form, and an unmapped code on any of
+    // them reads as "Something went wrong" on an action the organiser could have understood.
+    'change_request_required':
+        "This event is already live, so changes to it need admin approval. Request them from the event workspace on the web — your event stays exactly as it is until they're approved.",
+    'version_conflict':
+        "This event changed after you started. Refresh so you're proposing against its current details.",
+    'not_live_protected':
+        "This event isn't live yet, so you can edit it directly — no approval needed.",
+    'change_request_decided':
+        "A reviewer has already decided on this request. Refresh to see the outcome.",
+    'cannot_review_own_request':
+        "You can't approve your own change request. Another reviewer has to decide it.",
+
     // The V3 §14.2 lifecycle gates, worded as in packages/ui/src/problem-copy.ts. None of them had copy
     // on any surface, so `open_registration` on an event with no ticket type read as "Something went
     // wrong" — a refusal the organiser could have cleared in a minute if anyone had told them what it was.

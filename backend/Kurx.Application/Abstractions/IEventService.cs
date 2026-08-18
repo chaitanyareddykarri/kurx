@@ -138,7 +138,11 @@ public record EventDetail(
     // D-302 — who the host is representing, resolved server-side. RepresentingOrgId above is a bare Guid,
     // so every client that wanted to name the organization had to fetch it separately, and none did.
     EventRepresentationView? Representing = null,
-    string? BannerUrl = null)
+    string? BannerUrl = null,
+    // D-388 — the two facts a client needs to know whether this event is frozen behind approval. Trailing
+    // and defaulted, so every existing construction site compiles unchanged (the D-302 lesson).
+    string Product = "Public",
+    int Version = 1)
 {
     /// <summary><b>Deprecated (D-273a) — use <c>representing_org_id</c>.</b> Emitted only so clients
     /// deployed before the rename keep working; it always equals <see cref="RepresentingOrgId"/> and never
@@ -328,7 +332,12 @@ public record EventChangeField(string Field, string Label, string? Current, stri
 /// approving it is refused (<c>version_conflict</c>) rather than allowed to overwrite newer approved
 /// values.</param>
 public record EventChangeRequestView(
-    Guid Id, Guid EventId, string EventTitle, Guid RequestedBy, string? RequestedByName,
+    Guid Id, Guid EventId, string EventTitle,
+    /// <summary>The event's representing organization. Carried because the DECISION route is org-scoped
+    /// (there is no admin-side workflow route), so a console rendering this queue would otherwise need a
+    /// second call per row just to learn where to post the verdict.</summary>
+    Guid RepresentingOrgId,
+    Guid RequestedBy, string? RequestedByName,
     int BaseVersion, int CurrentVersion, bool Stale,
     IReadOnlyList<EventChangeField> Changes, string? Reason, string Status,
     Guid? ReviewedBy, string? ReviewedByName, DateTime? ReviewedAt,

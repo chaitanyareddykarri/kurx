@@ -490,8 +490,12 @@ public class TeamPricingTests : IClassFixture<KurxApiFactory>
         var (orgId, eventId, _) = await EventWithTicketAsync(owner, reviewer, "cap3",
             0, PricingUnit.PerTicket, RegistrationMode.Individual);
 
-        await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}",
-            new { eligibility = new { maxTeams = 12 } });
+        // D-388 — the subject is that `max_teams` falls back to the STORED value when no team ticket
+        // exists, not when an event may be edited. `EventWithTicketAsync` publishes, so the write runs
+        // with the status momentarily suspended and the real PATCH still applies the eligibility block.
+        await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}",
+                new { eligibility = new { maxTeams = 12 } }));
 
         var detail = await Json(await owner.GetAsync($"/v1/events/{eventId}"));
         Assert.Equal(12, detail.GetProperty("eligibility").GetProperty("max_teams").GetInt32());

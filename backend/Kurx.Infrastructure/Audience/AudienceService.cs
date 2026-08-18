@@ -203,14 +203,22 @@ public class AudienceService(KurxDbContext db, IEventAuthority authority, IInvit
 
     /// <summary>The event's status, or null when it is not this org's event — one query answering both,
     /// because every caller needs the existence check and the mutating ones need the review state too
-    /// (D-363 §4).</summary>
-    /// <summary>Status AND product, because D-388's live guard needs both: only a PUBLIC event that is
-    /// publicly live is frozen. Returning the pair from the one query the callers already run keeps this a
-    /// single round trip.</summary>
+    /// <summary>The event's status and product, or null when it is not this org's event — one query
+    /// answering all three, because every caller needs the existence check, the mutating ones need the
+    /// review state (D-363 §4), and D-388's live guard needs the product as well.
+    ///
+    /// <para>Projected to an ANONYMOUS TYPE, not a <c>ValueTuple</c>. EF translates a projected tuple into
+    /// a Postgres composite <c>ROW(...)</c>, which Npgsql then refuses to read back — "not supported for
+    /// fields having DataTypeName 'record'" — and the endpoint 500s. An anonymous type projects as two
+    /// plain columns.</para></summary>
     private async Task<(EventStatus Status, EventProduct Product)?> EventStateInOrgAsync(Guid eventId, Guid orgId, CancellationToken ct)
-        => await db.Events.AsNoTracking().Where(e => e.Id == eventId && e.RepresentingOrgId == orgId)
-            .Select(e => (ValueTuple<EventStatus, EventProduct>?)new ValueTuple<EventStatus, EventProduct>(e.Status, e.Product))
+    {
+        var row = await db.Events.AsNoTracking()
+            .Where(e => e.Id == eventId && e.RepresentingOrgId == orgId)
+            .Select(e => new { e.Status, e.Product })
             .FirstOrDefaultAsync(ct);
+        return row is null ? null : (row.Status, row.Product);
+    }
 
     private static string? Serialize<T>(IReadOnlyList<T>? list) => list is { Count: > 0 } ? JsonSerializer.Serialize(list, J) : null;
     private static T? Deser<T>(string? json) => string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json!, J);

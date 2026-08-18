@@ -312,6 +312,26 @@ class EventContentRemoteDataSource {
         endpoint: 'POST /v1/events/{eventId}/authorization',
       );
 
+  /// Find the signatory's Kurx account, to send as `representativeUserId`.
+  ///
+  /// **A link, never a grant.** Naming someone on an authorization gives them no authority over the
+  /// event and changes nothing about their account — `IEventAuthority` owns authority (D-269). It only
+  /// lets a reviewer see that the signatory is a known person rather than a name typed into a form.
+  ///
+  /// The same index and page size the web picker uses (`/v1/users/search?q=&pageSize=8`), so both
+  /// surfaces can link the same people. Flutter had no user search at all before this, which is why
+  /// the field existed on web and on neither Flutter screen.
+  Future<List<UserSearchDto>> searchUsers(String q) => guard(
+        () async {
+          final res = await _dio.get('/v1/users/search',
+              queryParameters: {'q': q, 'pageSize': 8});
+          return (res.data as List)
+              .map((e) => UserSearchDto.fromJson((e as Map).cast<String, dynamic>()))
+              .toList();
+        },
+        endpoint: 'GET /v1/users/search',
+      );
+
   /// Uploads bytes to a presigned URL. Deliberately uses a **bare** Dio: the presigned URL is
   /// absolute and its signature is the credential, so attaching the session bearer token would
   /// leak it to the storage host for no benefit (`StorageEndpoints` ignores it entirely).

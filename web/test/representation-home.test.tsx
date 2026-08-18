@@ -163,13 +163,25 @@ describe("Create Event registers an organization WITHOUT leaving the wizard", ()
     expect(wizard).toMatch(/setRepresentingOrgId\(rep\.organization_id\)/);
   });
 
-  it("files the request through the SAME action the standalone page uses", () => {
+  it("files the request through the SAME two actions the standalone page uses", () => {
     // Two code paths for "what registering an institution requires" is how one of them drifts.
     const actions = readFileSync(web("lib/org-actions.ts"), "utf8");
-    expect(actions).toMatch(/fileRepresentationRequest/);
-    expect(actions).toMatch(/registerRepresentationInlineAction/);
-    // The inline action must not redirect — that is the behaviour being removed.
-    expect(actions).toMatch(/export async function registerRepresentationInlineAction[\s\S]{0,600}?return \{/);
+    expect(actions).toMatch(/presignRepresentationDocAction/);
+    expect(actions).toMatch(/fileRepresentationRequestAction/);
+  });
+
+  it("uploads the proof from the BROWSER, never from a server action", () => {
+    /*
+     * The bug this pins shipped and was reported: "fetch failed" on the letterhead upload.
+     *
+     * The presigned URL is browser-facing (`http://localhost:5080/...`). A server action runs inside the
+     * Next.js container, where that host is ECONNREFUSED, and undici surfaces it as a bare
+     * `TypeError: fetch failed`. So the PUT belongs in the client component — which is what
+     * `AuthorizationForm` and the wizard have always done for the authorization letter.
+     */
+    const actions = readFileSync(web("lib/org-actions.ts"), "utf8");
+    expect(actions).not.toMatch(/fetch\(\s*presigned\.url/);
+    expect(source("components/host/create-org-form.tsx")).toMatch(/fetch\(presigned\.url/);
   });
 });
 
@@ -196,16 +208,18 @@ describe("a pending organization may carry a draft but never a paid event", () =
 describe("the standalone request page still exists for the profile path", () => {
   it("survives a repeated returnTo without throwing", () => {
     // Next hands a repeated `?returnTo=a&returnTo=b` over as an ARRAY. `.startsWith` on one is a 500
-    // on a URL anyone can type, so the page normalises before testing it.
-    const page = source("app/(app)/host/representing/new/page.tsx");
-    expect(page).toMatch(/Array\.isArray\(raw\)/);
-    expect(page).toMatch(/candidate\?\.startsWith/);
+    // on a URL anyone can type, so the guard normalises before testing it.
+    const guard = readFileSync(web("lib/safe-return-to.ts"), "utf8");
+    expect(guard).toMatch(/Array\.isArray\(value\)/);
+    expect(source("app/(app)/host/representing/new/page.tsx")).toMatch(/safeReturnTo\(searchParams/);
   });
 
   it("follows only an in-app host path, never an absolute URL", () => {
-    // A redirect target that arrives in a form field is untrusted input.
-    const action = readFileSync(web("lib/org-actions.ts"), "utf8");
-    expect(action).toMatch(/safeReturnTo/);
-    expect(action).toMatch(/startsWith\("\/host\/"\)/);
+    // A redirect target that arrives in a query parameter is untrusted input, and it is untrusted at the
+    // point of USE, not only where it was read — the redirect happens in the browser now, so the guard
+    // is applied there too rather than only by the page that rendered the form.
+    const guard = readFileSync(web("lib/safe-return-to.ts"), "utf8");
+    expect(guard).toMatch(/startsWith\("\/host\/"\)/);
+    expect(source("components/host/create-org-form.tsx")).toMatch(/safeReturnTo\(returnTo\)/);
   });
 });

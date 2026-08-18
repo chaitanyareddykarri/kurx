@@ -988,11 +988,21 @@ public partial class EventService(KurxDbContext db, ILogger<EventService> log, I
         }
 
         await ApplyMaterialChangeAsync(ev, userId, isAdmin, mcBeforeStart, mcBeforeEnd, mcBeforeVenue, mcBeforeMode, mcBeforeVenueName, ct);
-        // D-388: every content change moves the version, whichever door it came through — a draft edit, an
-        // approved change request, or a Super Admin emergency edit. Bumped HERE rather than at each caller
-        // because a pending change request's staleness check is only as honest as the least-disciplined
-        // writer: one path that mutates without incrementing would let a stale proposal be approved over it.
-        ev.Version++;
+        /*
+         * D-388 — the version counts changes to the PROTECTED substance, not every write.
+         *
+         * Bumped here rather than at each caller because a pending change request's staleness check is only
+         * as honest as the least-disciplined writer: one path that mutates without incrementing would let a
+         * stale proposal be approved over it. Every door — a draft edit, an approved proposal, a Super
+         * Admin emergency edit — comes through this method.
+         *
+         * Scoped to the protected fields, though, and that scoping is load-bearing. Counting cosmetic
+         * writes too was the first shape and it was wrong: proved live, a host with a pending title
+         * proposal who then corrected their contact email moved the event 1 → 2, and the proposal a
+         * reviewer was reading became `version_conflict` over a field it never mentioned. Staleness must
+         * mean "what was proposed against has changed", not "something happened".
+         */
+        if (EventStatusWorkflow.RequiresApprovalWhenLive(input)) ev.Version++;
         ev.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -2211,7 +2221,8 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
             new EventCommerceView(ev.PlatformFeePercent, ev.PlatformFeeFlatPaise, ev.TaxPercent,
                 ev.TaxInclusive, ev.PrizePoolJson),
             representing,
-            await SignAsync(ev.BannerKey, ct));
+            await SignAsync(ev.BannerKey, ct),
+            ev.Product.ToString(), ev.Version);   // D-388
     }
 
     /*

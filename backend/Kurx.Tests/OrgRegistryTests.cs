@@ -182,14 +182,13 @@ public class OrgRegistryTests : IClassFixture<KurxApiFactory>
         Assert.Empty(results.EnumerateArray());
     }
 
-    /// <summary>D-379 — and the route that used to mint one is closed.</summary>
+    /// <summary>D-379 closed the route; D-390 deleted it. 404, not a refusal message.</summary>
     [Fact]
     public async Task Creating_a_personal_org_is_refused()
     {
         var client = await LoginAsync("9910000019");
         var res = await client.PostAsJsonAsync("/v1/orgs/", new { name = "Another Just Me", personal = true });
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        Assert.Contains("personal_org_not_supported", await res.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
 
     // D-074 reverses D-055's "unverified real org stays searchable for dedup": a pending representation

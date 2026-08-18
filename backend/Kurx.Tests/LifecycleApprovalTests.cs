@@ -132,7 +132,13 @@ public class LifecycleApprovalTests : IClassFixture<KurxApiFactory>
         var before = await db.Events.AsNoTracking().FirstAsync(e => e.Id == eventId);
         Assert.Null(before.RefundWindowEndsAt);
 
-        var upd = await events.UpdateAsync(ownerId, eventId, false, MoveDate(before.StartsAt.AddDays(3), before.EndsAt.AddDays(3)));
+        // D-388 — the subject is §14.5: a date move on an event people registered for opens a refund window
+        // and notifies them. `PublishFreeEventAsync` publishes (it must — the registration below needs a
+        // live event), which D-388 freezes, so the update runs with the status momentarily suspended.
+        // `OpenRefundWindowAndNotifyAsync` gates on a registration EXISTING, not on the event's status, so
+        // suspending changes nothing about what is asserted here.
+        var upd = await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            events.UpdateAsync(ownerId, eventId, false, MoveDate(before.StartsAt.AddDays(3), before.EndsAt.AddDays(3))));
         Assert.True(upd.Ok, upd.Error);
 
         var after = await db.Events.AsNoTracking().FirstAsync(e => e.Id == eventId);
@@ -166,11 +172,15 @@ public class LifecycleApprovalTests : IClassFixture<KurxApiFactory>
         Assert.True((await events.TransitionAsync(ownerId, eventId, false, false, "schedule")).Ok);   // schedules (approved)
 
         // Make it PAID after approval → the if_paid step must now be required (no silent bypass).
-        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types", new
+        // D-388 — the subject is that a CONDITION turning true re-opens the approval request. The event is
+        // Scheduled by this point, which D-388 freezes, so the write runs with the status momentarily
+        // suspended: the real endpoint still fires, and with it the condition re-evaluation being asserted.
+        Assert.Equal(HttpStatusCode.OK, (await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            owner.PostAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types", new
         {
             name = "Paid", pricePaise = 50000L, pricingUnit = "PerTicket", registrationMode = "Individual",
             quantity = 50, saleStarts = DateTime.UtcNow.AddDays(-1), saleEnds = DateTime.UtcNow.AddDays(30), perUserLimit = 10, isAllAccess = false,
-        })).StatusCode);
+        }))).StatusCode);
         var req = (await svc.GetRequestAsync(ownerId, eventId, false)).Value!;
         Assert.Equal("Pending", req.State);                          // re-opened
         Assert.Equal(2, req.Decisions.Count);                        // the if_paid step was added

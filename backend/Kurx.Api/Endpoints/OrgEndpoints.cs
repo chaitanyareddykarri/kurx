@@ -10,7 +10,6 @@ using Kurx.Api;
 using Kurx.Api.ExceptionHandling;
 using Kurx.Api.Validation;
 
-public record CreateOrgBody(string Name, string? Type, string? LegalName, string? PrimaryDomain, string? Bio, string? LinksJson, bool? Personal);
 public record UpdateOrgBody(string? Name, string? Bio, string? LinksJson, string? LogoKey);
 public record AddMemberBody(string Phone, string Role);
 public record ChangeRoleBody(string Role);
@@ -28,15 +27,19 @@ public static class OrgEndpoints
     {
         var orgs = app.MapGroup("/v1/orgs").WithTags("orgs").RequireAuthorization();
 
-        orgs.MapPost("/", async (CreateOrgBody body, ClaimsPrincipal principal, IOrgService svc, CancellationToken ct) =>
-        {
-            // D-075: institutions are created only via an admin-approved representation request. The direct
-            // create path is now personal-org-only ("Just me" events); an institution create is rejected.
-            if (body.Personal != true) return Fail("use_representation_request");
-            var type = Enum.TryParse<OrganizationType>(body.Type, ignoreCase: true, out var t) ? t : OrganizationType.Other;
-            var result = await svc.CreateAsync(UserId(principal), body.Name, type, body.LegalName, body.PrimaryDomain, body.Bio, body.LinksJson, body.Personal ?? false, ct);
-            return result.Ok ? Results.Ok(ToOrgJson(result.Value!)) : Fail(result.Error);
-        }).WithValidation<CreateOrgBody>().Produces<OrgDetailResponse>();
+        /*
+         * There is no `POST /v1/orgs`. An organization is created ONLY by an admin approving a
+         * representation request (D-075/D-379), which is the route immediately below.
+         *
+         * What was deleted (D-390) and why it mattered: the route demanded `personal == true` and the
+         * service refused exactly that, so every call failed — two guards pointing opposite ways, and the
+         * endpoint was dead by accident rather than by design. Behind them sat `OrgService.CreateAsync`,
+         * the only code on the platform that minted an **Owner** seat, a wallet and a payout schedule with
+         * no evidence, no reviewer and no verification. `OrgRole.Owner` also satisfies the
+         * representation-vacancy check on publish. So "fixing" either guard in isolation — and the
+         * `isPersonal` one reads exactly like dead code — would have reopened an unreviewed org-minting
+         * path, while `docs/api/README.md` told integrators to call it with `personal: true`.
+         */
 
         // D-075: event-first "who are you representing?" for a NOT-yet-registered institution. Creates a
         // hidden placeholder org (PendingReview, no Owner) + evidence; an admin approves it into the registry

@@ -497,6 +497,10 @@ export const eventDetailSchema = z.object({
   created_at: z.string(),
   published_at: z.string().nullable(),
   updated_at: z.string(),
+  // D-388 — "Public"/"Private" and the content version. Optional with defaults for the same reason as
+  // the D-302 block below: a server deployed before them must still parse here.
+  product: z.string().default("Public"),
+  version: z.number().default(1),
   // D-302 — all optional so a response predating them still parses (the D-292 lesson).
   banner_url: z.string().nullable().optional(),
   event_mode: z.string().nullable().optional(),
@@ -844,6 +848,68 @@ export async function transitionOrgEvent(accessToken: string, orgId: string, eve
 
 export async function deleteOrgEvent(accessToken: string, orgId: string, eventId: string) {
   await api.delete(`/v1/orgs/${orgId}/events/${eventId}`, authHeaders(accessToken));
+}
+
+/*
+ * D-388 — change requests on a LIVE event.
+ *
+ * The diff a reviewer and a host both read is built SERVER-side (`changes[]`, with `current`/`proposed`
+ * already formatted). Nothing here recomputes it: three clients formatting the same comparison three ways
+ * is three chances to show a difference that is not there.
+ */
+export const eventChangeFieldSchema = z.object({
+  field: z.string(),
+  label: z.string(),
+  current: z.string().nullable(),
+  proposed: z.string().nullable()
+});
+
+export const eventChangeRequestSchema = z.object({
+  id: z.string(),
+  event_id: z.string(),
+  event_title: z.string(),
+  representing_org_id: z.string(),
+  requested_by: z.string(),
+  requested_by_name: z.string().nullable(),
+  base_version: z.number(),
+  current_version: z.number(),
+  stale: z.boolean(),
+  changes: z.array(eventChangeFieldSchema),
+  reason: z.string().nullable(),
+  status: z.string(),
+  reviewed_by: z.string().nullable(),
+  reviewed_by_name: z.string().nullable(),
+  reviewed_at: z.string().nullable(),
+  review_reason_code: z.string().nullable(),
+  review_notes: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  applied_at: z.string().nullable()
+});
+
+export type EventChangeField = z.infer<typeof eventChangeFieldSchema>;
+export type EventChangeRequest = z.infer<typeof eventChangeRequestSchema>;
+
+export async function createEventChangeRequest(
+  accessToken: string, orgId: string, eventId: string, body: Record<string, unknown>
+) {
+  const { data } = await api.post(
+    `/v1/orgs/${orgId}/events/${eventId}/change-requests`, body, authHeaders(accessToken));
+  return eventChangeRequestSchema.parse(data);
+}
+
+export async function listEventChangeRequests(accessToken: string, orgId: string, eventId: string) {
+  const { data } = await api.get(
+    `/v1/orgs/${orgId}/events/${eventId}/change-requests`, authHeaders(accessToken));
+  return z.array(eventChangeRequestSchema).parse(data);
+}
+
+export async function withdrawEventChangeRequest(
+  accessToken: string, orgId: string, eventId: string, changeRequestId: string
+) {
+  const { data } = await api.delete(
+    `/v1/orgs/${orgId}/events/${eventId}/change-requests/${changeRequestId}`, authHeaders(accessToken));
+  return eventChangeRequestSchema.parse(data);
 }
 
 export async function cloneOrgEvent(accessToken: string, orgId: string, eventId: string) {

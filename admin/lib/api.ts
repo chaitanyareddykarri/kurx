@@ -408,6 +408,65 @@ export async function getReviewHistory(accessToken: string, eventId: string): Pr
   return z.array(reviewHistoryItemSchema).parse(data);
 }
 
+/*
+ * D-388 — the change-request queue.
+ *
+ * `changes[]` arrives already formatted (`current`/`proposed` as display strings, with a label). The
+ * console renders it and computes nothing: a reviewer approving a date change must be reading the same
+ * comparison the server built, not this file's second attempt at the same formatting.
+ */
+export const eventChangeFieldSchema = z.object({
+  field: z.string(),
+  label: z.string(),
+  current: z.string().nullable(),
+  proposed: z.string().nullable(),
+});
+
+export const eventChangeRequestSchema = z.object({
+  id: z.string(),
+  event_id: z.string(),
+  event_title: z.string(),
+  /// The decision route is org-scoped, so the queue row carries where to post the verdict.
+  representing_org_id: z.string(),
+  requested_by: z.string(),
+  requested_by_name: z.string().nullable(),
+  base_version: z.number(),
+  current_version: z.number(),
+  /// The event moved after this was proposed. Approving is refused server-side (`version_conflict`), so
+  /// the console disables the button rather than offering a refusal.
+  stale: z.boolean(),
+  changes: z.array(eventChangeFieldSchema),
+  reason: z.string().nullable(),
+  status: z.string(),
+  reviewed_by: z.string().nullable(),
+  reviewed_by_name: z.string().nullable(),
+  reviewed_at: z.string().nullable(),
+  review_reason_code: z.string().nullable(),
+  review_notes: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  applied_at: z.string().nullable(),
+});
+
+export type EventChangeRequest = z.infer<typeof eventChangeRequestSchema>;
+
+export async function listChangeRequests(accessToken: string, limit = 50): Promise<EventChangeRequest[]> {
+  const { data } = await api.get(`/v1/admin/events/change-requests?limit=${limit}`, auth(accessToken));
+  return z.array(eventChangeRequestSchema).parse(data);
+}
+
+/// The verdict goes through the ORG-SCOPED route, not an admin one — there is no admin-side workflow
+/// endpoint (REVIEW_LIFECYCLE.md), for the same reason the review transitions have none.
+export async function decideChangeRequest(
+  accessToken: string, orgId: string, eventId: string, changeRequestId: string,
+  approve: boolean, reasonCode?: string, notes?: string
+): Promise<EventChangeRequest> {
+  const { data } = await api.post(
+    `/v1/orgs/${orgId}/events/${eventId}/change-requests/${changeRequestId}/decision`,
+    { approve, reasonCode, notes }, auth(accessToken));
+  return eventChangeRequestSchema.parse(data);
+}
+
 // ── D-266 M7 · reviewer checklist ───────────────────────────────────────────────────────────
 // The ITEMS come from the backend's policy engine on every read — they are never cached or
 // reconstructed here. A hardcoded list in the console would be a second source of truth and would go

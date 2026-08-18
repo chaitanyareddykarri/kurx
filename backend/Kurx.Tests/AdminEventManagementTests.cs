@@ -326,8 +326,14 @@ public class AdminEventManagementTests : IClassFixture<KurxApiFactory>
         var (owner, orgId, eventId) = await PublishedEventAsync("9960000024", "Policy Test");
 
         // The organizer's own token still edits fine.
+        // D-388 — this test's subject is D-191 (a `kurx_admin` claim is not content-edit access), not the
+        // live-edit rule. `PublishedEventAsync` publishes, which D-388 freezes, so the organiser's edit is
+        // made with the status momentarily suspended. The SuperAdmin assertion below is deliberately NOT
+        // suspended and does not need to be: `UpdateAsync` refuses on authority (line ~706) before it ever
+        // reaches the live-protected guard, so 403 is still what a `kurx_admin` claim gets on a live event.
         Assert.Equal(HttpStatusCode.OK,
-            (await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}", new { title = "Owner Edited Title" })).StatusCode);
+            (await _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+                owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}", new { title = "Owner Edited Title" }))).StatusCode);
 
         // D-191: kurx_admin/SuperAdmin no longer bypasses content edit — moderation access was never
         // content-edit access. (Emergency Edit, tested separately, is the real Super Admin path now.)

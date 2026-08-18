@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../common/widgets/async_value_view.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/utils/event_protection.dart';
 import '../../../../core/utils/event_status.dart';
 import '../../../../core/utils/money.dart';
 import '../providers/organizer_providers.dart';
@@ -111,6 +112,13 @@ class EventManageDetailPage extends ConsumerWidget {
                 ListView(
                   padding: const EdgeInsets.all(KSpace.lg),
                   children: [
+                    // D-388 — a live public event's details are not this host's to change directly.
+                    // Stated here because this screen is where an organiser looks for them, and the
+                    // refusal is otherwise only discoverable by hitting it: mobile has no event-details
+                    // editor at all, so without this the rule would be invisible on the phone while the
+                    // server enforced it against every client.
+                    if (liveProtected(event.product, event.status))
+                      _LiveProtectedNotice(version: event.version),
                     if (event.startsAt != null)
                       _InfoRow(Icons.calendar_today_outlined,
                           DateFormat('EEE, dd MMM yyyy').format(event.startsAt!)),
@@ -266,6 +274,58 @@ class EventManageDetailPage extends ConsumerWidget {
         'closed' => c.danger,
         _ => c.muted,
       };
+}
+
+/// D-388 — what a host is told when their event is already live.
+///
+/// Informational, not an action. Mobile has no event-details editor to lock, and the proposal form
+/// lives on the web workspace; pretending otherwise with a dead "Request changes" button here would be
+/// worse than naming where the change is made. The version is shown because it is what a reviewer sees
+/// beside the proposal, and an organiser reading both should recognise the same number.
+class _LiveProtectedNotice extends StatelessWidget {
+  const _LiveProtectedNotice({required this.version});
+  final int version;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.kurx;
+    return Container(
+      margin: const EdgeInsets.only(bottom: KSpace.lg),
+      padding: const EdgeInsets.all(KSpace.lg),
+      decoration: BoxDecoration(
+        color: c.elevated,
+        borderRadius: BorderRadius.circular(KRadius.md),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_outline, size: 18, color: c.muted),
+          const SizedBox(width: KSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This event is live (version $version)',
+                  style: TextStyle(
+                      color: c.text, fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Its title, dates, venue, capacity, description and ticket prices are what a '
+                  'reviewer approved and what your attendees have seen. Changing them needs a new '
+                  'approval — request it from the event workspace on the web, and your event stays '
+                  'exactly as it is until an admin approves.',
+                  style: TextStyle(color: c.muted, fontSize: 12, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Stat extends StatelessWidget {

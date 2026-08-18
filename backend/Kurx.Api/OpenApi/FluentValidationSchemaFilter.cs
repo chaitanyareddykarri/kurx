@@ -9,9 +9,9 @@ namespace Kurx.Api.OpenApi;
 
 /// <summary>Projects the FluentValidation rules for a request DTO onto its OpenAPI schema (D-259).
 ///
-/// <para>Swashbuckle infers a schema from the CLR type alone, so it described
-/// <c>CreateOrgBody.Type</c> as a nullable string while <c>CreateOrgBodyValidator</c> was rejecting
-/// anything that is not an <c>OrganizationType</c> name. The published contract therefore documented
+/// <para>Swashbuckle infers a schema from the CLR type alone, so it describes
+/// <c>AddMemberBody.Role</c> as a plain string while <c>AddMemberBodyValidator</c> rejects
+/// anything that is not an <c>OrgRole</c> name. The published contract therefore documented
 /// shape but not constraints, and the CI drift gate could not see a validation rule tighten or loosen.
 /// This closes that gap without taking a new dependency
 /// (<c>MicroElements.Swashbuckle.FluentValidation</c> does the same job and is the upgrade path if this

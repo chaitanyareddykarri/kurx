@@ -70,15 +70,18 @@ public class AttendeeTests : IClassFixture<KurxApiFactory>
             startsAt = DateTime.UtcNow.AddDays(30), endsAt = DateTime.UtcNow.AddDays(30).AddHours(6),
         }));
         var eventId = ev.GetProperty("id").GetGuid();
-        _factory.SeedApprovedEventAuthorization(eventId);   // D-266 M5 — fixture needs a published event
-        Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{eventId}/transition", new { action = "publish" })).StatusCode);
-
+        // D-388 — configured before it goes live, which is the order the platform now requires: a live
+        // Public event's ticket types are frozen behind an approved change request. The roster this suite
+        // asserts on is unaffected by which of these two setup calls happened first.
         var ttId = (await Json(await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{eventId}/ticket-types", new
         {
             name = "General", pricePaise = 0, pricingUnit = "PerTicket", registrationMode = "Individual",
             quantity = 10, saleStarts = DateTime.UtcNow.AddDays(-1), saleEnds = DateTime.UtcNow.AddDays(29),
             perUserLimit = 5, isAllAccess = false, isCompetition = false,
         }))).GetProperty("id").GetGuid();
+
+        _factory.SeedApprovedEventAuthorization(eventId);   // D-266 M5 — fixture needs a published event
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsJsonAsync($"/v1/orgs/{_orgId}/events/{eventId}/transition", new { action = "publish" })).StatusCode);
 
         var registered = await LoginAsAsync("9840000010");
         Assert.Equal(HttpStatusCode.OK, (await registered.PostAsJsonAsync($"/v1/events/{eventId}/orders", new { ticketTypeId = ttId })).StatusCode);

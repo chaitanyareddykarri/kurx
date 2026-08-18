@@ -8,8 +8,8 @@ namespace Kurx.Api.Json;
 ///
 /// <para><b>The convention, established by evidence rather than preference.</b> 65 of 75 endpoint files
 /// already emit snake_case — 63 through hand-written mappers, 2 through <c>[JsonPropertyName]</c>. Their
-/// request bodies, meanwhile, bind camelCase (<c>CreateOrgBody</c> takes <c>{"name","type"}</c> and
-/// answers with <c>logo_key</c>). The platform contract is therefore <b>camelCase in, snake_case out</b>.
+/// request bodies, meanwhile, bind camelCase (<c>RepresentationRequestBody</c> takes
+/// <c>{"name","type","primaryDomain"}</c> and answers with <c>logo_key</c>, <c>primary_domain</c>). The platform contract is therefore <b>camelCase in, snake_case out</b>.
 /// The remaining 10 files never chose a second convention; they forward an Application record straight
 /// out of <c>Results.Ok</c> and the default serializer shows through as camelCase. This makes them
 /// conform.</para>

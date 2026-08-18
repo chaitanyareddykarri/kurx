@@ -4,8 +4,9 @@ import { requireStaffSession } from "@/lib/session";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   listAdminEvents, getReviewCounts, getReviewHistory, getReviewChecklist, getEventAuthorization,
-  getEventForReview, getEventTicketTypesForReview, apiErrorMessage, apiErrorStatus,
+  getEventForReview, getEventTicketTypesForReview, listChangeRequests, apiErrorMessage, apiErrorStatus,
 } from "@/lib/api";
+import { ChangeRequestReview } from "@/components/admin/change-request-review";
 import { ReviewActions } from "@/components/admin/review-actions";
 import { ReviewChecklistPanel } from "@/components/admin/review-checklist";
 import { AuthorizationPanel } from "@/components/admin/authorization-panel";
@@ -27,6 +28,20 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+/*
+ * D-388 — the change-request queue is a tab HERE, not a page of its own.
+ *
+ * It is the same job: a reviewer deciding whether something may face the public. Splitting it into a
+ * second console page would mean two queues to remember to check, and the one that gets forgotten is the
+ * one holding a live event's corrected date.
+ *
+ * It is deliberately NOT in `TABS`: those are event STATUSES and their count comes from
+ * `/review-counts`. A change request has its own lifecycle (D-388 keeps the two enums apart), and folding
+ * it into a status list would be that conflation reappearing in the UI.
+ */
+const CHANGE_REQUESTS_TAB = "ChangeRequests" as const;
+type ActiveTab = TabKey | typeof CHANGE_REQUESTS_TAB;
+
 function countFor(counts: Awaited<ReturnType<typeof getReviewCounts>>, key: TabKey): number {
   switch (key) {
     case "PendingReview": return counts.pending_review;
@@ -41,13 +56,23 @@ export default async function EventReviewConsolePage({
   searchParams,
 }: { searchParams?: { status?: string } }) {
   const session = await requireStaffSession();
-  const active: TabKey =
-    (TABS.find((t) => t.key === searchParams?.status)?.key ?? "PendingReview");
+  const active: ActiveTab = searchParams?.status === CHANGE_REQUESTS_TAB
+    ? CHANGE_REQUESTS_TAB
+    : (TABS.find((t) => t.key === searchParams?.status)?.key ?? "PendingReview");
+  const onChangeRequests = active === CHANGE_REQUESTS_TAB;
 
   try {
+    // The change-request queue is fetched on every render so its tab can carry a count — a queue whose
+    // size is only visible after you click it is a queue people stop checking. Swallowed to empty so a
+    // failure here cannot take down the status queues beside it.
+    const changeRequests = await listChangeRequests(session.accessToken, 50).catch(() => []);
     const [counts, list] = await Promise.all([
       getReviewCounts(session.accessToken),
-      listAdminEvents(session.accessToken, { status: active, limit: 50 }),
+      // Skipped entirely on the change-requests tab: that tab lists proposals, not events by status, and
+      // fetching a status page nothing renders is a wasted round trip per view.
+      onChangeRequests
+        ? Promise.resolve({ items: [] as Awaited<ReturnType<typeof listAdminEvents>>["items"], total: 0 })
+        : listAdminEvents(session.accessToken, { status: active, limit: 50 }),
     ]);
 
     // History is fetched per event so a reviewer sees prior decisions without opening a second page.
@@ -109,6 +134,14 @@ export default async function EventReviewConsolePage({
               {t.label} ({countFor(counts, t.key)})
             </a>
           ))}
+          {/* D-388 — beside the status tabs, visually separated: it is a different KIND of queue. */}
+          <a href={`/events/review?status=${CHANGE_REQUESTS_TAB}`}
+            className={`h-8 rounded-md border px-3 text-xs font-semibold leading-8 ${
+              onChangeRequests
+                ? "border-accent/40 bg-accent/10 text-accent-text"
+                : "border-border text-muted hover:bg-elevated"}`}>
+            Change requests ({changeRequests.length})
+          </a>
           {counts.legacy_in_review > 0 ? (
             // Pre-M4 events still sitting in the retired state. Surfaced rather than hidden so they are
             // not silently stranded while the legacy status is being retired.
@@ -119,9 +152,43 @@ export default async function EventReviewConsolePage({
           ) : null}
         </div>
 
-        {list.items.length === 0 ? (
+        {onChangeRequests ? (
+          changeRequests.length === 0 ? (
+            <Card>
+              <EmptyState icon={<CalendarCheck size={22} />} title="No pending change requests"
+                message="When a host edits an event that is already live, their proposed changes wait here. The live event stays exactly as it is until one is approved." />
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {changeRequests.map((cr) => (
+                <Card key={cr.id}>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md border border-border bg-elevated text-muted">
+                      <CalendarClock size={16} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-text">{cr.event_title}</h3>
+                        <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                          live · v{cr.current_version}
+                        </span>
+                      </div>
+                      {/* The event's operational surfaces, same link the status queue offers. A change to a
+                          LIVE event's date is worth checking against its registrations before approving. */}
+                      <a href={`/events?tab=all&event=${cr.event_id}`}
+                        className="mt-2 inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-xs font-semibold text-text hover:bg-elevated">
+                        <ExternalLink size={12} /> Registrations, finance &amp; moderation
+                      </a>
+                      <ChangeRequestReview request={cr} />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )
+        ) : list.items.length === 0 ? (
           <Card>
-            <EmptyState icon={<CalendarCheck size={22} />} title={`Nothing in ${TABS.find((t) => t.key === active)!.label.toLowerCase()}`}
+            <EmptyState icon={<CalendarCheck size={22} />} title={`Nothing in ${(TABS.find((t) => t.key === active)?.label ?? "this queue").toLowerCase()}`}
               message="Events appear here as organisers submit them and reviewers work through the queue." />
           </Card>
         ) : (

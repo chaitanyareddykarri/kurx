@@ -209,3 +209,32 @@ class EventAuthorizationDto with _$EventAuthorizationDto {
   factory EventAuthorizationDto.fromJson(Map<String, dynamic> json) =>
       _$EventAuthorizationDtoFromJson(json);
 }
+
+/// A candidate signatory from `/v1/users/search`, for the authorization's optional account link.
+///
+/// **A link, never a grant** — naming someone here gives them no authority over the event (D-269).
+///
+/// Deliberately NOT freezed: it is a read-only projection of four fields with no `copyWith`, no union
+/// and no equality requirement, so the generated code would carry no weight. Keeping it hand-written
+/// also means adding the Flutter picker needs no `build_runner` pass over a tree other sessions are
+/// editing.
+class UserSearchDto {
+  const UserSearchDto({
+    required this.id,
+    required this.name,
+    required this.username,
+    this.avatarUrl,
+  });
+
+  final String id;
+  final String name;
+  final String username;
+  final String? avatarUrl;
+
+  factory UserSearchDto.fromJson(Map<String, dynamic> json) => UserSearchDto(
+        id: json['id'] as String,
+        name: (json['name'] as String?) ?? '',
+        username: (json['username'] as String?) ?? '',
+        avatarUrl: json['avatar_url'] as String?,
+      );
+}

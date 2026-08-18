@@ -166,20 +166,28 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
         Assert.False(caps.GetProperty("is_org_verified").GetBoolean());
     }
 
+    /// <summary>D-390 — there is no direct org-create route, for an institution or for anything else.
+    ///
+    /// <para>The route this replaces asserted two DIFFERENT refusals from one endpoint:
+    /// <c>use_representation_request</c> without <c>personal</c>, <c>personal_org_not_supported</c> with
+    /// it. Two guards pointing opposite ways meant every call failed — the endpoint was dead by accident,
+    /// and behind it sat the only code that minted an <c>Owner</c> seat, a wallet and a payout schedule
+    /// with no reviewer. Asserting 404 pins the deletion: a future "cleanup" of either guard cannot
+    /// quietly bring the path back, because there is no path.</para></summary>
     [Fact]
-    public async Task Direct_org_create_is_rejected_for_institutions_but_allowed_for_personal()
+    public async Task There_is_no_direct_org_create_route()
     {
         var user = await LoginAsync("9960000002");
 
-        var institution = await user.PostAsJsonAsync("/v1/orgs/", new { name = "Self Minted College", type = "College" });
-        Assert.Equal(HttpStatusCode.BadRequest, institution.StatusCode);
-        Assert.Equal("use_representation_request", (await Json(institution)).GetProperty("error").GetString());
-
-        // D-379 — the personal half is refused now. An institution still routes through a
-        // representation request; a personal organization can no longer be created at all.
-        var personal = await user.PostAsJsonAsync("/v1/orgs/", new { name = "Just Me Society", personal = true });
-        Assert.Equal(HttpStatusCode.BadRequest, personal.StatusCode);
-        Assert.Equal("personal_org_not_supported", (await Json(personal)).GetProperty("error").GetString());
+        foreach (var body in new object[]
+        {
+            new { name = "Self Minted College", type = "College" },
+            new { name = "Just Me Society", personal = true },
+        })
+        {
+            var res = await user.PostAsJsonAsync("/v1/orgs/", body);
+            Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
+        }
     }
 
     [Fact]

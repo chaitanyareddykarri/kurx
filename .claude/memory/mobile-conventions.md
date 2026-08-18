@@ -199,13 +199,26 @@ exactly one place resolves it (`EventManageScope`, from `GET /v1/events/{eventId
 The surfaces that genuinely need an organization live under `/representing/:orgId/…`, reached from
 Profile → Representing.
 
-**Representation has one home per surface (D-382).** After the event exists, its organization and
-authorization are managed at `/events/:eventId/manage/representing` — the only organiser screen that
-collects a signatory, a designation, an official contact or a letter. The manage Overview links to it and
-reports nothing else about it. `/representing/new` is the request flow for an institution not yet on Kurx
-(`POST /v1/orgs/representation-requests`), reachable from both the wizard's empty state and the Profile
-list: its absence used to close a loop that made the app unusable for anyone not already verified — the
-wizard sent them to Profile, and Profile sent them back to event creation.
+**Representation is answered once, inside Create Event (D-389).** The wizard's Representing step collects
+all of it — the organisation, *its registration when it is not on Kurx yet* (rendered in place, submitting
+`POST /v1/orgs/representation-requests`), and this event's own authorisation letter. It never pushes: a
+navigation out of a wizard holding ten steps of unsaved answers is how an organiser loses the event they
+are creating, and since D-379 that hit everyone who represented nothing. `/events/:eventId/manage/representing`
+is **deleted**; the correction surface is `/events/:eventId/edit/representing`, reached from Event Status
+only on `changesrequested`/`rejected`. `/representing/new` survives for the Profile path and shares the
+same field vocabulary (`kOrgTypes`).
+
+**The authorization's account link exists on Flutter now.** `RepresentativePicker`
+(`presentation/widgets/representative_picker.dart`) sends `representativeUserId` from both the wizard's
+Representing step and `/events/:eventId/edit/representing`. It is **a link, never a grant** — authority
+is `IEventAuthority`'s (D-269) — and optional, so a failed lookup never blocks filing the letter. Flutter
+had no user search of any kind before this (`searchUsers` on `EventContentRemoteDataSource` is the first),
+which is why web had the field and Flutter had it on neither screen. Debounced at 300 ms and floored at
+two characters: a request per keystroke rate-limits the organiser out of their own form.
+
+**A pending organisation is selectable.** `_representingValid` accepts any representation the caller holds
+(the server grants `Manager` off the pending `Representative` seat); `_representingPaidCapable` is the
+separate, stricter check the money path uses. Publication is still refused by `pending_org_verification`.
 
 **Launcher tiles with no endpoint behind them are absent, not dead.** A tile that 404s is a promise
 the API cannot keep, and web's participant workspace is legitimately thinner than Flutter's because

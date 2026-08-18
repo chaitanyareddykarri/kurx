@@ -97,6 +97,22 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
     };
 
     /// <summary>A published, paid-capable team event whose ticket carries the bands.</summary>
+    /*
+     * D-388 — this suite's subject is band ARITHMETIC (how a price resolves, what an update replaces),
+     * not when a ticket type may be written. `TieredEventAsync` publishes, because a priced competition
+     * is only meaningful live, and D-388 then froze ticket types on a live Public event — so four tests
+     * began failing on their setup rather than on anything they assert.
+     *
+     * The update is made with the event momentarily back in Draft and the real PATCH endpoint still
+     * running, so its validation (`team_size_below_bands`, band overlap, the derived headline) stays
+     * under test. A test whose subject IS the live-edit rule must assert `change_request_required`
+     * directly instead of using this.
+     */
+    private Task<HttpResponseMessage> PatchTicketAsync(
+        HttpClient owner, Guid orgId, Guid eventId, Guid ttId, object body)
+        => _factory.WithLiveStatusSuspendedAsync(eventId, () =>
+            owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}", body));
+
     private async Task<(Guid OrgId, Guid EventId, Guid TicketTypeId)> TieredEventAsync(
         HttpClient owner, string seed, object[]? tiers = null)
     {
@@ -332,7 +348,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         var (owner, _) = await LoginAsync("9940000080");
         var (orgId, eventId, ttId) = await TieredEventAsync(owner, "replace");
 
-        var updated = await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}",
+        var updated = await PatchTicketAsync(owner, orgId, eventId, ttId,
             TicketBody([new { minSize = 2, maxSize = 5, pricePaise = BigPrice }]));
         Assert.True(updated.IsSuccessStatusCode, await updated.Content.ReadAsStringAsync());
 
@@ -354,7 +370,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         var (orgId, eventId, ttId) = await TieredEventAsync(owner, "keep");
 
         // Exactly what the tickets page sends: every field of the row, no `priceTiers` key at all.
-        var res = await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}", new
+        var res = await PatchTicketAsync(owner, orgId, eventId, ttId, new
         {
             name = "Renamed Entry", pricePaise = 99_900, pricingUnit = "PerGroup", registrationMode = "Group",
             groupMin = 2, groupMax = 5, quantity = 100,
@@ -380,7 +396,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         var (owner, _) = await LoginAsync("9940000101");
         var (orgId, eventId, ttId) = await TieredEventAsync(owner, "clear");
 
-        var res = await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}",
+        var res = await PatchTicketAsync(owner, orgId, eventId, ttId,
             TicketBody([], price: 50_000));
         Assert.True(res.IsSuccessStatusCode, await res.Content.ReadAsStringAsync());
 
@@ -400,7 +416,7 @@ public class TeamSizePricingTests : IClassFixture<KurxApiFactory>
         var (owner, _) = await LoginAsync("9940000102");
         var (orgId, eventId, ttId) = await TieredEventAsync(owner, "narrow");
 
-        var res = await owner.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}/ticket-types/{ttId}", new
+        var res = await PatchTicketAsync(owner, orgId, eventId, ttId, new
         {
             name = "Team Entry", pricePaise = TwoPrice, pricingUnit = "PerGroup", registrationMode = "Group",
             groupMin = 2, groupMax = 3, quantity = 100,

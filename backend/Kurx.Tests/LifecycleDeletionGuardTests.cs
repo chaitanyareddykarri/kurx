@@ -294,7 +294,11 @@ public class LifecycleDeletionGuardTests : IClassFixture<KurxApiFactory>
                 .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, OrderStatus.Refunded));
         }
 
-        var res = await owner.DeleteAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types/{ttId}");
+        // D-388 — this suite asserts the SOLD-tickets guard, so the live-edit guard must not answer first:
+        // `change_request_required` would mask whether `tickets_already_sold` still fires at all, which is
+        // the whole point of the test. Suspended for the delete so the real guard is the one that speaks.
+        var res = await _factory.WithLiveStatusSuspendedAsync(id, () =>
+            owner.DeleteAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types/{ttId}"));
         Assert.False(res.IsSuccessStatusCode);
         Assert.Equal("tickets_already_sold", (await Json(res)).GetProperty("error").GetString());
 
@@ -311,6 +315,7 @@ public class LifecycleDeletionGuardTests : IClassFixture<KurxApiFactory>
         var ttId = await SeedTicketTypeAsync(id, 50_000);
 
         Assert.Equal(HttpStatusCode.OK,
-            (await owner.DeleteAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types/{ttId}")).StatusCode);
+            (await _factory.WithLiveStatusSuspendedAsync(id, () =>
+                owner.DeleteAsync($"/v1/orgs/{orgId}/events/{id}/ticket-types/{ttId}"))).StatusCode);
     }
 }

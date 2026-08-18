@@ -126,9 +126,10 @@ class EventManageRemoteDataSource {
             (res.data as Map).cast<String, dynamic>());
       }, endpoint: 'GET /v1/events/{eventId}');
 
-  /// Creates a draft event — `POST /v1/events` (D-267). [representingOrgId] null means **Personal**:
-  /// the server files it under the caller's own "just me" organisation. No organisation is required to
-  /// reach this call.
+  /// Creates a draft event — `POST /v1/events` (D-267). [representingOrgId] is **required**: null is
+  /// `representation_required`, not "Personal" (D-379 retired self-representation). It stays nullable
+  /// here because the wizard holds it as "not answered yet"; the Representing step is what makes it
+  /// non-null, registering the institution in place if the caller represents none (D-389).
   ///
   /// Returns the created event's **id** rather than a parsed row: the create reply is the full
   /// `ToEventJson` detail shape, which is far wider than [EventManageDto] (the list shape), and

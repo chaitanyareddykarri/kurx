@@ -19,6 +19,7 @@ public sealed record AdminEventResponse(
     Guid EventId,
     Guid RepresentingOrgId,
     Guid OrgId,
+    string OrgName,
     string Title,
     string Slug,
     string Status,

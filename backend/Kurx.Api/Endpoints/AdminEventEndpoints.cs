@@ -286,7 +286,8 @@ public static class AdminEventEndpoints
     private static AdminEventResponse ToAdminJson(AdminEventView e) => new(
         e.EventId,
         e.RepresentingOrgId,
-        e.RepresentingOrgId,
+        e.RepresentingOrgId,                   // DEPRECATED (D-273a)
+        e.OrgName,
         e.Title,
         e.Slug,
         e.Status.ToLowerInvariant(),

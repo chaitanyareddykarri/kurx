@@ -364,4 +364,106 @@ public class AdminEventManagementTests : IClassFixture<KurxApiFactory>
         Assert.Contains("Emergency Edit Original", auditRow.DetailsJson);   // Before snapshot
         Assert.Contains("Emergency Edit Applied", auditRow.DetailsJson);    // After snapshot
     }
+
+    // ── The organization name is part of the admin event contract ──────────────────
+    //
+    // `AdminEventResponse` was written without an `OrgName` member, and `ToAdminJson` filled the vacated
+    // positional slot with a second copy of `RepresentingOrgId`. Both are Guids, so the constructor
+    // type-checked and the whole pipeline stayed green: `AdminEventView.OrgName` was populated by the
+    // query and then read by nobody. `org_name` simply stopped existing on the wire, and the admin
+    // console — whose schema requires it as a non-nullable string — rejected every row and rendered its
+    // error state instead of the events table.
+    //
+    // Asserted over HTTP against the real endpoint rather than by constructing the record: the bug lived
+    // in the mapping, so a test that builds an `AdminEventResponse` itself would have passed throughout.
+    // The moderation actions are covered in the same test because all seven routes share this one mapper,
+    // which is the reason a single omission broke the entire surface at once.
+
+    [Fact]
+    public async Task Admin_event_list_and_every_moderation_action_carry_the_organization_name()
+    {
+        var reviewer = await ReviewerAsync("9960000030");
+        var (_, orgId, eventId) = await PublishedEventAsync("9960000031", "Org Name Contract");
+
+        string expected;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            expected = await db.Organizations.Where(o => o.Id == orgId).Select(o => o.Name).FirstAsync();
+        }
+
+        var list = await Json(await reviewer.GetAsync("/v1/admin/events?limit=100"));
+        var row = list.GetProperty("items").EnumerateArray()
+            .First(e => e.GetProperty("event_id").GetGuid() == eventId);
+        Assert.True(row.TryGetProperty("org_name", out var listed), "the list row has no org_name at all");
+        Assert.Equal(JsonValueKind.String, listed.ValueKind);   // not absent, not null
+        Assert.Equal(expected, listed.GetString());
+
+        // `org_id` stays the deprecated D-273a alias for the representation, beside the name rather than
+        // instead of it — the pairing the console reads.
+        Assert.Equal(orgId, row.GetProperty("representing_org_id").GetGuid());
+        Assert.Equal(orgId, row.GetProperty("org_id").GetGuid());
+
+        // Paired so the event is returned to its original state; each response is the same DTO.
+        (string Route, object Body)[] actions =
+        [
+            ("feature", new { }), ("unfeature", new { }),
+            ("suspend", new { reason = "contract check" }), ("unsuspend", new { }),
+            ("hide", new { reason = "contract check" }), ("unhide", new { }),
+        ];
+        foreach (var (route, body) in actions)
+        {
+            var res = await reviewer.PostAsJsonAsync($"/v1/admin/events/{eventId}/{route}", body);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+            var acted = await Json(res);
+            Assert.True(acted.TryGetProperty("org_name", out var name), $"{route} response has no org_name");
+            Assert.Equal(JsonValueKind.String, name.ValueKind);
+            Assert.Equal(expected, name.GetString());
+        }
+    }
+
+    /// <summary>A self-represented event resolves its name through the same join, because D-268's
+    /// self-representation row is a real `organizations` row carrying the person's name. Pinned separately
+    /// so that `IsPersonal` can never reintroduce the missing field for the one shape that has no
+    /// institution behind it — the case an admin is most likely to meet and least likely to have tested.</summary>
+    [Fact]
+    public async Task A_self_represented_event_carries_the_name_of_its_representation_row()
+    {
+        var reviewer = await ReviewerAsync("9960000032");
+        var (_, userId) = await LoginAsync("9960000033");
+
+        var expected = "AEM Self Row " + Guid.NewGuid().ToString("N")[..6];
+        Guid eventId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            var personal = new Organization
+            {
+                Name = expected,
+                Slug = "self-" + Guid.NewGuid().ToString("N")[..12],
+                IsPersonal = true,
+            };
+            personal.CanonicalOrgId = personal.Id;
+            db.Organizations.Add(personal);
+            var ev = new Event
+            {
+                RepresentingOrgId = personal.Id,
+                Title = "AEM Self Represented",
+                Slug = "aem-self-" + Guid.NewGuid().ToString("N")[..8],
+                ShortCode = Guid.NewGuid().ToString("N")[..8],
+                CategoryId = _categoryId,
+                Status = EventStatus.Published,
+                CreatedBy = userId,
+            };
+            db.Events.Add(ev);
+            await db.SaveChangesAsync();
+            eventId = ev.Id;
+        }
+
+        var list = await Json(await reviewer.GetAsync("/v1/admin/events?limit=100"));
+        var row = list.GetProperty("items").EnumerateArray()
+            .First(e => e.GetProperty("event_id").GetGuid() == eventId);
+        Assert.Equal(JsonValueKind.String, row.GetProperty("org_name").ValueKind);
+        Assert.Equal(expected, row.GetProperty("org_name").GetString());
+    }
 }

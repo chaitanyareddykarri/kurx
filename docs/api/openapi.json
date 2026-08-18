@@ -447,6 +447,9 @@
             "format": "uuid",
             "type": "string"
           },
+          "org_name": {
+            "type": "string"
+          },
           "org_verification": {
             "type": "string"
           },
@@ -510,6 +513,7 @@
           "is_paid",
           "is_suspended",
           "org_id",
+          "org_name",
           "org_verification",
           "registrations_count",
           "representing_org_id",

@@ -32,6 +32,17 @@ public partial class OrgService(KurxDbContext db, IKycProvider kyc, IRouteClient
     public async Task<ServiceResult<OrgDetail>> CreateAsync(Guid userId, string name, OrganizationType type,
         string? legalName, string? primaryDomain, string? bio, string? linksJson, bool isPersonal = false, CancellationToken ct = default)
     {
+        /*
+         * D-379 — a personal organization can no longer be created.
+         *
+         * The parameter survives so the signature and every caller stay unchanged, but the only value it
+         * may now carry is `false`. `POST /v1/orgs { personal: true }` was a live route: the creation
+         * guard in `EventService` already refuses to REPRESENT such a row, so this closes no hole on its
+         * own — but rule 13 is that none may be created, and an endpoint that mints the one row type the
+         * platform forbids is a hidden path whether or not today's guards happen to cover it.
+         */
+        if (isPersonal) return ServiceResult<OrgDetail>.Fail("personal_org_not_supported");
+
         name = name.Trim();
         if (name.Length is < 2 or > 120)
             return ServiceResult<OrgDetail>.Fail("invalid_name");

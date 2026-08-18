@@ -105,118 +105,216 @@ void main() {
   });
 
   group('validateEventPlace', () {
-    test('asks nothing of an in-person event', () {
-      expect(validateEventPlace(eventMode: 'Offline', onlineUrl: '', mapsUrl: ''), isEmpty);
+    // D-378 - every field the Mode asks for is required. Helpers keep each test to the ONE field it
+    // is about, so a rule that silently stops firing cannot hide behind a neighbour's error.
+    Map<String, String> offline({
+      String building = 'Block A',
+      String floor = '2',
+      String room = '204',
+      String mapsUrl = 'https://maps.example.com/x',
+    }) =>
+        validateEventPlace(
+          eventMode: 'Offline',
+          onlineUrl: '',
+          mapsUrl: mapsUrl,
+          building: building,
+          floor: floor,
+          room: room,
+          meetingPlatform: '',
+          meetingPassword: '',
+        );
+
+    Map<String, String> online({
+      String mode = 'Online',
+      String onlineUrl = 'https://meet.example.com/x',
+      String platform = 'Meet',
+      String password = 'abc123',
+    }) =>
+        validateEventPlace(
+          eventMode: mode,
+          onlineUrl: onlineUrl,
+          mapsUrl: '',
+          building: '',
+          floor: '',
+          room: '',
+          meetingPlatform: platform,
+          meetingPassword: password,
+        );
+
+    test('accepts a fully answered in-person event', () => expect(offline(), isEmpty));
+    test('accepts a fully answered online event', () => expect(online(), isEmpty));
+
+    test('requires each physical field of an in-person event', () {
+      expect(offline(building: '')['building'], 'Building is required');
+      expect(offline(floor: '  ')['floor'], 'Floor is required');
+      expect(offline(room: '')['room'], 'Room is required');
+      expect(offline(mapsUrl: '')['mapsUrl'], 'Google Maps link is required');
     });
 
-    test('requires a join link once the event is Online or Hybrid', () {
-      // `ValidateMode` refuses `online_url_required`. This step had NO clause at all, so choosing
-      // Online and leaving the link blank walked four more steps before anything objected.
+    test('asks an in-person event for NOTHING online, and vice versa', () {
+      // The conditional is the whole rule: a join link on an in-person event is not missing, it does
+      // not exist. Requiring both groups unconditionally would deadlock event creation.
+      expect(offline().containsKey('onlineUrl'), isFalse);
+      expect(offline().containsKey('meetingPlatform'), isFalse);
+      expect(online().containsKey('building'), isFalse);
+      expect(online().containsKey('mapsUrl'), isFalse);
+    });
+
+    test('requires the join link, platform and password once Online or Hybrid', () {
       for (final mode in ['Online', 'Hybrid']) {
-        expect(validateEventPlace(eventMode: mode, onlineUrl: '', mapsUrl: '')['onlineUrl'],
+        expect(online(mode: mode, onlineUrl: '')['onlineUrl'],
             'A join link is required for an online or hybrid event');
+        expect(online(mode: mode, platform: '')['meetingPlatform'], 'Platform is required');
+        expect(online(mode: mode, password: '')['meetingPassword'], 'Meeting password is required');
       }
     });
 
-    test('stops requiring it the moment the mode goes back to in-person', () {
-      expect(validateEventPlace(eventMode: 'Offline', onlineUrl: '', mapsUrl: ''), isEmpty);
+    test('a Hybrid event is asked for BOTH groups', () {
+      final errors = validateEventPlace(
+        eventMode: 'Hybrid',
+        onlineUrl: '',
+        mapsUrl: '',
+        building: '',
+        floor: '',
+        room: '',
+        meetingPlatform: '',
+        meetingPassword: '',
+      );
+      expect(errors['building'], isNotNull);
+      expect(errors['onlineUrl'], isNotNull);
     });
 
-    test('refuses a link with no scheme', () {
-      expect(
-        validateEventPlace(eventMode: 'Online', onlineUrl: 'meet.example.com', mapsUrl: '')['onlineUrl'],
-        'Join link must be a full URL, including https://',
-      );
-    });
-
-    test('accepts a full URL', () {
-      expect(
-        validateEventPlace(
-            eventMode: 'Online', onlineUrl: 'https://meet.example.com/x', mapsUrl: ''),
-        isEmpty,
-      );
+    test('refuses links with no scheme', () {
+      expect(online(onlineUrl: 'meet.example.com')['onlineUrl'],
+          'Join link must be a full URL, including https://');
+      expect(offline(mapsUrl: 'maps.example.com')['mapsUrl'],
+          'Google Maps link must be a full URL, including https://');
     });
   });
 
   group('validateEventWindows', () {
-    test('accepts an untouched step — every window is optional', () {
+    Map<String, String> windows({
+      DateTime? regOpens,
+      DateTime? regCloses,
+      DateTime? checkinOpens,
+      DateTime? checkinCloses,
+      DateTime? result,
+      DateTime? cert,
+      bool isPrivate = false,
+    }) =>
+        validateEventWindows(
+          registrationOpensAt: regOpens ?? _at(const Duration(days: 1)),
+          registrationClosesAt: regCloses ?? _at(const Duration(days: 2)),
+          checkinOpensAt: checkinOpens ?? _at(const Duration(days: 3)),
+          checkinClosesAt: checkinCloses ?? _at(const Duration(days: 4)),
+          resultDate: result ?? _at(const Duration(days: 5)),
+          certificateReleaseAt: cert ?? _at(const Duration(days: 6)),
+          isPrivate: isPrivate,
+        );
+
+    test('accepts a fully answered step', () => expect(windows(), isEmpty));
+
+    test('D-378 - every window is required', () {
       expect(
         validateEventWindows(
             registrationOpensAt: null,
             registrationClosesAt: null,
             checkinOpensAt: null,
             checkinClosesAt: null),
-        isEmpty,
+        {
+          'registrationOpensAt': 'Registration opening time is required',
+          'registrationClosesAt': 'Registration closing time is required',
+          'checkinOpensAt': 'Check-in opening time is required',
+          'checkinClosesAt': 'Check-in closing time is required',
+          'resultDate': 'Results announcement time is required',
+          'certificateReleaseAt': 'Certificate release time is required',
+        },
       );
     });
 
-    test('leaves a one-ended window alone, because that is a legitimate open-ended window', () {
-      expect(
-        validateEventWindows(
-            registrationOpensAt: _at(const Duration(days: 1)),
-            registrationClosesAt: null,
-            checkinOpensAt: null,
-            checkinClosesAt: null),
-        isEmpty,
-      );
+    test('a Private event is not asked for results or certificates it never sees', () {
+      expect(windows(result: null, cert: null, isPrivate: true), isEmpty);
     });
 
-    test('orders each pair once both ends are given', () {
+    test('still orders each pair', () {
       expect(
-        validateEventWindows(
-            registrationOpensAt: _at(const Duration(days: 5)),
-            registrationClosesAt: _at(const Duration(days: 4)),
-            checkinOpensAt: null,
-            checkinClosesAt: null)['registrationClosesAt'],
+        windows(
+            regOpens: _at(const Duration(days: 5)),
+            regCloses: _at(const Duration(days: 4)))['registrationClosesAt'],
         'Registration must close after it opens',
       );
       final same = _at(const Duration(days: 5));
-      expect(
-        validateEventWindows(
-            registrationOpensAt: null,
-            registrationClosesAt: null,
-            checkinOpensAt: same,
-            checkinClosesAt: same)['checkinClosesAt'],
-        'Check-in must close after it opens',
-      );
+      expect(windows(checkinOpens: same, checkinCloses: same)['checkinClosesAt'],
+          'Check-in must close after it opens');
     });
   });
 
   group('validateEventEligibility', () {
-    test('accepts an event with no restrictions, which is the normal case', () {
-      expect(validateEventEligibility(minAge: '', maxAge: '', maxTeams: ''), isEmpty);
+    test('accepts a fully answered step', () {
+      expect(validateEventEligibility(minAge: '16', maxAge: '30', maxTeams: '40'), isEmpty);
+    });
+
+    test('D-378 - ages and the team cap are required', () {
+      expect(validateEventEligibility(minAge: '', maxAge: '', maxTeams: ''), {
+        'minAge': 'Minimum age is required',
+        'maxAge': 'Maximum age is required',
+        'maxTeams': 'Maximum teams is required',
+      });
+    });
+
+    test('a Private event is not asked for the team cap it never sees', () {
+      expect(validateEventEligibility(minAge: '16', maxAge: '30', maxTeams: '', isPrivate: true),
+          isEmpty);
     });
 
     test('refuses a maximum age below the minimum (invalid_age_range)', () {
-      expect(validateEventEligibility(minAge: '25', maxAge: '18', maxTeams: '')['maxAge'],
+      expect(validateEventEligibility(minAge: '25', maxAge: '18', maxTeams: '4')['maxAge'],
           'Maximum age must be at least the minimum age');
     });
 
-    test('accepts a single bound with no partner', () {
-      expect(validateEventEligibility(minAge: '18', maxAge: '', maxTeams: ''), isEmpty);
-    });
-
     test('refuses a team cap of zero, which the server would silently discard', () {
-      // `ApplyFieldGroups` does `MaxTeams <= 0 ? null` — so this used to mean "no cap", with no warning.
-      expect(validateEventEligibility(minAge: '', maxAge: '', maxTeams: '0')['maxTeams'],
+      // ApplyFieldGroups does `MaxTeams <= 0 ? null` - so this used to mean "no cap", silently.
+      expect(validateEventEligibility(minAge: '16', maxAge: '30', maxTeams: '0')['maxTeams'],
           'Maximum teams must be greater than 0');
     });
   });
 
   group('validateEventLegal', () {
-    test('accepts an untouched step', () {
-      expect(validateEventLegal(termsUrl: '', requiresConsent: false, consentText: ''), isEmpty);
+    Map<String, String> legal({
+      String termsUrl = 'https://example.com/terms',
+      String coc = 'Be kind',
+      String refund = 'No refunds',
+      String cancellation = 'Cancel anytime',
+      bool requiresConsent = false,
+      String consentText = '',
+    }) =>
+        validateEventLegal(
+          termsUrl: termsUrl,
+          requiresConsent: requiresConsent,
+          consentText: consentText,
+          codeOfConduct: coc,
+          refundPolicy: refund,
+          cancellationPolicy: cancellation,
+        );
+
+    test('accepts a fully answered step', () => expect(legal(), isEmpty));
+
+    test('D-378 - the four policy fields are required', () {
+      expect(legal(termsUrl: '')['termsUrl'], 'Terms link is required');
+      expect(legal(coc: '  ')['codeOfConduct'], 'Code of conduct is required');
+      expect(legal(refund: '')['refundPolicy'], 'Refund policy is required');
+      expect(legal(cancellation: '')['cancellationPolicy'], 'Cancellation policy is required');
+    });
+
+    test('refuses a terms link with no scheme', () {
+      expect(legal(termsUrl: 'example.com/terms')['termsUrl'],
+          'Terms link must be a full URL, including https://');
     });
 
     test('makes the consent text required only once consent is switched on', () {
-      expect(
-          validateEventLegal(termsUrl: '', requiresConsent: true, consentText: '')['consentText'],
-          isNotNull);
-      expect(
-          validateEventLegal(termsUrl: '', requiresConsent: true, consentText: '  ')['consentText'],
-          isNotNull);
-      expect(validateEventLegal(termsUrl: '', requiresConsent: true, consentText: 'I agree'),
-          isEmpty);
+      expect(legal(requiresConsent: true, consentText: '')['consentText'], isNotNull);
+      expect(legal(requiresConsent: true, consentText: '  ')['consentText'], isNotNull);
+      expect(legal(requiresConsent: true, consentText: 'I agree'), isEmpty);
     });
   });
 

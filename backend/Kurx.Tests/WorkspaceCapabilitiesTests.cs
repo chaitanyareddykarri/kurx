@@ -197,7 +197,7 @@ public class WorkspaceCapabilitiesTests : IClassFixture<KurxApiFactory>
     /// and on its own (D-268), so the write endpoints were accepting it the whole time. The last
     /// assertion is the one that matters — advertised and enforced must agree.</para></summary>
     [Fact]
-    public async Task Personal_representation_can_run_its_own_event()
+    public async Task A_creator_can_run_their_own_event_from_the_workspace()
     {
         var (client, _) = await UserAsync("9710000009");
 
@@ -222,7 +222,10 @@ public class WorkspaceCapabilitiesTests : IClassFixture<KurxApiFactory>
                 .Select(c => c.Id).FirstAsync();
         }
 
-        var created = await Json(await client.CreateEventAsync(null, new
+        // D-379 — the subject is what the WORKSPACE offers an event's creator, which is unchanged. It
+        // reached that state via the personal path; it now reaches it under a real organization.
+        var workspaceOrgId = _factory.SeedVerifiedOrgForClient(client, "Workspace Org " + Guid.NewGuid().ToString("N")[..6]);
+        var created = await Json(await client.CreateEventAsync(workspaceOrgId, new
         {
             title = "My Own Workshop",
             typeId = privateTypeId,
@@ -234,17 +237,19 @@ public class WorkspaceCapabilitiesTests : IClassFixture<KurxApiFactory>
             endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
         }));
         var eventId = created.GetProperty("id").GetGuid();
-        var personalOrgId = created.GetProperty("representing_org_id").GetGuid();
+        var representedOrgId = created.GetProperty("representing_org_id").GetGuid();
 
-        var res = await client.GetAsync($"/v1/orgs/{personalOrgId}/workspace-capabilities");
+        var res = await client.GetAsync($"/v1/orgs/{representedOrgId}/workspace-capabilities");
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var caps = await Json(res);
 
         var rep = caps.GetProperty("representation");
-        Assert.Equal("personal", rep.GetProperty("kind").GetString());
-        // Still no organization identity: D-268 keeps `authority` null for a personal representation,
-        // which is exactly why the client must read `permissions` rather than infer from a role.
-        Assert.Equal(JsonValueKind.Null, rep.GetProperty("authority").ValueKind);
+        // D-379 — the creator still owns the event; it simply represents a real organization now.
+        Assert.Equal("organization", rep.GetProperty("kind").GetString());
+        // D-379 — the creator now holds a real seat in the organization they represent, so `authority`
+        // is populated. The point the original assertion protected still stands and is asserted below:
+        // the client reads `permissions`, never inferring capability from the role string.
+        Assert.False(string.IsNullOrWhiteSpace(rep.GetProperty("authority").GetString()));
 
         Assert.Contains("create", Perm(caps, "tickets"));
         Assert.Contains("update", Perm(caps, "tickets"));
@@ -252,15 +257,20 @@ public class WorkspaceCapabilitiesTests : IClassFixture<KurxApiFactory>
         Assert.Contains("create", Perm(caps, "announcements"));
         Assert.Contains("manage", Perm(caps, "attendees"));
 
-        // Unchanged by this fix, and asserted so it stays that way: representing yourself is not a
-        // route to the paid-event gate, which hangs off the user's own trust level.
+        /*
+         * The paid-event gate still hangs off the USER's own trust level, not off representing an
+         * organization — that is the half worth keeping and it is unchanged.
+         *
+         * The wallet assertion is retired with the path it described. It read `Assert.Empty` because a
+         * self-representation row carried no seat worth anything; the creator now holds a real Owner seat
+         * in a real organization, so wallet permissions follow from that seat. Asserting emptiness here
+         * would be asserting that D-379 did not happen.
+         */
         Assert.False(caps.GetProperty("trust").GetProperty("can_host_paid_events").GetBoolean());
-        Assert.Empty(Perm(caps, "wallet"));
-        Assert.DoesNotContain("finance", Workspaces(caps));
 
         // The point of the whole fix: what the matrix advertises is what the endpoint accepts.
         var ticketType = await client.PostAsJsonAsync(
-            $"/v1/orgs/{personalOrgId}/events/{eventId}/ticket-types",
+            $"/v1/orgs/{representedOrgId}/events/{eventId}/ticket-types",
             new
             {
                 name = "General",

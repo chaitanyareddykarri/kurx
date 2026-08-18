@@ -65,7 +65,13 @@ public static class PolicyResolver
     /// <param name="RepresentsInstitution">The event represents a real organization. False for a
     /// self-represented event: "Personal" is a persistence row, never a domain organization (D-268), so
     /// there is no third party whose consent could be required.</param>
-    /// <param name="HasApprovedAuthorization">An approved <c>EventAuthorization</c> exists for it.</param>
+    /// <param name="HasAuthorization">An <c>EventAuthorization</c> EXISTS for this event.
+    ///
+    /// <para>Existence, deliberately — not <c>Status == Approved</c>. There is ONE admin review and ONE
+    /// approval decision: the letter is EVIDENCE the reviewer weighs inside that review, never a second
+    /// gate they must clear first. Reading the evidence's own status here created exactly that second
+    /// gate — an event could be Approved and still refuse to publish because nobody had separately
+    /// approved its letter, which is a dead end the creator cannot act on.</para></param>
     /// <param name="ArchetypeRequiresRepresentation">D12 §6 marks this archetype's Representation column
     /// Required (A7 Recruitment · A12 Festival · A13 Ceremonial).</param>
     /// <param name="ArchetypeRequiresFinancialReview">D-266 M7 — D12 §6 marks this archetype's Review cell
@@ -76,13 +82,13 @@ public static class PolicyResolver
     /// by a human against documents a stubbed rasterizer produces: enforcing it in dev costs a manual
     /// approval per test event and establishes nothing about a real institution.
     ///
-    /// <para>Carried as its OWN field rather than folded into <paramref name="HasApprovedAuthorization"/>,
+    /// <para>Carried as its OWN field rather than folded into <paramref name="HasAuthorization"/>,
     /// which stays a fact about what is on file. A bypass may open a gate; it must never forge the
     /// evidence — the same rule D-323 holds for <c>IdentityVerified</c>. The reviewer checklist and the
     /// organiser's readiness page keep reporting the truth while the blocker is lifted.</para></param>
     public sealed record RepresentationFacts(
         bool RepresentsInstitution,
-        bool HasApprovedAuthorization,
+        bool HasAuthorization,
         bool ArchetypeRequiresRepresentation,
         bool ArchetypeRequiresFinancialReview = false,
         bool FinancialReviewPassed = false,
@@ -154,32 +160,34 @@ public static class PolicyResolver
                      or EventRegistrationPolicy.AlumniOnly)
             requirements.Add("eligibility_criteria_required");
 
-        // Step 7 — D-266 M5, D12 §6 "Representation". A Private product represents nobody, so neither rule
-        // touches it. Emitting these as violations (not requirements) is what makes them publish blockers:
-        // the gate, the organiser checklist and the reviewer checklist all project this one list, so there
-        // is no second place an authorization rule could be written and then drift.
-        if (product == EventProduct.Public && representation is { } rep)
+        /*
+         * Step 7 — Representation. D-266 M5, D12 §6, rewritten by D-379.
+         *
+         * Two conditions were removed, and both were the reason an event could go live unrepresented:
+         *
+         *   · `product == EventProduct.Public` — a Private product "represents nobody" was the old
+         *     reading. It represents somebody now; visibility never decided who is answerable.
+         *   · `rep.RepresentsInstitution` — authorization was demanded only of institutional events, so
+         *     everything else published with no letter behind it.
+         *
+         * `AuthorizationBypassed` is also gone from both arms. The dev bypass exists because KYC and
+         * consent are mock-backed (D-323/D-352); representation is neither, and an environment that needs
+         * a represented event seeds a real test organization.
+         *
+         * Emitted as violations rather than requirements is what makes them publish BLOCKERS: the gate,
+         * the organiser checklist and the reviewer checklist are three projections of this one list, so
+         * there is no second place an authorization rule could be written and then drift.
+         */
+        if (representation is { } rep)
         {
-            // D-352 — the bypass lifts the two consent blockers, and only those. It does not touch the
-            // product rules above, the eligibility requirements, or the financial review below: those are
-            // real logic over real inputs, and switching them off would test less rather than more.
-            if (rep.RepresentsInstitution)
-            {
-                if (!rep.HasApprovedAuthorization && !rep.AuthorizationBypassed)
-                    violations.Add("event_authorization_required");
-            }
-            else
-            {
-                // D-353 — a Public event must represent a real organization, archetype or not. This used to
-                // fire only for archetypes that declared `RequiresRepresentation`, which left every other
-                // public archetype publishable with no institution answerable for it. The creation gate
-                // refuses the same shape up front; this is the twin that catches an event which reached
-                // Draft before the rule existed, or whose representation was withdrawn afterwards.
-                //
-                // Bypassable with the rest of the consent blockers: outside Production nobody has an
-                // admin-approved org to represent, so enforcing it would make public events untestable.
-                if (!rep.AuthorizationBypassed) violations.Add("representation_required");
-            }
+            // `RepresentsInstitution` is already "represents a REAL organization" — false for a
+            // self-representation row. Reused rather than renamed: the meaning is unchanged, only the
+            // set of events it is demanded of.
+            if (!rep.RepresentsInstitution) violations.Add("representation_required");
+            // Exists, not approved. The reviewer still SEES this on their checklist (the checklist is a
+            // projection of this list), so it cannot be skipped — but working it is part of the one
+            // review, not a prerequisite decision before it.
+            if (!rep.HasAuthorization) violations.Add("event_authorization_required");
 
             // Step 8 — D-266 M7. A fundraiser solicits money for a cause, so FinanceOps clears the money
             // path before it goes live. Keyed on the archetype, not on "is it paid": the risk is soliciting

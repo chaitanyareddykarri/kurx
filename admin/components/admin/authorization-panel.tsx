@@ -73,7 +73,9 @@ export function AuthorizationPanel({ eventId, authorization }: { eventId: string
     return (
       <p className="mt-3 flex items-center gap-1.5 text-xs text-muted">
         <FileWarning size={12} />
-        No institutional authorization filed. A Public event representing an organization cannot publish without one.
+        No authorization filed for this event. Every event carries its own (D-379) — this one cannot be
+        submitted for review or published until its organization&apos;s authorization is filed and approved.
+        An authorization approved for another event never carries over.
       </p>
     );
   }

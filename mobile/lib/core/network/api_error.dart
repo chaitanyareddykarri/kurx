@@ -198,6 +198,13 @@ class ApiError implements Exception {
         'Publish the results before marking this event completed.',
     'missing_owner_unit':
         "This event isn't attached to a team yet. Set one before publishing.",
+    // D-378 — refused at submit_review, so the wording says "submitting", not "publishing": the
+    // organiser still holds a Draft they can fix and resubmit. Must match `problem-copy.ts` word for
+    // word; `error-copy.test.ts` compares the two maps and fails on any difference.
+    'missing_tagline': 'Add a tagline before submitting this event for review.',
+    'missing_short_description':
+        'Add a short description before submitting this event for review.',
+    'missing_rules': 'Add the rules before submitting this event for review.',
   };
 
   @override

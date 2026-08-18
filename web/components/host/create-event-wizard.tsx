@@ -316,10 +316,14 @@ export function CreateEventWizard({
     ? details.startsAt
     : nowLocal;
 
+  // D-379 — computed here so Step 1 can merge it in; the Authorization step no longer exists.
+  const authorizationErrors: Record<string, string> = validateAuthorization(authorization, letterFile !== null);
   const contentErrors = validateContent(content);
   const placeErrors = validatePlace(place);
-  const windowErrors = validateWindows(windows);
-  const eligibilityErrors = validateEligibility(eligibility);
+  // D-378 — `isPrivate` is passed because a Private event is never SHOWN the results/certificate dates
+  // or the team cap, and a step must never wait on a control that is not on the page.
+  const windowErrors = validateWindows(windows, isPrivate);
+  const eligibilityErrors = validateEligibility(eligibility, isPrivate);
   const legalErrors = validateLegal(legal);
   const ticketErrors = validateTicket(ticket, pricing);
 
@@ -337,9 +341,21 @@ export function CreateEventWizard({
    * server refuses it too — this is presentation over `CreateAsync`'s `representation_required`.
    */
   const selectableReps = representations.filter((r) => r.can_back_paid_event ?? r.is_verified);
-  const representingValid = product === "Private" || !requiresRepresentation
-    ? true
-    : selectableReps.some((r) => r.organization_id === representingOrgId);
+  /*
+   * D-379 — every event represents a real organization. Both escapes are gone:
+   *
+   *   · `product === "Private"` — a private event represents somebody too. Visibility never decided
+   *     who is answerable for an event.
+   *   · `!requiresRepresentation` — the dev bypass. It lifts the identity proofs because those are
+   *     mock-backed; whether an event names an organization is not, and an environment that needs a
+   *     represented event seeds a real test organization.
+   *
+   * The organization must be one the caller may actually act for: `selectableReps` is already filtered
+   * to verified/paid-capable representations, so a PENDING one cannot satisfy this. The server refuses
+   * the same shape with `representation_required` — this is presentation over that rule, never a
+   * substitute for it.
+   */
+  const representingValid = selectableReps.some((r) => r.organization_id === representingOrgId);
 
   /*
    * D-351 — institutional authorization, asked HERE rather than on a page after creation.
@@ -353,9 +369,25 @@ export function CreateEventWizard({
    * The step is appended rather than inserted so every existing index-keyed rule below is untouched;
    * it also reads correctly last, since it is the consent that accompanies a finished proposal.
    */
-  const needsAuthorization = product === "Public" && representingOrgId !== null;
-  const steps = needsAuthorization ? [...STEPS, "Authorization"] : STEPS;
-  const authStep = steps.length - 1;
+  /*
+   * D-379 — authorization is required for EVERY event, so the step is always present.
+   *
+   * Was `product === "Public" && representingOrgId !== null`: a private event carried no letter, and
+   * neither did any event created before an organization was picked. Both arms are gone — the letter
+   * proves "this representative may run THIS event for this organization", which a wedding needs as much
+   * as a conference. `PolicyResolver` raises `event_authorization_required` unconditionally now, and
+   * `submit_review` refuses without it, so a conditional step here would only hide the refusal until the
+   * end of the wizard.
+   */
+  /*
+   * D-379 — authorization is collected on Step 1 (Representing), not as a step of its own.
+   *
+   * It was `product === "Public" && representingOrgId !== null`, appended after Legal. Now every event
+   * carries a letter and it is asked with the organization it authorises. The flag survives only to
+   * drive the upload after create.
+   */
+  const needsAuthorization = true;
+  const steps = STEPS;
 
   /*
    * ── The wizard's one validation mechanism ────────────────────────────────────────────────────────
@@ -382,14 +414,27 @@ export function CreateEventWizard({
    * than by remembering to invalidate something.
    */
   const stepErrors: Record<string, string>[] = [
-    // 0 · Representing — D-353: a Public event must name a verified organization; Private asks nothing.
-    representingValid
-      ? {}
-      : {
-          representingOrgId: selectableReps.length > 0
-            ? "Choose the organization you are hosting this event on behalf of"
-            : "A public event has to represent an organization Kurx has verified. Request representation to continue"
-        },
+    /*
+     * 0 · Representing — D-379. The organization AND this event's own authorization, in one step.
+     *
+     * The authorization used to be a separate step appended after Legal, asked only of public
+     * institutional events. It is asked here, of every event, because the two answers are one question:
+     * "who is this event for, and who says you may run it for them?" Splitting them let an organiser
+     * walk ten steps before learning the second half was required.
+     *
+     * Both halves gate Continue together — `authorizationErrors` is merged in rather than kept in a
+     * step of its own, so `canNext` and `blockedReason` need no special case for it.
+     */
+    {
+      ...(representingValid
+        ? {}
+        : {
+            representingOrgId: selectableReps.length > 0
+              ? "Choose the organization you are hosting this event on behalf of"
+              : "Every event must represent an organization Kurx has verified. Request representation to continue"
+          }),
+      ...authorizationErrors
+    },
     // 1 · Visibility — one of a server-filtered list, always preselected, so this can only fail if the
     // value was tampered with.
     visibilityFor(product).some((v) => v.value === visibility) ? {} : { visibility: "Choose who can find this event" },
@@ -425,9 +470,7 @@ export function CreateEventWizard({
     // 9 · Eligibility — all optional; the values, once given, have ranges.
     eligibilityErrors,
     // 10 · Legal — all optional except the consent text, which requiring consent makes required.
-    legalErrors,
-    // 11 · Authorization (present only when the event represents an institution) — D-351.
-    needsAuthorization ? validateAuthorization(authorization, letterFile !== null) : {}
+    legalErrors
   ];
 
   /// On-screen order per step, so the spoken reason is always the topmost unmet requirement.
@@ -443,7 +486,10 @@ export function CreateEventWizard({
   const canNext = Object.keys(currentErrors).length === 0;
   /// The Authorization step's own result, for rendering. Read from `stepErrors` rather than recomputed,
   /// so the fields and the button can never disagree.
-  const authErrors: Record<string, string> = stepErrors[STEP.authorization] ?? {};
+  // D-379 — the authorization now lives on Step 1, so its per-field errors come from the same result
+  // that gates Continue there. Read from `authorizationErrors` directly rather than from a step slot
+  // that no longer exists.
+  const authErrors: Record<string, string> = authorizationErrors;
 
   /*
    * Why the button is disabled, in words.
@@ -682,15 +728,11 @@ export function CreateEventWizard({
       */}
       {step === STEP.representing ? (
         <div className="space-y-3">
-          {product === "Private" ? (
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <p className="text-sm text-text">Hosted by you</p>
-              <p className="mt-1 text-xs text-muted">
-                A private event is invitation-only, never appears in search or on Home, and can&apos;t
-                sell tickets — so there&apos;s no organization to name and nothing to verify.
-              </p>
-            </div>
-          ) : selectableReps.length > 0 ? (
+          {/* D-379 — the Private branch is gone. It rendered "Hosted by you … there's no organization to
+              name and nothing to verify", which is the rule this decision retires: a private event
+              represents somebody too, and visibility never decided who is answerable for an event. Every
+              product now picks an organization from the same list. */}
+          {selectableReps.length > 0 ? (
             <>
               <p className="text-sm text-muted">
                 Select the organization you are authorized to represent for this event.
@@ -714,21 +756,13 @@ export function CreateEventWizard({
                 ))}
               </SelectCardGroup>
             </>
-          ) : !requiresRepresentation ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface p-4">
-              <p className="text-sm text-text">Hosted by you</p>
-              <p className="mt-1 text-xs text-muted">
-                This environment has the verification checks switched off, so a public event can be
-                created without an organization. In production this step requires a verified one.
-              </p>
-            </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border bg-surface p-4">
               <p className="text-sm text-text">
                 You don&apos;t currently have an approved organization representation.
               </p>
               <p className="mt-1 text-xs text-muted">
-                A public event has to be hosted on behalf of an organization that Kurx has verified.
+                Every event must be represented by an organization that Kurx has verified.
                 Request representation and submit the organization&apos;s official authorization —
                 an admin reviews it before it can be used.
               </p>
@@ -1125,33 +1159,25 @@ export function CreateEventWizard({
       {/* Step 6 — Content */}
       {step === STEP.content ? (
         <div className="space-y-4">
-          <p className="text-sm text-muted">Optional, but these are what a listing card and a share preview show.</p>
-          <div>
-            <label className="text-sm font-medium" htmlFor="tagline">Tagline</label>
-            {/* The counter was a paragraph nothing pointed at, so somebody typing into a capped
-                field could not hear how much room was left — and `maxLength` stops accepting input
-                silently when it runs out. `aria-describedby` links it; the live region announces it
-                politely as it changes. */}
-            <input id="tagline" aria-describedby="tagline-count" className={`mt-1 ${inputClass}`} maxLength={160} value={content.tagline}
+          {/* D-378 — these three ARE the listing. A card and a share preview built from an empty
+              tagline and no summary is a listing nobody can act on, so the step that asks for them
+              now waits for them. `Field` carries the required mark, the error and the counter
+              through one `aria-describedby`, exactly as the Details step does. */}
+          <p className="text-sm text-muted">These are what a listing card and a share preview show.</p>
+          <Field label="Tagline" required error={contentErrors.tagline}
+            helper={`${content.tagline.length}/160 characters`}>
+            <Input id="tagline" maxLength={160} value={content.tagline}
               onChange={(e) => setContent({ ...content, tagline: e.target.value })} />
-            <p id="tagline-count" role="status" className="mt-1 text-xs text-muted">
-              {content.tagline.length}/160 characters
-            </p>
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="shortDescription">Short description</label>
-            <textarea id="shortDescription" rows={2} maxLength={300} className={`mt-1 ${textareaClass}`}
-              value={content.shortDescription}
+          </Field>
+          <Field label="Short description" required error={contentErrors.shortDescription}
+            helper={`${content.shortDescription.length}/300 characters`}>
+            <Textarea id="shortDescription" rows={2} maxLength={300} value={content.shortDescription}
               onChange={(e) => setContent({ ...content, shortDescription: e.target.value })} />
-            <p id="shortDescription-count" role="status" className="mt-1 text-xs text-muted">
-              {content.shortDescription.length}/300 characters
-            </p>
-          </div>
-          <div>
-            <label className="text-sm font-medium" htmlFor="rules">Rules</label>
-            <textarea id="rules" rows={4} className={`mt-1 ${textareaClass}`} value={content.rules}
+          </Field>
+          <Field label="Rules" required error={contentErrors.rules}>
+            <Textarea id="rules" rows={4} value={content.rules}
               onChange={(e) => setContent({ ...content, rules: e.target.value })} />
-          </div>
+          </Field>
         </div>
       ) : null}
 
@@ -1170,26 +1196,23 @@ export function CreateEventWizard({
 
           {place.eventMode !== "Online" ? (
             <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <label className="text-sm font-medium" htmlFor="building">Building</label>
-                <input id="building" className={`mt-1 ${inputClass}`} value={place.building}
+              <Field label="Building" required error={placeErrors.building}>
+                <Input id="building" value={place.building}
                   onChange={(e) => setPlace({ ...place, building: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium" htmlFor="floor">Floor</label>
-                <input id="floor" className={`mt-1 ${inputClass}`} value={place.floor}
+              </Field>
+              <Field label="Floor" required error={placeErrors.floor}>
+                <Input id="floor" value={place.floor}
                   onChange={(e) => setPlace({ ...place, floor: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium" htmlFor="room">Room</label>
-                <input id="room" className={`mt-1 ${inputClass}`} value={place.room}
+              </Field>
+              <Field label="Room" required error={placeErrors.room}>
+                <Input id="room" value={place.room}
                   onChange={(e) => setPlace({ ...place, room: e.target.value })} />
-              </div>
+              </Field>
             </div>
           ) : null}
 
           {place.eventMode !== "Online" ? (
-            <Field label="Google Maps link" error={placeErrors.googleMapsUrl}>
+            <Field label="Google Maps link" required error={placeErrors.googleMapsUrl}>
               <Input id="googleMapsUrl" type="url" value={place.googleMapsUrl}
                 onChange={(e) => setPlace({ ...place, googleMapsUrl: e.target.value })} />
             </Field>
@@ -1205,18 +1228,16 @@ export function CreateEventWizard({
                   onChange={(e) => setPlace({ ...place, onlineUrl: e.target.value })} />
               </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium" htmlFor="meetingPlatform">Platform</label>
-                  <input id="meetingPlatform" className={`mt-1 ${inputClass}`} placeholder="Zoom, Meet, Teams…"
+                <Field label="Platform" required error={placeErrors.meetingPlatform}>
+                  <Input id="meetingPlatform" placeholder="Zoom, Meet, Teams…"
                     value={place.meetingPlatform}
                     onChange={(e) => setPlace({ ...place, meetingPlatform: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium" htmlFor="meetingPassword">Meeting password</label>
-                  <input id="meetingPassword" aria-describedby="meetingPassword-help" className={`mt-1 ${inputClass}`} value={place.meetingPassword}
+                </Field>
+                <Field label="Meeting password" required error={placeErrors.meetingPassword}
+                  helper={placeErrors.meetingPassword ? undefined : "Only shown to confirmed registrants."}>
+                  <Input id="meetingPassword" value={place.meetingPassword}
                     onChange={(e) => setPlace({ ...place, meetingPassword: e.target.value })} />
-                  <p id="meetingPassword-help" className="mt-1 text-xs text-muted">Only shown to confirmed registrants.</p>
-                </div>
+                </Field>
               </div>
             </>
           ) : null}
@@ -1227,29 +1248,23 @@ export function CreateEventWizard({
       {step === STEP.windows ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            All optional. Registration times bound every ticket type; a ticket&apos;s own sale window can
-            narrow that further, never widen it.
+            Registration times bound every ticket type; a ticket&apos;s own sale window can narrow that
+            further, never widen it.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium" htmlFor="regOpens">Registration opens</label>
-              <input id="regOpens" type="datetime-local" className={`mt-1 ${inputClass}`}
-                value={windows.registrationOpensAt}
-                onChange={(e) => setWindows({ ...windows, registrationOpensAt: e.target.value })} />
-            </div>
+            <DateTimeField id="regOpens" label="Registration opens" required
+              value={windows.registrationOpensAt} error={windowErrors.registrationOpensAt}
+              onChange={(e) => setWindows({ ...windows, registrationOpensAt: e.target.value })} />
             {/* `min` follows the opening time, so the picker cannot offer a close before an open —
                 the same rule `invalid_registration_window` refuses. */}
-            <DateTimeField id="regCloses" label="Registration closes"
+            <DateTimeField id="regCloses" label="Registration closes" required
               value={windows.registrationClosesAt} min={windows.registrationOpensAt || undefined}
               error={windowErrors.registrationClosesAt}
               onChange={(e) => setWindows({ ...windows, registrationClosesAt: e.target.value })} />
-            <div>
-              <label className="text-sm font-medium" htmlFor="checkinOpens">Check-in opens</label>
-              <input id="checkinOpens" type="datetime-local" className={`mt-1 ${inputClass}`}
-                value={windows.checkinOpensAt}
-                onChange={(e) => setWindows({ ...windows, checkinOpensAt: e.target.value })} />
-            </div>
-            <DateTimeField id="checkinCloses" label="Check-in closes"
+            <DateTimeField id="checkinOpens" label="Check-in opens" required
+              value={windows.checkinOpensAt} error={windowErrors.checkinOpensAt}
+              onChange={(e) => setWindows({ ...windows, checkinOpensAt: e.target.value })} />
+            <DateTimeField id="checkinCloses" label="Check-in closes" required
               value={windows.checkinClosesAt} min={windows.checkinOpensAt || undefined}
               error={windowErrors.checkinClosesAt}
               onChange={(e) => setWindows({ ...windows, checkinClosesAt: e.target.value })} />
@@ -1265,18 +1280,12 @@ export function CreateEventWizard({
                 unknown archetype. */}
             {isPrivate ? null : (
               <>
-                <div>
-                  <label className="text-sm font-medium" htmlFor="resultDate">Results announced</label>
-                  <input id="resultDate" type="datetime-local" className={`mt-1 ${inputClass}`}
-                    value={windows.resultDate}
-                    onChange={(e) => setWindows({ ...windows, resultDate: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium" htmlFor="certRelease">Certificates released</label>
-                  <input id="certRelease" type="datetime-local" className={`mt-1 ${inputClass}`}
-                    value={windows.certificateReleaseAt}
-                    onChange={(e) => setWindows({ ...windows, certificateReleaseAt: e.target.value })} />
-                </div>
+                <DateTimeField id="resultDate" label="Results announced" required
+                  value={windows.resultDate} error={windowErrors.resultDate}
+                  onChange={(e) => setWindows({ ...windows, resultDate: e.target.value })} />
+                <DateTimeField id="certRelease" label="Certificates released" required
+                  value={windows.certificateReleaseAt} error={windowErrors.certificateReleaseAt}
+                  onChange={(e) => setWindows({ ...windows, certificateReleaseAt: e.target.value })} />
               </>
             )}
           </div>
@@ -1303,11 +1312,11 @@ export function CreateEventWizard({
             <div className="grid gap-4 sm:grid-cols-2">
               {/* Optional — an event with no age bound is the normal case. What is checked is the
                   RANGE once both are given, which `ApplyFieldGroups` refuses as `invalid_age_range`. */}
-              <Field label="Minimum age" error={eligibilityErrors.minAge}>
+              <Field label="Minimum age" required error={eligibilityErrors.minAge}>
                 <Input id="minAge" type="number" min={0} max={120} step={1} value={eligibility.minAge}
                   onChange={(e) => setEligibility({ ...eligibility, minAge: e.target.value })} />
               </Field>
-              <Field label="Maximum age" error={eligibilityErrors.maxAge}>
+              <Field label="Maximum age" required error={eligibilityErrors.maxAge}>
                 <Input id="maxAge" type="number" min={0} max={120} step={1} value={eligibility.maxAge}
                   onChange={(e) => setEligibility({ ...eligibility, maxAge: e.target.value })} />
               </Field>
@@ -1327,7 +1336,7 @@ export function CreateEventWizard({
           {isPrivate ? null : (
             // Optional, but a 0 is not "no cap" — `ApplyFieldGroups` silently DISCARDS `MaxTeams <= 0`,
             // so an organiser capping teams at 0 got no cap and no warning. Refused here instead.
-            <Field label="Maximum teams" error={eligibilityErrors.maxTeams}
+            <Field label="Maximum teams" required error={eligibilityErrors.maxTeams}
               helper={eligibilityErrors.maxTeams ? undefined : "Total teams for the event, not teams per person."}>
               <Input id="maxTeams" type="number" min={1} step={1} value={eligibility.maxTeams}
                 onChange={(e) => setEligibility({ ...eligibility, maxTeams: e.target.value })} />
@@ -1342,27 +1351,23 @@ export function CreateEventWizard({
           <p className="text-sm text-muted">
             Kurx&apos;s own terms always apply. These are your additional terms for this event.
           </p>
-          <Field label="Terms link" error={legalErrors.termsUrl}>
+          <Field label="Terms link" required error={legalErrors.termsUrl}>
             <Input id="termsUrl" type="url" value={legal.termsUrl}
               onChange={(e) => setLegal({ ...legal, termsUrl: e.target.value })} />
           </Field>
-          <div>
-            <label className="text-sm font-medium" htmlFor="codeOfConduct">Code of conduct</label>
-            <textarea id="codeOfConduct" rows={3} className={`mt-1 ${textareaClass}`} value={legal.codeOfConduct}
+          <Field label="Code of conduct" required error={legalErrors.codeOfConduct}>
+            <Textarea id="codeOfConduct" rows={3} value={legal.codeOfConduct}
               onChange={(e) => setLegal({ ...legal, codeOfConduct: e.target.value })} />
-          </div>
+          </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium" htmlFor="refundPolicy">Refund policy</label>
-              <textarea id="refundPolicy" rows={3} className={`mt-1 ${textareaClass}`} value={legal.refundPolicy}
+            <Field label="Refund policy" required error={legalErrors.refundPolicy}>
+              <Textarea id="refundPolicy" rows={3} value={legal.refundPolicy}
                 onChange={(e) => setLegal({ ...legal, refundPolicy: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-sm font-medium" htmlFor="cancellationPolicy">Cancellation policy</label>
-              <textarea id="cancellationPolicy" rows={3} className={`mt-1 ${textareaClass}`}
-                value={legal.cancellationPolicy}
+            </Field>
+            <Field label="Cancellation policy" required error={legalErrors.cancellationPolicy}>
+              <Textarea id="cancellationPolicy" rows={3} value={legal.cancellationPolicy}
                 onChange={(e) => setLegal({ ...legal, cancellationPolicy: e.target.value })} />
-            </div>
+            </Field>
           </div>
           <label className="flex items-center gap-2 text-sm text-text">
             <input type="checkbox" checked={legal.requiresConsent}
@@ -1383,13 +1388,14 @@ export function CreateEventWizard({
 
       {/* Nav */}
       {/*
-        D-351 — the institution's written consent, asked in-flow.
+        D-351/D-379 — the organization's written consent for THIS event, asked on Step 1 beside the
+        organization it authorises.
 
-        Only rendered for a Public event that represents an institution, which is exactly the shape
-        `PolicyResolver` raises `event_authorization_required` for. A self-represented event has no
-        institution to authorise it and never sees this step.
+        Rendered for every event now. It used to appear only for a public institutional one, appended
+        after Legal, so an organiser learned on step twelve that step one was incomplete. The letter is
+        held in memory here and uploaded the moment the event exists — chosen at Step 1, filed at create.
       */}
-      {needsAuthorization && step === authStep ? (
+      {step === STEP.representing && representingValid ? (
         <div className="space-y-4">
           <div>
             <p className="text-sm text-muted">

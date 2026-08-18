@@ -283,7 +283,12 @@ public class EventAudienceAuthorizationTests : IClassFixture<KurxApiFactory>
         // D-353 — self-hosting is Private-only now. The subject is the creator's audience standing with no
         // Membership row, which is unchanged; the product axis simply has to be stated.
         var privateTypeId = await PrivateTypeIdAsync();
-        var created = await Json(await creator.CreateEventAsync(null, new
+        // D-379 — every event represents a real organization, so the event is created under one and the
+        // creator's membership is deleted below. The subject is unchanged and arguably sharper: authority
+        // resolves creator-first (D-269) with NO membership row backing it. It used to arrive at that
+        // state via the self-representation path, which no longer exists.
+        var soloOrgId = _factory.SeedVerifiedOrgForClient(creator, "Solo Standing Org");
+        var created = await Json(await creator.CreateEventAsync(soloOrgId, new
         {
             title = "Solo Meetup",
             typeId = privateTypeId,
@@ -303,8 +308,8 @@ public class EventAudienceAuthorizationTests : IClassFixture<KurxApiFactory>
             var orgId = await db.Events.Where(e => e.Id == eventId).Select(e => e.RepresentingOrgId).FirstAsync();
             removed = await db.Memberships.Where(m => m.OrgId == orgId && m.UserId == creatorId).ExecuteDeleteAsync();
         }
-        // Guard the guard: if the self-representation stops seeding a membership, this test must stop
-        // claiming to prove anything about it.
+        // Guard the guard: if creating under an organization stops seeding the creator a membership,
+        // this test must stop claiming to prove anything about standing without one.
         Assert.Equal(1, removed);
 
         var access = await ResolveAsync(creatorId, eventId);

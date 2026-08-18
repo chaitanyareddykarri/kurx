@@ -160,6 +160,8 @@ public class CapturingEmailSender : IEmailSender
 /// <summary>Boots the API against a per-class database with capturing WhatsApp + email senders.</summary>
 public class KurxApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public KurxApiFactory() => Current = this;
+
     /// <summary>The one capture for anything sent to a phone. <see cref="WhatsApp"/> and <see cref="Sms"/>
     /// are the same object — the channel is the server's choice (D-281), so a test reads "what did this
     /// number receive" rather than "what did this rail send".</summary>
@@ -524,6 +526,36 @@ public class KurxApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>Seeds a Verified org managed by whoever <paramref name="client"/> is authenticated as
     /// (user id read from the bearer token's <c>sub</c>). Drop-in for the old "POST /v1/orgs then use it".</summary>
+    /*
+     * D-379 — the factory the currently-running test class is using.
+     *
+     * `CreateEventRequest.CreateEventAsync` is an HttpClient extension with no way to reach a DbContext,
+     * but every event it creates now needs its authorization APPROVED before the event can publish —
+     * 214 tests, none of them about who approves a letter. This hook lets that one helper do it without
+     * threading a factory through 80-odd call sites.
+     *
+     * Safe ONLY because cross-class parallelisation is disabled (see testing-standards.md): each class
+     * has its own `kurx_test_<guid>` database, so a static pointing at the wrong factory would approve
+     * in the wrong database. One class runs at a time, so `Current` is always the running one.
+     */
+    internal static KurxApiFactory? Current { get; private set; }
+
+    /// <summary>D-379 — approve an event's authorization, as a reviewer would.
+    ///
+    /// <para>`PolicyResolver` raises `event_authorization_required` as a PUBLISH blocker for every event
+    /// now, and it reads <c>Status == Approved</c> — filing a letter is the organiser's act, approving it
+    /// is the reviewer's. Tests that publish directly are not about that review, so they take the
+    /// reviewer's decision from here rather than staging an admin to make it.</para></summary>
+    public void ApproveEventAuthorization(Guid eventId)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+        var auth = db.EventAuthorizations.FirstOrDefault(a => a.EventId == eventId);
+        if (auth is null) return;
+        auth.Status = EventAuthorizationStatus.Approved;
+        db.SaveChanges();
+    }
+
     public Guid SeedVerifiedOrgForClient(HttpClient client, string name, string type = "College",
         string? primaryDomain = null, OrgVerificationStatus status = OrgVerificationStatus.Verified)
     {

@@ -150,15 +150,46 @@ public class OrgRegistryTests : IClassFixture<KurxApiFactory>
         Assert.Equal("domain", hit.GetProperty("match").GetString());
     }
 
-    // A personal "Just me" org (still created directly via POST /v1/orgs) must never surface in the registry.
+    /*
+     * A personal "Just me" org must never surface in the registry.
+     *
+     * D-379 closed `POST /v1/orgs { personal: true }`, so this seeds the row directly instead. That is
+     * the honest shape of the test now: personal organizations are HISTORICAL data — rows that exist and
+     * must keep behaving correctly — not something the platform will create again. The companion
+     * assertion that the route itself is refused lives in `EventRepresentationTests`.
+     */
     [Fact]
     public async Task Personal_org_is_hidden_from_registry_search()
     {
         var client = await LoginAsync("9910000009");
-        var res = await client.PostAsJsonAsync("/v1/orgs/", new { name = "Solaris Personal Society", personal = true });
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<KurxDbContext>();
+            var org = new Organization
+            {
+                Name = "Solaris Personal Society",
+                Slug = "self-" + Guid.NewGuid().ToString("N"),
+                Type = OrganizationType.Other,
+                NormalizedName = "solaris personal society",
+                IsPersonal = true,
+            };
+            org.CanonicalOrgId = org.Id;
+            db.Organizations.Add(org);
+            await db.SaveChangesAsync();
+        }
+
         var results = await Json(await client.GetAsync("/v1/orgs/search?q=Solaris Personal Society"));
         Assert.Empty(results.EnumerateArray());
+    }
+
+    /// <summary>D-379 — and the route that used to mint one is closed.</summary>
+    [Fact]
+    public async Task Creating_a_personal_org_is_refused()
+    {
+        var client = await LoginAsync("9910000019");
+        var res = await client.PostAsJsonAsync("/v1/orgs/", new { name = "Another Just Me", personal = true });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("personal_org_not_supported", await res.Content.ReadAsStringAsync());
     }
 
     // D-074 reverses D-055's "unverified real org stays searchable for dedup": a pending representation

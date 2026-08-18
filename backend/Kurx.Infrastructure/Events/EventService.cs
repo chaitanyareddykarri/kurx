@@ -354,29 +354,36 @@ public class EventService(KurxDbContext db, ILogger<EventService> log, ITrustSer
         // the same reason the identity proofs and the consent blockers are bypassable. `RequiresRepresentation`
         // on the trust payload tells the clients the same thing, so the gate stops adding a condition the
         // server has already lifted.
-        if (taxonomy.Product == EventProduct.Public && !identityOptions.Bypass)
-        {
-            // Two ways to arrive with no institution behind a public event, and the second is the one a
-            // client can forge. Omitting `representingOrgId` is the honest case. NAMING the caller's own
-            // self-representation row is the attack: they are its Owner, so `ResolveOrgAsync(...).CanManage`
-            // above returns true and a non-null id sails through a null check. Verified against the live
-            // API — the request reached category validation, meaning it had already passed the guard.
-            //
-            // `IsPersonal` is read here rather than trusted from the client, and the two refusals share one
-            // error code because to the organiser they are one rule: a public event needs a real
-            // organization.
-            if (representingOrgId is not { } named)
-                return ServiceResult<EventDetail>.Fail("representation_required");
-            if (await db.Organizations.AsNoTracking().AnyAsync(o => o.Id == named && o.IsPersonal, ct))
-                return ServiceResult<EventDetail>.Fail("representation_required");
-        }
+        /*
+         * D-379 — every event represents a real organization. This is THE creation boundary.
+         *
+         * Two conditions were removed from this guard, and each was load-bearing:
+         *
+         *   · `Product == Public` — D-353 required a real organization only of public events, so a
+         *     private or unlisted one could be created representing nobody. The rule now has no product
+         *     arm: visibility does not change who is answerable for an event.
+         *   · `!identityOptions.Bypass` — the dev bypass lifted this along with the identity proofs.
+         *     It no longer does. The bypass exists because KYC and consent are mock-backed; whether an
+         *     event names an organization is neither, and a development environment that needs one seeds
+         *     a real test organization instead of getting an unrepresented event.
+         *
+         * Two ways to arrive with no institution, and the second is the forgeable one. Omitting
+         * `representingOrgId` is the honest case. NAMING the caller's own self-representation row is the
+         * attack: they are its Owner, so the `CanManage` check above returns true and a non-null id
+         * sails through a null check. `IsPersonal` is therefore read from the database, never trusted
+         * from the client, and both refusals share one code because to the organiser they are one rule.
+         */
+        if (representingOrgId is not { } orgId)
+            return ServiceResult<EventDetail>.Fail("representation_required");
+        if (await db.Organizations.AsNoTracking()
+                .AnyAsync(o => o.Id == orgId && (o.IsPersonal || o.DeletedAt != null), ct))
+            return ServiceResult<EventDetail>.Fail("representation_required");
 
-        // Bind the representation to a row. `events.OrgId` is a non-null FK (D-055/D-075 weighed making it
-        // nullable and rejected it — 300+ read sites across 30 services), so representing yourself still
-        // needs something to point at. See ResolveSelfRepresentationAsync: that row is a persistence
-        // detail of `Representing = Personal`, never an organization the user owns or is shown.
-        if ((representingOrgId ?? await ResolveSelfRepresentationAsync(userId, ct)) is not { } orgId)
-            return ServiceResult<EventDetail>.Fail("not_found");
+        // `ResolveSelfRepresentationAsync` used to supply a row here when the caller named none, because
+        // `events.OrgId` is a non-null FK (D-055/D-075 weighed making it nullable and rejected it — 300+
+        // read sites across 30 services). The FK is still non-null and that reasoning still holds; what
+        // changed is that nothing may now be minted to satisfy it. The guard above is the only way past
+        // this line, so a new event cannot acquire a self-representation row by any path.
 
         var title = input.Title.Trim();
         if (title.Length is < 2 or > 200) return ServiceResult<EventDetail>.Fail("invalid_title");
@@ -1204,6 +1211,68 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
 
         var isPaid = await IsPaidEventAsync(ev.Id, ct);
 
+        /*
+         * D-378 — an event entering the review queue carries the copy its listing is made of.
+         *
+         * Placed on `submit_review` and nowhere else, deliberately. Create/update must stay permissive
+         * because the wizard writes a Draft step by step and `EventDraftBodyValidator` exists to preserve
+         * exactly the half-filled state a stricter rule would refuse (D-266 M8). The completeness question
+         * is only meaningful at the moment the organiser says "this is ready for a reviewer".
+         *
+         * This is the server half of the client rule: both wizards now block Continue on the Content step,
+         * and a disabled button is a rendering state, not an authorization — the API is reachable without
+         * it.
+         */
+        if (action == "submit_review")
+        {
+            /*
+             * D-379 — the representation invariant, checked at the submission boundary as well as at
+             * creation. Creation is where an event acquires its organization; this is where it stops
+             * being possible to have lost it since. A row can reach here unrepresented in exactly two
+             * ways, and neither is hypothetical: it predates D-379, or its organization was soft-deleted
+             * after the event was created.
+             *
+             * Deliberately NOT a retroactive validity sweep — existing events still load, still read and
+             * still appear. What they cannot do is enter the review queue on evidence they never carried.
+             */
+            var org = await db.Organizations.AsNoTracking()
+                .Where(o => o.Id == ev.RepresentingOrgId)
+                .Select(o => new { o.IsPersonal, o.DeletedAt })
+                .FirstOrDefaultAsync(ct);
+            if (org is null || org.IsPersonal || org.DeletedAt is not null)
+                return ServiceResult<EventDetail>.Fail("representation_required");
+
+            /*
+             * And its own authorization. `EventAuthorization` is keyed on `EventId` with one row per
+             * event, so "Event A's letter authorises Event B" is structurally impossible rather than
+             * merely refused — this query cannot return another event's row. Unconditional now: the old
+             * `Public && RepresentsInstitution` arms are gone, so a private, free or personal-scale event
+             * carries the same evidence as a public paid one.
+             */
+            var auth = await db.EventAuthorizations.AsNoTracking()
+                .Where(a => a.EventId == ev.Id)
+                .Select(a => new
+                {
+                    a.HeadName, a.HeadDesignation, a.OfficialEmail, a.OfficialPhone,
+                    a.RepresentativeRole, a.RepresentativeRoleOther, a.LetterheadDocumentKey
+                })
+                .FirstOrDefaultAsync(ct);
+            if (auth is null) return ServiceResult<EventDetail>.Fail("event_authorization_required");
+            if (string.IsNullOrWhiteSpace(auth.HeadName)
+                || string.IsNullOrWhiteSpace(auth.HeadDesignation)
+                || string.IsNullOrWhiteSpace(auth.OfficialEmail)
+                || string.IsNullOrWhiteSpace(auth.OfficialPhone)
+                || string.IsNullOrWhiteSpace(auth.RepresentativeRole)
+                || (auth.RepresentativeRole == "Other" && string.IsNullOrWhiteSpace(auth.RepresentativeRoleOther)))
+                return ServiceResult<EventDetail>.Fail("authorization_fields_required");
+            // The letter is the evidence. Without it the row records a claim and proves nothing.
+            if (string.IsNullOrWhiteSpace(auth.LetterheadDocumentKey))
+                return ServiceResult<EventDetail>.Fail("letterhead_required");
+
+            var completeness = ValidateSubmissionReadiness(ev);
+            if (completeness is not null) return ServiceResult<EventDetail>.Fail(completeness);
+        }
+
         // Paid events fail fast at submission if the organizer isn't paid-verified (+ the org verified).
         if (isPaid && action == "submit_review")
         {
@@ -1323,6 +1392,32 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
                 .SetProperty(e => e.ReviewClaimedBy, newHolder)
                 .SetProperty(e => e.ReviewClaimedAt, newHolderAt), ct);
         if (claimed == 0) return ServiceResult<EventDetail>.Fail("transition_conflict");
+
+        /*
+         * D-379 — ONE review, ONE decision, and the evidence records the same verdict.
+         *
+         * The authorization letter is EVIDENCE the reviewer weighs inside the event review, never a
+         * second approval they must perform first. So approving the event marks its letter approved, and
+         * rejecting it marks the letter rejected — one click, both records, no dead end where an Approved
+         * event still cannot publish because nobody separately blessed its letter.
+         *
+         * The `Status` field is kept rather than deleted because it IS the audit trail: it carries the
+         * reviewer, the timestamp and the reason code for the decision on this specific document. What it
+         * no longer does is gate anything on its own — `PolicyResolver` reads existence, not status.
+         */
+        if (action is "approve_review" or "reject_review")
+        {
+            var verdict = action == "approve_review"
+                ? EventAuthorizationStatus.Approved
+                : EventAuthorizationStatus.Rejected;
+            await db.EventAuthorizations
+                .Where(a => a.EventId == ev.Id && a.Status == EventAuthorizationStatus.Submitted)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(a => a.Status, verdict)
+                    .SetProperty(a => a.ReviewerId, userId)
+                    .SetProperty(a => a.ReviewedAt, DateTime.UtcNow)
+                    .SetProperty(a => a.UpdatedAt, DateTime.UtcNow), ct);
+        }
 
         // ExecuteUpdateAsync writes past the change tracker, so the tracked `ev` still holds the OLD status.
         // A caller that reuses this DbContext for a second transition — a job, or anything composing two
@@ -1722,6 +1817,87 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
         return await roles.HasRoleAsync(viewerUserId.Value, PlatformRole.VerificationReviewer, ct);
     }
 
+    /// <summary>D-378 — the Content the listing is built from, required at submission.
+    ///
+    /// <para>Separate from <see cref="ValidatePublishReadiness"/> rather than folded into it: that gate
+    /// runs on <c>publish</c>, which an already-approved event reaches, and adding fields to it would
+    /// retroactively make previously-approved events unpublishable. This one runs on the single
+    /// transition where the organiser is declaring the event ready, so it can only ever refuse an event
+    /// that has not yet been reviewed.</para>
+    ///
+    /// <para>Whitespace is not content: <c>IsNullOrWhiteSpace</c>, matching the <c>.trim()</c> both
+    /// clients apply. The length ceilings are not repeated here — <c>ApplyFieldGroups</c> already refuses
+    /// them on the write that would store the over-long value, so no row can reach this holding one.</para></summary>
+    private static string? ValidateSubmissionReadiness(Event ev)
+    {
+        // Content — what the listing card and the share preview are built from.
+        if (string.IsNullOrWhiteSpace(ev.Tagline)) return "missing_tagline";
+        if (string.IsNullOrWhiteSpace(ev.ShortDescription)) return "missing_short_description";
+        if (string.IsNullOrWhiteSpace(ev.Rules)) return "missing_rules";
+
+        /*
+         * Location — conditional on Mode, and the condition is the rule rather than a softening of it.
+         * A join link on an in-person event and a floor number on an online one are not missing, they do
+         * not exist; demanding both groups would make every event unsubmittable. Both wizards render
+         * these two groups on exactly this condition, so the server refuses precisely what the clients
+         * refuse to leave blank.
+         */
+        if (ev.EventMode != EventMode.Online)
+        {
+            if (string.IsNullOrWhiteSpace(ev.Building)) return "missing_building";
+            if (string.IsNullOrWhiteSpace(ev.Floor)) return "missing_floor";
+            if (string.IsNullOrWhiteSpace(ev.Room)) return "missing_room";
+            if (string.IsNullOrWhiteSpace(ev.GoogleMapsUrl)) return "missing_maps_url";
+        }
+        if (ev.EventMode != EventMode.Offline)
+        {
+            // `online_url_required` already guards create/update; this is the same fact at the gate that
+            // decides submittability, so the message names the step rather than the write.
+            if (string.IsNullOrWhiteSpace(ev.OnlineUrl)) return "missing_online_url";
+            if (string.IsNullOrWhiteSpace(ev.MeetingPlatform)) return "missing_meeting_platform";
+            if (string.IsNullOrWhiteSpace(ev.MeetingPassword)) return "missing_meeting_password";
+        }
+
+        // Windows — every window, and the pair ordering `ApplyFieldGroups` already refuses stays there.
+        if (ev.RegistrationOpensAt is null) return "missing_registration_opens";
+        if (ev.RegistrationClosesAt is null) return "missing_registration_closes";
+        if (ev.CheckinOpensAt is null) return "missing_checkin_opens";
+        if (ev.CheckinClosesAt is null) return "missing_checkin_closes";
+
+        /*
+         * A Private event is never SHOWN the results date, the certificate date, the team cap or EITHER
+         * AGE BOUND — the private-gathering archetype has `scoring`, `certificates` and `teams`
+         * Unsupported, and the wizards hide the whole eligibility age block with them. Only Gender
+         * survives the filter. Requiring any of the five here would make every private event permanently
+         * unsubmittable through a door no client can open: the organiser would be refused for a field
+         * that was never on their screen.
+         *
+         * Keyed on `Product`, which is derived and snapshotted from the chosen Type at create (D-266 M1),
+         * so it cannot disagree with the archetype.
+         *
+         * The age bounds sat OUTSIDE this block in the first version, while both clients skipped them —
+         * so a wedding could be completed in the wizard and then refused by the server with
+         * `missing_min_age`. Found by the live E2E's private walk, which is the only check that submits a
+         * Private event end to end.
+         */
+        if (ev.Product != EventProduct.Private)
+        {
+            if (ev.MinAge is null) return "missing_min_age";
+            if (ev.MaxAge is null) return "missing_max_age";
+            if (ev.ResultDate is null) return "missing_result_date";
+            if (ev.CertificateReleaseAt is null) return "missing_certificate_release";
+            if (ev.MaxTeams is null) return "missing_max_teams";
+        }
+
+        // Legal.
+        if (string.IsNullOrWhiteSpace(ev.TermsUrl)) return "missing_terms_url";
+        if (string.IsNullOrWhiteSpace(ev.CodeOfConduct)) return "missing_code_of_conduct";
+        if (string.IsNullOrWhiteSpace(ev.RefundPolicy)) return "missing_refund_policy";
+        if (string.IsNullOrWhiteSpace(ev.CancellationPolicy)) return "missing_cancellation_policy";
+
+        return null;
+    }
+
     private static string? ValidatePublishReadiness(Event ev)
     {
         if (string.IsNullOrWhiteSpace(ev.Description)) return "missing_description";
@@ -2056,67 +2232,23 @@ public async Task<ServiceResult<EventDetail>> TransitionAsync(Guid userId, Guid 
     private async Task<bool> CanManageEventAsync(Guid userId, Event ev, bool isAdmin, CancellationToken ct)
         => (await authority.ResolveAsync(userId, ev.Id, isAdmin, ct)).Can(EventPermission.ManageLifecycle);
 
-    /// <summary>The row a self-represented event points at, created on first use.
-    ///
-    /// <para><b>This is a persistence detail, not a domain concept.</b> Kurx has no "personal
-    /// organization": a user representing themselves is simply <c>Representing = Personal</c>, and that is
-    /// the only vocabulary any API, DTO, route, label or document uses. This row exists for one reason —
-    /// <c>events.OrgId</c> is a non-null FK, and D-055/D-075 both weighed making it nullable and rejected
-    /// it because 300+ read sites across ~30 services dereference it. It is deliberately private to this
-    /// service: it was previously <c>IOrgService.GetOrCreatePersonalOrgAsync</c>, which promoted the
-    /// implementation detail into a public abstraction and taught every reader that the model is
-    /// User → Personal Organization → Event. It is not.</para>
-    ///
-    /// <para>It carries no name a user chose, never enters the registry or search (M4 filters on
-    /// <c>VerificationStatus == Verified</c>), never appears in the caller's representations, and can never
-    /// be verified — so a self-represented event can never sell paid tickets, which is the pre-existing
-    /// product rule (D-055) and is enforced independently by <see cref="GetPaymentReadinessAsync"/>.</para>
-    ///
-    /// <para>The membership seeded alongside it is a lookup key, not an authorization grant: the query
-    /// below finds an existing row by joining Memberships on the caller. D-269 moved all ten event
-    /// sub-resource services onto <see cref="IEventAuthority"/>, which resolves creator-first, so the seat
-    /// no longer carries anyone's authority over the event — but resolution still reads it, so it cannot be
-    /// dropped without rewriting the lookup first.</para></summary>
-    private async Task<Guid?> ResolveSelfRepresentationAsync(Guid userId, CancellationToken ct)
-    {
-        var existing = await (from o in db.Organizations.AsNoTracking()
-                              join m in db.Memberships.AsNoTracking() on o.Id equals m.OrgId
-                              where m.UserId == userId && o.IsPersonal && o.DeletedAt == null
-                              select (Guid?)o.Id).FirstOrDefaultAsync(ct);
-        if (existing is not null) return existing;
-
-        var user = await db.Users.AsNoTracking().Where(u => u.Id == userId)
-            .Select(u => new { u.Id, u.Name }).FirstOrDefaultAsync(ct);
-        if (user is null) return null;
-
-        // Named after the person only so the admin console and audit log can identify the row. A user is
-        // created with Name = "" and fills it in at onboarding (D-037), so the fallback is load-bearing:
-        // without it the name would be under two characters and the row would fail to create, taking event
-        // creation down with it.
-        var name = string.IsNullOrWhiteSpace(user.Name) ? "Personal events" : user.Name.Trim();
-        var org = new Organization
-        {
-            Name = name,
-            Slug = $"self-{Guid.CreateVersion7():N}",
-            Type = OrganizationType.Other,
-            NormalizedName = OrganizationRegistryService.Normalize(name),
-            IsPersonal = true,
-        };
-        org.CanonicalOrgId = org.Id;
-        db.Organizations.Add(org);
-        // ponytail: two simultaneous first-ever creates can both miss the read above and mint two rows.
-        // Harmless (neither is user-visible, and the reader takes the first), one request wide, on a
-        // once-per-lifetime path. A partial unique index would close it if it ever actually happens.
-        db.Memberships.Add(new Membership { OrgId = org.Id, UserId = userId, Role = OrgRole.Owner });
-        // A zero-balance wallet, for the same reason OrgService seeds one: OrderService's capture path
-        // *throws* on a missing wallet rather than skipping it ("refusing to capture payment"). A
-        // self-represented event cannot currently be paid — its row is never Verified, so payment
-        // readiness refuses — but that is three inferences deep, and the failure it guards would strand
-        // a captured payment with no ticket. One row is cheaper than that risk.
-        db.OrganizationWallets.Add(new OrganizationWallet { OrgId = org.Id, Currency = org.SettlementCurrency });
-        await db.SaveChangesAsync(ct);
-        return org.Id;
-    }
+    /*
+     * D-379 — `ResolveSelfRepresentationAsync` was deleted here, along with the row it minted.
+     *
+     * It existed for one reason: `events.OrgId` is a non-null FK (D-055/D-075 both weighed making it
+     * nullable and rejected it, because 300+ read sites across ~30 services dereference it), so an event
+     * representing nobody still needed something to point at. It created an `IsPersonal` organization
+     * named after the person, plus an Owner membership and a zero-balance wallet.
+     *
+     * Every event now represents a real organization, so nothing needs minting. The method is removed
+     * rather than left uncalled: an unreachable factory for the one row type the platform no longer
+     * permits is precisely the hidden path this decision exists to close, and "nobody calls it today" is
+     * not a property that survives the next refactor.
+     *
+     * EXISTING rows are untouched. They are still read, still resolve, and the events pointing at them
+     * still load — `OrganizationScope.Real` (D-368) keeps them out of every count and list exactly as
+     * before. What is gone is the ability to create another one.
+     */
 
     private async Task<string> UniqueEventSlugAsync(string title, CancellationToken ct)
     {

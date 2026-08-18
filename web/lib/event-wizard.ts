@@ -194,14 +194,30 @@ function isAbsoluteUrl(value: string): boolean {
 export type ContentValues = { tagline: string; shortDescription: string; rules: string };
 export const CONTENT_FIELD_ORDER = ["tagline", "shortDescription", "rules"] as const;
 
-/// Content is **entirely optional** — every field on `EventContentInput` is nullable and the step says
-/// so on screen. The only rules are the two length ceilings `ApplyFieldGroups` refuses with
-/// `tagline_too_long` / `short_description_too_long`; the inputs carry matching `maxLength`, so this is
-/// the backstop for state that did not come from typing.
+/// D-378 — Content is **required**, and this is the one place that decides it.
+///
+/// Every field on `EventContentInput` is still nullable on the wire, so this is a *submission
+/// completeness* rule layered over the storage contract, not a change to it — the same relationship
+/// `validateDetails` already has with `CreateEventBodyValidator`'s much smaller minimum. Drafts keep
+/// saving blank (D-266 M8); what is refused is carrying a listing with no listing copy into review.
+///
+/// The two length ceilings stay: they mirror `ApplyFieldGroups`'s `tagline_too_long` /
+/// `short_description_too_long`, and the inputs carry matching `maxLength`, so those remain the
+/// backstop for state that did not come from typing.
 export function validateContent(v: ContentValues): Partial<Record<keyof ContentValues, string>> {
   const errors: Partial<Record<keyof ContentValues, string>> = {};
-  if (v.tagline.length > 160) errors.tagline = "Tagline must be 160 characters or fewer";
-  if (v.shortDescription.length > 300) errors.shortDescription = "Short description must be 300 characters or fewer";
+
+  // Trimmed, because "   " is not a tagline. Same rule `validateDetails` applies to every text field.
+  if (!v.tagline.trim()) errors.tagline = "Tagline is required";
+  else if (v.tagline.length > 160) errors.tagline = "Tagline must be 160 characters or fewer";
+
+  if (!v.shortDescription.trim()) errors.shortDescription = "Short description is required";
+  else if (v.shortDescription.length > 300) {
+    errors.shortDescription = "Short description must be 300 characters or fewer";
+  }
+
+  if (!v.rules.trim()) errors.rules = "Rules are required";
+
   return errors;
 }
 
@@ -209,28 +225,47 @@ export type PlaceValues = {
   eventMode: string; onlineUrl: string; building: string; floor: string; room: string;
   googleMapsUrl: string; meetingPlatform: string; meetingPassword: string;
 };
-export const PLACE_FIELD_ORDER = ["eventMode", "onlineUrl", "googleMapsUrl"] as const;
+export const PLACE_FIELD_ORDER = [
+  "eventMode", "building", "floor", "room", "googleMapsUrl",
+  "onlineUrl", "meetingPlatform", "meetingPassword"
+] as const;
 
-/// Location is optional **except** for one conditional requirement — and that requirement is the
-/// clearest instance of the bug this file's callers had: `ValidateMode` refuses an Online or Hybrid
-/// event with no join link (`online_url_required`), and the step waved it through, so an organiser
-/// chose "Online", left the link blank, walked five more steps and lost the lot to a refusal at submit.
+/// D-378 — every field the step ASKS FOR is required, gated by whether the chosen Mode asks for it.
 ///
-/// Building/floor/room/platform/password are free text with no server rule at all and must stay
-/// optional — an in-person event that has no room number is not an invalid event.
+/// The condition is not a softening, it is the whole rule: a join link on an in-person event and a floor
+/// number on an online one are not "missing", they do not exist. The wizard already renders these two
+/// groups conditionally; this makes the validator agree with what is on screen, so Continue never waits
+/// on a field the organiser cannot see.
+///
+/// `online_url_required` remains the server's own refusal; the rest are submission-completeness rules
+/// with no storage-contract equivalent, exactly like the Content step's.
 export function validatePlace(v: PlaceValues): Partial<Record<keyof PlaceValues, string>> {
   const errors: Partial<Record<keyof PlaceValues, string>> = {};
-  const online = v.eventMode === "Online" || v.eventMode === "Hybrid";
-
-  if (!["Offline", "Online", "Hybrid"].includes(v.eventMode)) errors.eventMode = "Choose how the event is held";
-  // Conditionally required: false ⇒ optional, true ⇒ required, recomputed the instant Mode changes.
-  else if (online && !v.onlineUrl.trim()) errors.onlineUrl = "A join link is required for an online or hybrid event";
-  else if (v.onlineUrl.trim() && !isAbsoluteUrl(v.onlineUrl.trim())) {
-    errors.onlineUrl = "Join link must be a full URL, including https://";
+  if (!["Offline", "Online", "Hybrid"].includes(v.eventMode)) {
+    errors.eventMode = "Choose how the event is held";
+    return errors;   // Nothing below is answerable until the Mode is known.
   }
 
-  if (v.googleMapsUrl.trim() && !isAbsoluteUrl(v.googleMapsUrl.trim())) {
-    errors.googleMapsUrl = "Google Maps link must be a full URL, including https://";
+  const hasPhysical = v.eventMode !== "Online";
+  const hasOnline = v.eventMode !== "Offline";
+
+  if (hasPhysical) {
+    if (!v.building.trim()) errors.building = "Building is required";
+    if (!v.floor.trim()) errors.floor = "Floor is required";
+    if (!v.room.trim()) errors.room = "Room is required";
+    if (!v.googleMapsUrl.trim()) errors.googleMapsUrl = "Google Maps link is required";
+    else if (!isAbsoluteUrl(v.googleMapsUrl.trim())) {
+      errors.googleMapsUrl = "Google Maps link must be a full URL, including https://";
+    }
+  }
+
+  if (hasOnline) {
+    if (!v.onlineUrl.trim()) errors.onlineUrl = "A join link is required for an online or hybrid event";
+    else if (!isAbsoluteUrl(v.onlineUrl.trim())) {
+      errors.onlineUrl = "Join link must be a full URL, including https://";
+    }
+    if (!v.meetingPlatform.trim()) errors.meetingPlatform = "Platform is required";
+    if (!v.meetingPassword.trim()) errors.meetingPassword = "Meeting password is required";
   }
   return errors;
 }
@@ -240,24 +275,41 @@ export type WindowValues = {
   checkinOpensAt: string; checkinClosesAt: string;
   resultDate: string; certificateReleaseAt: string; autoClose: boolean;
 };
-export const WINDOW_FIELD_ORDER = ["registrationClosesAt", "checkinClosesAt"] as const;
+export const WINDOW_FIELD_ORDER = [
+  "registrationOpensAt", "registrationClosesAt", "checkinOpensAt", "checkinClosesAt",
+  "resultDate", "certificateReleaseAt"
+] as const;
 
-/// Every window is optional, and a pair is only checked when **both** ends are given — one end alone is
-/// a legitimate open-ended window, which is exactly why these cannot be "required" fields.
+/// D-378 — every window the step asks for is required, and each pair must still be ordered.
 ///
-/// Mirrors `invalid_registration_window` / `invalid_checkin_window`. Deliberately NOT extended with a
-/// relationship to the event's own dates: `ApplyFieldGroups` enforces no such rule, so refusing here
-/// would block events the API accepts.
-export function validateWindows(v: WindowValues): Partial<Record<keyof WindowValues, string>> {
+/// `isPrivate` mirrors the step's own rendering: a Private event is not shown the results or certificate
+/// dates at all (the capability engine DESCRIBES, it never gates — D-266 M2), so requiring them would
+/// block on two controls that are not on the page.
+///
+/// Ordering messages still mirror `invalid_registration_window` / `invalid_checkin_window`. Deliberately
+/// NOT extended with a relationship to the event's own start/end: `ApplyFieldGroups` enforces no such
+/// rule, and inventing one here would refuse events the API accepts.
+export function validateWindows(
+  v: WindowValues, isPrivate = false
+): Partial<Record<keyof WindowValues, string>> {
   const errors: Partial<Record<keyof WindowValues, string>> = {};
-  const after = (later: string, earlier: string) =>
-    !!later && !!earlier && new Date(later).getTime() > new Date(earlier).getTime();
+  const at = (s: string) => (s ? new Date(s).getTime() : NaN);
 
-  if (v.registrationOpensAt && v.registrationClosesAt && !after(v.registrationClosesAt, v.registrationOpensAt)) {
+  if (!v.registrationOpensAt) errors.registrationOpensAt = "Registration opening time is required";
+  if (!v.registrationClosesAt) errors.registrationClosesAt = "Registration closing time is required";
+  else if (v.registrationOpensAt && !(at(v.registrationClosesAt) > at(v.registrationOpensAt))) {
     errors.registrationClosesAt = "Registration must close after it opens";
   }
-  if (v.checkinOpensAt && v.checkinClosesAt && !after(v.checkinClosesAt, v.checkinOpensAt)) {
+
+  if (!v.checkinOpensAt) errors.checkinOpensAt = "Check-in opening time is required";
+  if (!v.checkinClosesAt) errors.checkinClosesAt = "Check-in closing time is required";
+  else if (v.checkinOpensAt && !(at(v.checkinClosesAt) > at(v.checkinOpensAt))) {
     errors.checkinClosesAt = "Check-in must close after it opens";
+  }
+
+  if (!isPrivate) {
+    if (!v.resultDate) errors.resultDate = "Results announcement time is required";
+    if (!v.certificateReleaseAt) errors.certificateReleaseAt = "Certificate release time is required";
   }
   return errors;
 }
@@ -267,11 +319,15 @@ export type EligibilityValues = {
 };
 export const ELIGIBILITY_FIELD_ORDER = ["minAge", "maxAge", "genderRestriction", "maxTeams"] as const;
 
-/// Eligibility is optional in full — an event with no restrictions is the normal case, and the step says
-/// so. What was missing is that its *values*, once given, have rules: `invalid_age_range` when the
-/// maximum is below the minimum, and a `maxTeams` of 0 or less that `ApplyFieldGroups` silently
-/// **discards** (`MaxTeams <= 0 ? null`), so an organiser capping teams at 0 got no cap and no warning.
-export function validateEligibility(v: EligibilityValues): Partial<Record<keyof EligibilityValues, string>> {
+/// D-378 — the ages and the team cap are required; the value rules that were already here still hold.
+///
+/// `invalid_age_range` (maximum below minimum) and the `maxTeams <= 0` trap are unchanged: `ApplyFieldGroups`
+/// silently **discards** a non-positive cap (`MaxTeams <= 0 ? null`), so an organiser capping teams at 0 got
+/// no cap and no warning. `isPrivate` mirrors the step's rendering — a Private event is never shown the
+/// team cap, so it cannot be asked for one.
+export function validateEligibility(
+  v: EligibilityValues, isPrivate = false
+): Partial<Record<keyof EligibilityValues, string>> {
   const errors: Partial<Record<keyof EligibilityValues, string>> = {};
   /// Blank is valid (no bound). A given bound must be a whole number in the range the inputs already
   /// declare with `min`/`max`, so state that did not come from typing is refused the same way.
@@ -285,19 +341,31 @@ export function validateEligibility(v: EligibilityValues): Partial<Record<keyof 
 
   const min = bound(v.minAge);
   const max = bound(v.maxAge);
-  if (min === "invalid") errors.minAge = AGE_RANGE;
-  if (max === "invalid") errors.maxAge = AGE_RANGE;
+  // A Private event is shown NEITHER age bound nor the team cap — only Gender survives the filter, so
+  // those three are required exactly when the step renders them. Requiring them regardless would leave
+  // a wedding permanently stuck on a step with one control and three invisible objections.
+  if (!isPrivate) {
+    if (min === null) errors.minAge = "Minimum age is required";
+    else if (min === "invalid") errors.minAge = AGE_RANGE;
+    if (max === null) errors.maxAge = "Maximum age is required";
+    else if (max === "invalid") errors.maxAge = AGE_RANGE;
+
+    const teams = v.maxTeams.trim();
+    if (!teams) errors.maxTeams = "Maximum teams is required";
+    else if (!Number.isInteger(Number(teams)) || Number(teams) <= 0) {
+      errors.maxTeams = "Maximum teams must be greater than 0";
+    }
+  } else {
+    // Still refuse a nonsense value that arrived some other way (a restored draft, a devtools edit).
+    if (min === "invalid") errors.minAge = AGE_RANGE;
+    if (max === "invalid") errors.maxAge = AGE_RANGE;
+  }
   if (typeof min === "number" && typeof max === "number" && max < min) {
     errors.maxAge = "Maximum age must be at least the minimum age";
   }
 
   if (!["Any", "Male", "Female", "NonBinary"].includes(v.genderRestriction)) {
     errors.genderRestriction = "Choose who the event is open to";
-  }
-
-  const teams = v.maxTeams.trim();
-  if (teams && (!Number.isInteger(Number(teams)) || Number(teams) <= 0)) {
-    errors.maxTeams = "Maximum teams must be greater than 0";
   }
   return errors;
 }
@@ -306,17 +374,27 @@ export type LegalValues = {
   termsUrl: string; codeOfConduct: string; refundPolicy: string; cancellationPolicy: string;
   requiresConsent: boolean; consentText: string;
 };
-export const LEGAL_FIELD_ORDER = ["termsUrl", "consentText"] as const;
+export const LEGAL_FIELD_ORDER = [
+  "termsUrl", "codeOfConduct", "refundPolicy", "cancellationPolicy", "consentText"
+] as const;
 
-/// The consent text is the wizard's other conditional requirement, and the one it already had right:
-/// `ApplyFieldGroups` refuses `consent_text_required`, because acceptance recorded against an empty
-/// string is evidence of nothing. The terms URL adds the `type="url"` promise the control was making
-/// and nothing was keeping.
+/// D-378 — the four policy fields are required; the consent text stays conditionally required.
+///
+/// `consent_text_required` is the server's own refusal and the one rule here that predates this: consent
+/// recorded against an empty string is evidence of nothing. The terms URL keeps the `type="url"` promise
+/// the control was making and nothing was keeping.
 export function validateLegal(v: LegalValues): Partial<Record<keyof LegalValues, string>> {
   const errors: Partial<Record<keyof LegalValues, string>> = {};
-  if (v.termsUrl.trim() && !isAbsoluteUrl(v.termsUrl.trim())) {
+
+  if (!v.termsUrl.trim()) errors.termsUrl = "Terms link is required";
+  else if (!isAbsoluteUrl(v.termsUrl.trim())) {
     errors.termsUrl = "Terms link must be a full URL, including https://";
   }
+  if (!v.codeOfConduct.trim()) errors.codeOfConduct = "Code of conduct is required";
+  if (!v.refundPolicy.trim()) errors.refundPolicy = "Refund policy is required";
+  if (!v.cancellationPolicy.trim()) errors.cancellationPolicy = "Cancellation policy is required";
+
+  // Conditional, and deliberately so: consent OFF means there is no statement to write.
   if (v.requiresConsent && !v.consentText.trim()) {
     errors.consentText = "Write the statement registrants must accept, or turn consent off";
   }

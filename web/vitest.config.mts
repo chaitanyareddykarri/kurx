@@ -12,7 +12,15 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./test/setup.ts"],
-    include: ["test/**/*.test.{ts,tsx}"]
+    include: ["test/**/*.test.{ts,tsx}"],
+    /*
+     * Vitest's default is 5s, which the wizard tests outgrew: a step that renders a dozen controls and
+     * asserts between each one is genuinely slow in jsdom, and `userEvent` types character by
+     * character. Tests were failing on the CLOCK while passing in isolation, and the failures moved
+     * between files on each run — a timeout that varies with machine load is a flake, not a signal.
+     * Raised here rather than per-test so no future test inherits the same trap.
+     */
+    testTimeout: 20_000
   },
   resolve: {
     alias: {

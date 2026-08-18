@@ -15277,3 +15277,191 @@ one case pinning that `IsExternallyExposed` ignores status *on purpose*.
 
 Asserting on a service predicate would have passed throughout the window in which this shipped. Every
 case is a real request.
+
+## D-378 — A wizard step that asks a question waits for the answer
+
+**Status:** Accepted · **Date:** 2026-08-17 · **Client rule + a `submit_review` gate; no schema change, no migration, no data change**
+
+### The problem
+
+The create-event wizard blocked Continue on **one** step. Details refused every field it asked for;
+Content, Location, Windows, Eligibility and Legal let an empty step through, because their validators
+encoded only what the *storage contract* refuses — two length ceilings, one conditional join link, one
+conditional consent text — and every other field on `EventContentInput`, `EventLocationInput`,
+`EventScheduleInput`, `EventEligibilityInput` and `EventLegalInput` is nullable.
+
+That reading was defensible and produced a wizard that asks eleven questions and insists on one. An
+organiser could walk from Details to "Create draft" and publish a listing with no tagline, no summary,
+no rules, no map link, no registration window, no age policy and no terms.
+
+### Decision
+
+**Every field a step renders is required, and a step is answered before it is left.** Where a field
+belongs to a configuration the organiser did not choose, it is not required — because it does not exist.
+
+| Step | Required | Conditional on |
+|---|---|---|
+| Content | Tagline, Short description, Rules | — |
+| Location | Mode; Building, Floor, Room, Maps link | Mode ≠ Online |
+| | Join link, Platform, Meeting password | Mode ≠ Offline |
+| Windows | Registration opens/closes, Check-in opens/closes | — |
+| | Results announced, Certificates released | Public product |
+| Eligibility | Gender | — |
+| | Minimum age, Maximum age, Maximum teams | Public product |
+| Legal | Terms link, Code of conduct, Refund policy, Cancellation policy | — |
+| | Consent text | consent switched on |
+
+**The conditional column is the load-bearing half.** Taken literally, "require everything" makes the
+wizard impossible to finish: a join link on an in-person event and a floor number on an online one are
+not missing answers, they are questions nobody asked. Both wizards already render these groups
+conditionally; the validators now agree with what is on screen, so Continue never waits on a control the
+organiser cannot see. A Private event is the same case one level up — its archetype has `teams`,
+`scoring` and `certificates` Unsupported, so it is shown neither age bound, nor the team cap, nor the
+results and certificate dates, and is asked for none of them.
+
+### Where the server enforces it
+
+**`submit_review`, and nowhere else.** A disabled button is a rendering state, not an authorization —
+`POST …/transition` is reachable with curl — so `ValidateSubmissionReadiness` refuses an incomplete
+event at the transition, returning `missing_tagline`, `missing_building`, `missing_registration_opens`,
+`missing_min_age`, `missing_terms_url` and their siblings.
+
+Create and update stay permissive **on purpose**. The wizard writes a Draft step by step, and
+`EventDraftBodyValidator` (D-266 M8) exists to store the wizard's in-progress form verbatim *including
+steps that would fail every rule above*. A gate on the write would delete the feature that preserves
+half-filled work. The completeness question is only meaningful at the moment the organiser says "this is
+ready for a reviewer".
+
+Kept separate from `ValidatePublishReadiness` for a sharper reason: that gate runs on `publish`, which an
+**already-approved** event reaches. Adding fields to it would retroactively make previously-approved
+events unpublishable. `ValidateSubmissionReadiness` runs on the one transition that can only ever refuse
+an event nobody has reviewed yet.
+
+### Why not treat this as a contract change
+
+The columns stay nullable and no migration is written. This is a *submission completeness* rule layered
+over the storage contract — exactly the relationship `validateDetails` already had with
+`CreateEventBodyValidator`'s much smaller minimum (title ≥ 2 chars, end after start). Existing rows are
+untouched; an event already in review or published is never re-examined.
+
+### The cost, stated rather than hidden
+
+Requiring `Rules` on every event invites `n/a` from an organiser running a casual meetup, and the same
+is true of a floor number for an event in a park. That was raised and the requirement was reaffirmed, so
+it ships as specified. If junk values appear in listings, the fix is to make these fields conditional on
+the archetype — the machinery for that already exists here in the `isPrivate` arm, and the capability
+engine can answer a finer question than "is this private".
+
+### What this does not change
+
+The lifecycle (`Draft → PendingReview → Approved → creator publishes`, D-377) is untouched. Draft
+autosave is untouched. `online_url_required` and `consent_text_required` remain the server's own
+refusals on write. No field moved between steps: `venueName`, `city` and `venueAddress` are required on
+**Details**, where they already were, which is why the Location step has no unconditional text field of
+its own.
+
+## D-379 — A user owns the event; an organization is always the one it represents
+
+**Status:** Accepted · **Date:** 2026-08-17 · **Amends D-268, D-271, D-305, D-352, D-353; retires `Representing = Personal`**
+
+> Numbered D-379, not D-378: the requirement was specified as "D-378", but that number was taken earlier
+> the same day by *"A wizard step that asks a question waits for the answer"*. The rule is unchanged.
+
+### The rule
+
+**Users continue to own and create events. However, every event must represent a real organization.
+Organization verification is reusable, but event representation and `EventAuthorization` are event-scoped
+and must be completed independently for every new event. Personal/self representation is not permitted
+for new events.**
+
+For every new event `E`, before it may pass the Representing boundary or be submitted:
+
+```
+E.RepresentingOrgId  != null
+E.RepresentingOrg.IsPersonal = false
+EventAuthorization(E) exists  AND  EventAuthorization.EventId = E.Id
+```
+
+No exception for Public, Private, Free, Paid, Team, Individual, development environments, an
+already-verified organization, a previously-used organization, or the same organizer.
+
+### What is NOT changing
+
+`Event.CreatedBy` still owns the event. **D-268's "a User owns an Event" stands**, and so does D-271's
+"an organization never owns an event; the organization on an event is the one it *represents*". No
+organization account, no organization login, no organizer account is introduced — D-271's prohibition is
+untouched. "Hosted by you" survives as an *ownership and navigation* concept.
+
+What is retired is one narrower thing: **`Representing = Personal`** — the reading under which the
+organization an event represents could be the individual themselves.
+
+### What is superseded, precisely
+
+| Decision | What it said | What D-379 changes |
+|---|---|---|
+| **D-268** | `events.OrgId` is a non-null FK, so representing yourself needs a row to point at; `ResolveSelfRepresentationAsync` mints one, "a persistence detail, never an organization" | The FK stays non-null and the reasoning stays correct — but **no new event may point at such a row**. The minting path closes for new events. |
+| **D-271** | terminology: a User owns an Event; no personal organizations | Strengthened, not reversed: there are no personal organizations, and now no event may represent one either. |
+| **D-305** | Profile owns the Create Event entry point | Entry point unchanged. What follows it now begins with choosing a real organization. |
+| **D-352 / D-353** | a Public event must represent a real organization; bypassable outside Production | The condition widens from **Public** to **every** event, and the **bypass no longer applies to it**. |
+
+D-353's own words were *"a Public event must represent a real organization, archetype or not"*. D-379 is
+that sentence with "Public" deleted.
+
+### The creation boundary
+
+`EventService.CreateEventAsync` refused a missing or personal organization only when
+`Product == Public && !identityOptions.Bypass`, then fell through to
+`?? await ResolveSelfRepresentationAsync(userId, ct)`. Both halves change:
+
+- the refusal becomes **unconditional** — no product test, no bypass test;
+- the fallback is **removed**, so there is no path on which a new event acquires a self-representation row.
+
+`IsPersonal` is still read from the database rather than trusted from the client, because naming your own
+self-representation row is the forgeable case: the caller is its Owner, so a permission check passes and
+a non-null id sails through a null check.
+
+### Why the draft is created at Step 1
+
+`EventAuthorization` is keyed on `EventId`, and the letterhead upload presigns against an event. So
+"authorization complete before Step 2" and "no event yet" cannot both hold. **The event is created as a
+real Draft once Step 1 has a creator and a representing organization**, and the authorization attaches to
+it.
+
+This creates no placeholder: a Draft is a legitimate event state with existing lifecycle and autosave
+machinery behind it (D-266 M8), and an abandoned Draft is already something the platform handles. The
+alternative — a staging document area keyed to the user — was rejected as a second storage subsystem
+built to avoid using the one that already fits.
+
+**Nothing fake is minted anywhere**: no placeholder organization, no placeholder authorization, no
+temporary event. The Draft is real, and it is already represented at the moment it exists.
+
+### The development bypass
+
+`IDENTITY_VERIFICATION_BYPASS` (D-323/D-352) continues to lift the identity proofs and consent blockers,
+because those are mock-backed and enforcing them would make the flow untestable. **It no longer lifts
+representation.** A development environment that needs a represented event seeds a real test
+organization; it does not get an unrepresented one. The wizard's copy —
+*"This environment has the verification checks switched off, so a public event can be created without an
+organization"* — described a rule the platform no longer has, and is removed.
+
+### Existing data
+
+Read before deciding, not after: **4 events, 3 under real organizations (2 non-draft), 1 Draft under a
+personal row, and 0 `EventAuthorization` rows in total.**
+
+- **Nothing is deleted, converted or backfilled.** No authorization document is fabricated, and no
+  authorization is marked approved where none exists.
+- **Existing events remain readable and intact.** The invariant is enforced at the *creation* and
+  *submission* boundaries, not as a retroactive validity check, so historical rows keep working exactly
+  as they did.
+- **They cannot be submitted for review until authorized**, which is the honest consequence: the platform
+  now requires evidence those events never carried.
+- The one personally-represented Draft stays where it is. It cannot proceed, and converting it silently
+  would be inventing a representation its creator never gave.
+
+### The cost, stated
+
+Every in-flight Draft on the platform is blocked at submit until its organization and authorization are
+supplied, and any event a person created under their own name can no longer move forward. That is the
+rule working, not a defect — but it is a real migration cost and it is why this is a decision rather
+than a patch.

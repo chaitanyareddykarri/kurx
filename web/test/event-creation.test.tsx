@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -90,10 +90,11 @@ describe("the wizard's single-select steps are real groups", () => {
 
   it("marks an option the caller may not choose as disabled, not merely dimmed", async () => {
     renderWizard();
+    await fillRepresenting();
     // Visibility: Listed is offered, and a Private product's forbidden options are absent rather than
     // dimmed. (The disabled-Paid case moved to the gate with the question itself — see
     // create-event-gate.test.tsx, which is now the only place free/paid is asked.)
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
     expect(screen.getByRole("radio", { name: /Listed/ })).toBeChecked();
   });
 });
@@ -101,7 +102,7 @@ describe("the wizard's single-select steps are real groups", () => {
 describe("the wizard says where you are and why you are stuck", () => {
   it("announces the current step", () => {
     renderWizard();
-    expect(screen.getByText(/Step 1 of 12: Representing\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 11: Representing\./)).toBeInTheDocument();
   });
 
   it("marks the active step programmatically", () => {
@@ -112,21 +113,23 @@ describe("the wizard says where you are and why you are stuck", () => {
 
   it("explains a blocked Continue rather than only disabling it", async () => {
     renderWizard();
+    await fillRepresenting();
     // Walk to Category (step 3), which requires a choice.
-    for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
 
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ })).toBeDisabled();
     // A disabled control cannot carry its own reason, and some screen-reader navigation skips it.
     expect(screen.getByText("Choose a category to continue.")).toBeInTheDocument();
   });
 
   it("clears the reason once the step is satisfied", async () => {
     renderWizard();
-    for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await fillRepresenting();
+    for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
     await userEvent.click(screen.getByRole("radio", { name: "Hackathon" }));
 
     expect(screen.queryByText("Choose a category to continue.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ })).toBeEnabled();
   });
 });
 
@@ -158,31 +161,96 @@ const END = futureLocal(30, 18);
 /// at forty call sites.
 const label = (name: string) => screen.getByLabelText(new RegExp(`^${name}`));
 
+/*
+ * D-379 — Step 1 now demands the organization AND this event's own authorization, so every walkthrough
+ * has to answer it. One helper, because the alternative is the same eight lines in thirty tests.
+ */
+async function fillRepresenting() {
+  await userEvent.click(screen.getByRole("radio", { name: /Verified Fest Co/ }));
+  set("Signatory's name", "R Iyer");
+  set("Their designation", "Principal");
+  set("Official email", "head@fest.example.com");
+  set("Official phone", "+919876543210");
+  fireEvent.change(screen.getByLabelText(/^Your role in this organization/), { target: { value: "Principal" } });
+  // The letter is evidence, not a formality: Step 1 does not pass without one.
+  fireEvent.change(screen.getByLabelText(/^Authorization letter/), {
+    target: { files: [new File(["letter"], "letter.pdf", { type: "application/pdf" })] }
+  });
+}
+
 async function walkToDetails(typeName?: string) {
-  for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await fillRepresenting();
+  for (let i = 0; i < 2; i++) await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
   await userEvent.click(screen.getByRole("radio", { name: "Hackathon" }));
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
   // Type is required only when the category HAS types; the default fixture has none.
   if (typeName) await userEvent.click(screen.getByRole("radio", { name: typeName }));
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
   // D-372 — Registration sits between Type and Details. Its defaults (a named registration, 100
   // places, individual, free) are already valid, so this Continue passes straight through; the step's
   // own rules are asserted in its dedicated block below.
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
 }
 
 /// Every field the Details step asks for — which is the point of the change: filling only the three
 /// the server hard-requires no longer leaves the step.
+/*
+ * `fireEvent.change` rather than `userEvent.type` for the bulk fills: walking to Legal now answers
+ * ~20 controls, and typing them character by character in jsdom overran the 5s budget. The
+ * interactions actually UNDER test still go through `userEvent`, so what each test asserts is
+ * unchanged — only the setup got cheaper.
+ */
+const set = (name: string, value: string) =>
+  fireEvent.change(label(name), { target: { value } });
+
+async function fillContent() {
+  set("Tagline", "One long day of building");
+  set("Short description", "A hackathon for students.");
+  set("Rules", "Teams of two to five. Original work only.");
+}
+
+async function fillLocation() {
+  set("Building", "Block A");
+  set("Floor", "2");
+  set("Room", "204");
+  set("Google Maps link", "https://maps.example.com/x");
+}
+
+async function fillWindows() {
+  set("Registration opens", futureLocal(3, 9));
+  set("Registration closes", futureLocal(4, 9));
+  set("Check-in opens", futureLocal(5, 9));
+  set("Check-in closes", futureLocal(5, 17));
+  set("Results announced", futureLocal(6, 9));
+  set("Certificates released", futureLocal(7, 9));
+}
+
+async function fillEligibility() {
+  set("Minimum age", "16");
+  set("Maximum age", "30");
+  set("Maximum teams", "40");
+}
+
+async function fillLegal() {
+  set("Terms link", "https://example.com/terms");
+  set("Code of conduct", "Be kind.");
+  set("Refund policy", "No refunds.");
+  set("Cancellation policy", "Cancel any time.");
+}
+
+
+/// Pure setup, never the thing under test — so `set` rather than `userEvent.type`. Typing nine fields
+/// a character at a time ran in nearly every wizard test and was the suite's single largest cost.
 async function fillDetails(title: string) {
-  await userEvent.type(label("Title"), title);
-  await userEvent.type(label("Subtitle"), "A day of building");
-  await userEvent.type(label("Description"), "Bring a laptop.");
-  await userEvent.type(label("Starts at"), START);
-  await userEvent.type(label("Ends at"), END);
-  await userEvent.type(label("Venue name"), "Main Hall");
-  await userEvent.type(label("City"), "Chennai");
-  await userEvent.type(label("Venue address"), "1 Anna Salai");
-  await userEvent.type(label("Capacity"), "100");
+  set("Title", title);
+  set("Subtitle", "A day of building");
+  set("Description", "Bring a laptop.");
+  set("Starts at", START);
+  set("Ends at", END);
+  set("Venue name", "Main Hall");
+  set("City", "Chennai");
+  set("Venue address", "1 Anna Salai");
+  set("Capacity", "100");
 }
 
 /// A Private product needs a Private Type to reach a category at all — `categoriesFor` offers only
@@ -193,12 +261,13 @@ const PRIVATE_TYPES = [
 ] as never[];
 
 describe("Step 6 — Details refuses every field it asks for", () => {
-  const cont = () => screen.getByRole("button", { name: "Continue" });
+  // D-379 — Legal is the terminal step now, where the action reads "Create draft event".
+  const cont = () => screen.getByRole("button", { name: /^(Continue|Create draft event)$/ });
 
   it("is disabled on an empty step", async () => {
     renderWizard();
     await walkToDetails();
-    expect(screen.getByText(/Step 6 of 12: Details\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 6 of 11: Details\./)).toBeInTheDocument();
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Title is required.")).toBeInTheDocument();
   });
@@ -322,8 +391,8 @@ describe("Step 6 — Details refuses every field it asks for", () => {
     renderWizard();
     await walkToDetails();
     await fillDetails("Hack Day");
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(screen.getByText(/Step 7 of 12: Content\./)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
+    expect(screen.getByText(/Step 7 of 11: Content\./)).toBeInTheDocument();
 
     // §16 — Back must not restore a remembered `isValid`, it must re-derive from the values.
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -333,48 +402,107 @@ describe("Step 6 — Details refuses every field it asks for", () => {
 });
 
 describe("Steps 7–11 gate their own fields too", () => {
-  const cont = () => screen.getByRole("button", { name: "Continue" });
+  // D-379 — Legal is the terminal step now, where the action reads "Create draft event".
+  const cont = () => screen.getByRole("button", { name: /^(Continue|Create draft event)$/ });
 
-  async function walkTo(stepsPastDetails: number) {
+  /*
+   * D-378 — every step from Content onward now has required fields, so walking the wizard means
+   * ANSWERING each step, not clicking past it. Each filler is the minimum that satisfies exactly one
+   * step, so a test about step N starts from a wizard that is valid up to N and empty at N.
+   */
+  /// Walks to the named step with every earlier step answered and the named one still blank.
+  async function walkTo(step: "content" | "location" | "windows" | "eligibility" | "legal") {
     await walkToDetails();
     await fillDetails("Hack Day");
-    for (let i = 0; i < stepsPastDetails; i++) await userEvent.click(cont());
+    await userEvent.click(cont());                       // → Content
+    if (step === "content") return;
+    await fillContent();
+    await userEvent.click(cont());                       // → Location
+    if (step === "location") return;
+    await fillLocation();
+    await userEvent.click(cont());                       // → Windows
+    if (step === "windows") return;
+    await fillWindows();
+    await userEvent.click(cont());                       // → Eligibility
+    if (step === "eligibility") return;
+    await fillEligibility();
+    await userEvent.click(cont());                       // → Legal
   }
 
-  it("Step 7 · Content is all-optional, and says so by letting an empty step continue", async () => {
-    // Not an omission: every field on `EventContentInput` is nullable. The distinction the fix draws
-    // is between "no rules" and "no clause" — this step genuinely has no required field.
-    await (async () => { renderWizard(); await walkTo(1); })();
-    expect(screen.getByText(/Step 7 of 12: Content\./)).toBeInTheDocument();
+  it("Step 7 · Content blocks until all three listing fields are written", async () => {
+    renderWizard();
+    await walkTo("content");
+    expect(screen.getByText(/Step 7 of 11: Content\./)).toBeInTheDocument();
+
+    // Empty: blocked, and the reason names the topmost missing field rather than shrugging.
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Tagline is required.")).toBeInTheDocument();
+
+    // Each field alone is not enough — the step is a SET. `set` rather than `userEvent.type` so the
+    // assertion between each field stays affordable: typing three long strings a character at a time
+    // overran the budget once the whole suite was running.
+    set("Tagline", "One long day of building");
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Short description is required.")).toBeInTheDocument();
+
+    set("Short description", "A hackathon for students.");
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Rules are required.")).toBeInTheDocument();
+
+    set("Rules", "Teams of two to five.");
     expect(cont()).toBeEnabled();
   });
 
-  it("Step 8 · Location requires a join link once the event is Online", async () => {
+  it("Step 7 · Content treats a whitespace-only field as empty", async () => {
     renderWizard();
-    await walkTo(2);
-    expect(screen.getByText(/Step 8 of 12: Location\./)).toBeInTheDocument();
-    // In person: no link needed.
+    await walkTo("content");
+    set("Tagline", "   ");
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Tagline is required.")).toBeInTheDocument();
+  });
+
+  it("Step 8 · Location requires the physical fields of an in-person event", async () => {
+    renderWizard();
+    await walkTo("location");
+    expect(screen.getByText(/Step 8 of 11: Location\./)).toBeInTheDocument();
+
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Building is required.")).toBeInTheDocument();
+    await fillLocation();
+    expect(cont()).toBeEnabled();
+  });
+
+  it("Step 8 · Location swaps which fields it requires when the Mode changes", async () => {
+    renderWizard();
+    await walkTo("location");
+    await fillLocation();
     expect(cont()).toBeEnabled();
 
-    // Conditional requirement appears the instant the controlling field changes (§13). This step had
-    // NO clause at all, so an Online event with no link walked four more steps to a submit refusal.
+    /*
+     * The conditional IS the rule. Going Online removes the physical group from the page entirely, so
+     * the step must stop waiting on it and start waiting on the online group instead — otherwise
+     * Continue would block on controls nobody can see.
+     */
     await userEvent.selectOptions(label("Mode"), "Online");
     expect(cont()).toBeDisabled();
     expect(screen.getByText("A join link is required for an online or hybrid event.")).toBeInTheDocument();
 
     await userEvent.type(label("Join link"), "https://meet.example.com/hack");
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Platform is required.")).toBeInTheDocument();
+
+    await userEvent.type(label("Platform"), "Meet");
+    await userEvent.type(label("Meeting password"), "hack2026");
     expect(cont()).toBeEnabled();
 
-    // …and back to optional when the condition goes away.
-    await userEvent.clear(label("Join link"));
-    expect(cont()).toBeDisabled();
+    // Back to in person: the online group is gone and the physical answers are still there.
     await userEvent.selectOptions(label("Mode"), "Offline");
     expect(cont()).toBeEnabled();
   });
 
   it("Step 8 · Location refuses a link that is not a URL", async () => {
     renderWizard();
-    await walkTo(2);
+    await walkTo("location");
     await userEvent.selectOptions(label("Mode"), "Online");
     await userEvent.type(label("Join link"), "meet.example.com/hack");   // no scheme
 
@@ -382,58 +510,71 @@ describe("Steps 7–11 gate their own fields too", () => {
     expect(screen.getByText("Join link must be a full URL, including https://.")).toBeInTheDocument();
   });
 
-  it("Step 9 · Windows keeps each pair ordered but leaves one-ended windows alone", async () => {
+  it("Step 9 · Windows requires every window and keeps each pair ordered", async () => {
     renderWizard();
-    await walkTo(3);
-    expect(screen.getByText(/Step 9 of 12: Windows\./)).toBeInTheDocument();
+    await walkTo("windows");
+    expect(screen.getByText(/Step 9 of 11: Windows\./)).toBeInTheDocument();
+
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Registration opening time is required.")).toBeInTheDocument();
+
+    await fillWindows();
     expect(cont()).toBeEnabled();
 
-    // One end alone is a legitimate open-ended window and must not block.
-    await userEvent.type(label("Registration opens"), futureLocal(5, 9));
-    expect(cont()).toBeEnabled();
-
-    await userEvent.type(label("Registration closes"), futureLocal(4, 9));
+    // Ordering still holds on a fully answered step.
+    await userEvent.clear(label("Registration closes"));
+    await userEvent.type(label("Registration closes"), futureLocal(2, 9));
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Registration must close after it opens.")).toBeInTheDocument();
-
-    await userEvent.clear(label("Registration closes"));
-    await userEvent.type(label("Registration closes"), futureLocal(6, 9));
-    expect(cont()).toBeEnabled();
   });
 
-  it("Step 10 · Eligibility refuses an inverted age range and a zero team cap", async () => {
+  it("Step 10 · Eligibility requires the ages and the team cap", async () => {
     renderWizard();
-    await walkTo(4);
-    expect(screen.getByText(/Step 10 of 12: Eligibility\./)).toBeInTheDocument();
-    // All-optional: an event with no restriction is the normal case.
+    await walkTo("eligibility");
+    expect(screen.getByText(/Step 10 of 11: Eligibility\./)).toBeInTheDocument();
+
+    expect(cont()).toBeDisabled();
+    expect(screen.getByText("Minimum age is required.")).toBeInTheDocument();
+
+    await fillEligibility();
     expect(cont()).toBeEnabled();
 
-    await userEvent.type(label("Minimum age"), "25");
-    await userEvent.type(label("Maximum age"), "18");
+    await userEvent.clear(label("Maximum age"));
+    await userEvent.type(label("Maximum age"), "12");
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Maximum age must be at least the minimum age.")).toBeInTheDocument();
 
     await userEvent.clear(label("Maximum age"));
     await userEvent.type(label("Maximum age"), "30");
-    expect(cont()).toBeEnabled();
-
     // `ApplyFieldGroups` DISCARDS `MaxTeams <= 0`, so this silently meant "no cap" before.
+    await userEvent.clear(label("Maximum teams"));
     await userEvent.type(label("Maximum teams"), "0");
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Maximum teams must be greater than 0.")).toBeInTheDocument();
   });
 
-  it("Step 11 · Legal makes the consent text required only once consent is switched on", async () => {
+  it("Step 11 · Legal requires the four policies, and the consent text once consent is on", async () => {
     renderWizard();
-    await walkTo(5);
-    expect(screen.getByText(/Step 11 of 12: Legal\./)).toBeInTheDocument();
-    expect(cont()).toBeEnabled();
+    await walkTo("legal");
+    expect(screen.getByText(/Step 11 of 11: Legal\./)).toBeInTheDocument();
+    const act = cont;
 
+    // Legal is terminal, so the unmet requirements arrive as the submit list rather than as the single
+    // blocked-reason line the intermediate steps show.
+    expect(act()).toBeDisabled();
+    expect(screen.getAllByText(/Terms link is required/).length).toBeGreaterThan(0);
+
+    await fillLegal();
+    expect(act()).toBeEnabled();
+
+    await userEvent.clear(label("Terms link"));
     await userEvent.type(label("Terms link"), "not-a-url");
     expect(cont()).toBeDisabled();
     await userEvent.clear(label("Terms link"));
+    await userEvent.type(label("Terms link"), "https://example.com/terms");
     expect(cont()).toBeEnabled();
 
+    // Conditional, and deliberately so: consent OFF means there is no statement to write.
     await userEvent.click(screen.getByRole("checkbox", { name: /Require registrants to accept/ }));
     expect(cont()).toBeDisabled();
     await userEvent.type(label("What they must accept"), "I agree to the rules.");
@@ -442,7 +583,8 @@ describe("Steps 7–11 gate their own fields too", () => {
 });
 
 describe("Step 5 · Registration — the unit the price is charged in (D-372)", () => {
-  const cont = () => screen.getByRole("button", { name: "Continue" });
+  // D-379 — Legal is the terminal step now, where the action reads "Create draft event".
+  const cont = () => screen.getByRole("button", { name: /^(Continue|Create draft event)$/ });
 
   /// A Type whose archetype the capability engine says supports teams, and one it says does not.
   const TEAM_TYPE = [{ id: "t1", name: "Hackathon Track", parent_id: "c1", archetype_slug: "competitive" }] as never[];
@@ -450,6 +592,7 @@ describe("Step 5 · Registration — the unit the price is charged in (D-372)", 
 
   async function walkToRegistration(over: Record<string, unknown>, typeName: string) {
     renderWizard(over);
+    await fillRepresenting();
     for (let i = 0; i < 2; i++) await userEvent.click(cont());
     await userEvent.click(screen.getByRole("radio", { name: "Hackathon" }));
     await userEvent.click(cont());
@@ -460,7 +603,7 @@ describe("Step 5 · Registration — the unit the price is charged in (D-372)", 
   it("offers team entry only when the archetype supports it", async () => {
     // Read from the capability engine's answer, never from a hardcoded list of type names.
     await walkToRegistration({ subcategories: TEAM_TYPE, teamCapableArchetypes: ["competitive"] }, "Hackathon Track");
-    expect(screen.getByText(/Step 5 of 12: Registration\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 5 of 11: Registration\./)).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /As a team/ })).toBeInTheDocument();
   });
 
@@ -521,12 +664,13 @@ describe("Step 5 · Registration — the unit the price is charged in (D-372)", 
 });
 
 describe("Steps 1–4 gate their own fields", () => {
-  const cont = () => screen.getByRole("button", { name: "Continue" });
+  // D-379 — Legal is the terminal step now, where the action reads "Create draft event".
+  const cont = () => screen.getByRole("button", { name: /^(Continue|Create draft event)$/ });
 
   it("Step 1 · Representing refuses a Public event with no verified organization", async () => {
     renderWizard({ representations: [] });
     expect(cont()).toBeDisabled();
-    expect(screen.getByText(/has to represent an organization Kurx has verified/)).toBeInTheDocument();
+    expect(screen.getByText(/must represent an organization Kurx has verified/)).toBeInTheDocument();
   });
 
   /// Free/paid is asked ONCE, at the gate, because the verification tier is chosen from it (D-343).
@@ -534,6 +678,7 @@ describe("Steps 1–4 gate their own fields", () => {
   /// after eligibility had been decided on it. There is no Pricing step now, and no way to reach one.
   it("never asks free or paid again — the gate already did", async () => {
     renderWizard();
+    await fillRepresenting();
     for (const label of ["Representing", "Visibility", "Category", "Type", "Registration"]) {
       expect(screen.queryByRole("radio", { name: /^Paid/ })).not.toBeInTheDocument();
       expect(screen.queryByText(/Is this event free or paid\?/)).not.toBeInTheDocument();
@@ -542,11 +687,12 @@ describe("Steps 1–4 gate their own fields", () => {
       if (label !== "Registration") await userEvent.click(cont());
     }
     // …and the step it reached instead is Registration, which is where money is actually configured.
-    expect(screen.getByText(/Step 5 of 12: Registration\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 5 of 11: Registration\./)).toBeInTheDocument();
   });
 
   it("states the pricing mode it inherited rather than asking for it", async () => {
     renderWizard({ canHostPaid: true, initialPricing: "paid" });
+    await fillRepresenting();
     for (let i = 0; i < 2; i++) await userEvent.click(cont());
     await userEvent.click(screen.getByRole("radio", { name: "Hackathon" }));
     await userEvent.click(cont());
@@ -558,6 +704,7 @@ describe("Steps 1–4 gate their own fields", () => {
 
   it("Step 3 · Category requires a choice", async () => {
     renderWizard();
+    await fillRepresenting();
     for (let i = 0; i < 2; i++) await userEvent.click(cont());
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Choose a category to continue.")).toBeInTheDocument();
@@ -567,11 +714,12 @@ describe("Steps 1–4 gate their own fields", () => {
 
   it("Step 4 · Type requires a choice only when the category has types", async () => {
     renderWizard({ subcategories: [{ id: "t1", name: "Web Track", parent_id: "c1" }] as never[] });
+    await fillRepresenting();
     for (let i = 0; i < 2; i++) await userEvent.click(cont());
     await userEvent.click(screen.getByRole("radio", { name: "Hackathon" }));
     await userEvent.click(cont());
 
-    expect(screen.getByText(/Step 4 of 12: Type\./)).toBeInTheDocument();
+    expect(screen.getByText(/Step 4 of 11: Type\./)).toBeInTheDocument();
     expect(cont()).toBeDisabled();
     expect(screen.getByText("Choose a type to continue.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: "Web Track" }));
@@ -584,8 +732,17 @@ describe("the last step lists what is still missing", () => {
     renderWizard();
     await walkToDetails();
     await fillDetails("Hack Day");
-    // Details -> Content -> Location -> Windows -> Eligibility -> Legal.
-    for (let i = 0; i < 5; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // D-378 — every step now has required fields, so reaching Legal means answering each one.
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Content
+    await fillContent();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Location
+    await fillLocation();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Windows
+    await fillWindows();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Eligibility
+    await fillEligibility();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Legal
+    await fillLegal();
 
     /*
      * This asserted the SUBMIT list, because Legal used to be the terminal step and consent was the one
@@ -595,7 +752,7 @@ describe("the last step lists what is still missing", () => {
      */
     await userEvent.click(screen.getByRole("checkbox", { name: /Require registrants to accept/ }));
 
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ })).toBeDisabled();
     // Said twice on purpose now, and `getAllByText` rather than `getByText` because of it: once beside
     // the button (a disabled control cannot carry its own reason) and once as the field's own
     // `role="alert"` error. Naming the field is what the per-field rendering added.
@@ -606,13 +763,22 @@ describe("the last step lists what is still missing", () => {
     renderWizard();
     await walkToDetails();
     await fillDetails("Hack Day");
-    for (let i = 0; i < 6; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    // Authorization is the terminal step for an event representing an institution, and its evidence is
-    // unfilled — so the backstop list speaks, which is the property this block exists to pin.
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Content
+    await fillContent();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Location
+    await fillLocation();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Windows
+    await fillWindows();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Eligibility
+    await fillEligibility();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Legal
+    // D-379 — Legal is the terminal step now (Authorization moved to Step 1), and the LEGAL fields are
+    // deliberately left blank so the backstop list has something to name. That is the property this
+    // block exists to pin: the last step never merely refuses, it says what is still missing.
     expect(screen.getByRole("button", { name: /Create draft event/ })).toBeDisabled();
     expect(screen.getByText(/Still needed before this can be created:/)).toBeInTheDocument();
-    expect(screen.getByText(/Attach the authorization letter/)).toBeInTheDocument();
+    // Twice on the terminal step: the field's own error, and the backstop list beneath the button.
+    expect(screen.getAllByText(/Terms link is required/).length).toBeGreaterThan(1);
   });
 });
 
@@ -621,21 +787,30 @@ describe("a private event is not asked for capabilities it cannot have", () => {
     renderWizard({ product: "Private", subcategories: PRIVATE_TYPES });
     await walkToDetails("Wedding");
     await fillDetails("Our Wedding");
-    // Details -> Content -> Location -> Windows.
-    for (let i = 0; i < 3; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // D-378 — Content and Location are answered on the way; a Private event is asked for neither the
+    // results/certificate dates nor the age bounds and team cap, which is what this test pins.
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Content
+    await fillContent();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Location
+    await fillLocation();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Windows
+    set("Registration opens", futureLocal(3, 9));
+    set("Registration closes", futureLocal(4, 9));
+    set("Check-in opens", futureLocal(5, 9));
+    set("Check-in closes", futureLocal(5, 17));
 
     // `scoring` and `certificates` are Unsupported for private-gathering.
-    expect(screen.queryByLabelText("Results announced")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Certificates released")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Results announced/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Certificates released/)).not.toBeInTheDocument();
     // Registration and check-in windows ARE supported and must survive the filter.
-    expect(screen.getByLabelText("Registration opens")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Registration opens/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-    expect(screen.queryByLabelText("Maximum teams")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));
+    expect(screen.queryByLabelText(/^Maximum teams/)).not.toBeInTheDocument();
     // Age bounds turn away a stranger who registered; a private event has no open door to turn
     // anyone away from, so the rule has nothing to act on.
-    expect(screen.queryByLabelText("Minimum age")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Maximum age")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Minimum age/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Maximum age/)).not.toBeInTheDocument();
     // Gender is the one eligibility rule still offered — see D-327's open question.
     expect(screen.getByLabelText("Gender")).toBeInTheDocument();
   });
@@ -644,12 +819,18 @@ describe("a private event is not asked for capabilities it cannot have", () => {
     renderWizard();
     await walkToDetails();
     await fillDetails("Hack Day");
-    for (let i = 0; i < 3; i++) await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    // D-378 — Content and Location must be answered on the way to Windows.
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Content
+    await fillContent();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Location
+    await fillLocation();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Windows
 
-    expect(screen.getByLabelText("Results announced")).toBeInTheDocument();
-    expect(screen.getByLabelText("Certificates released")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Results announced/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Certificates released/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await fillWindows();
+    await userEvent.click(screen.getByRole("button", { name: /^(Continue|Create draft event)$/ }));   // -> Eligibility
     expect(label("Minimum age")).toBeInTheDocument();
     expect(label("Maximum teams")).toBeInTheDocument();
   });

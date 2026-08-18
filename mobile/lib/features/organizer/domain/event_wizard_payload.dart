@@ -100,63 +100,143 @@ bool isAbsoluteUrl(String value) {
   return uri != null && uri.hasScheme && uri.host.isNotEmpty;
 }
 
-/// The Location step. Optional in full **except** the join link, which `ValidateMode` requires for an
-/// Online or Hybrid event (`online_url_required`) — the clearest instance of the ungated-step bug, since
-/// choosing Online and leaving the link blank walked four more steps before anything objected.
+/// The Content step (D-378). Required, and the same three fields web requires — a listing card and a
+/// share preview built from an empty tagline and no summary is a listing nobody can act on.
+///
+/// `EventContentInput` is still nullable on the wire: this is a submission-completeness rule over the
+/// storage contract, not a change to it, so a DRAFT still saves blank. Web's `validateContent` is the
+/// twin; the two must say the same thing or one client blocks what the other waves through.
+Map<String, String> validateEventContent({
+  required String tagline,
+  required String shortDescription,
+  required String rules,
+}) {
+  final errors = <String, String>{};
+
+  // Trimmed: "   " is not a tagline. The length ceilings mirror `tagline_too_long` /
+  // `short_description_too_long`, and the fields carry matching maxLength counters.
+  if (tagline.trim().isEmpty) {
+    errors['tagline'] = 'Tagline is required';
+  } else if (tagline.length > 160) {
+    errors['tagline'] = 'Tagline must be 160 characters or fewer';
+  }
+
+  if (shortDescription.trim().isEmpty) {
+    errors['shortDescription'] = 'Short description is required';
+  } else if (shortDescription.length > 300) {
+    errors['shortDescription'] = 'Short description must be 300 characters or fewer';
+  }
+
+  if (rules.trim().isEmpty) errors['rules'] = 'Rules are required';
+
+  return errors;
+}
+
+/// The Location step (D-378). Every field the step ASKS FOR is required, gated by whether the chosen
+/// Mode asks for it: a join link on an in-person event and a floor number on an online one are not
+/// "missing", they do not exist. Mirrors web's `validatePlace` exactly.
+///
+/// `online_url_required` remains the server's own refusal; the rest are submission-completeness rules.
 Map<String, String> validateEventPlace({
   required String eventMode,
   required String onlineUrl,
   required String mapsUrl,
+  required String building,
+  required String floor,
+  required String room,
+  required String meetingPlatform,
+  required String meetingPassword,
 }) {
   final errors = <String, String>{};
-  final needsLink = eventMode == 'Online' || eventMode == 'Hybrid';
+  final hasPhysical = eventMode != 'Online';
+  final hasOnline = eventMode != 'Offline';
 
-  if (needsLink && onlineUrl.trim().isEmpty) {
-    errors['onlineUrl'] = 'A join link is required for an online or hybrid event';
-  } else if (onlineUrl.trim().isNotEmpty && !isAbsoluteUrl(onlineUrl)) {
-    errors['onlineUrl'] = 'Join link must be a full URL, including https://';
+  if (hasPhysical) {
+    if (building.trim().isEmpty) errors['building'] = 'Building is required';
+    if (floor.trim().isEmpty) errors['floor'] = 'Floor is required';
+    if (room.trim().isEmpty) errors['room'] = 'Room is required';
+    if (mapsUrl.trim().isEmpty) {
+      errors['mapsUrl'] = 'Google Maps link is required';
+    } else if (!isAbsoluteUrl(mapsUrl)) {
+      errors['mapsUrl'] = 'Google Maps link must be a full URL, including https://';
+    }
   }
-  if (mapsUrl.trim().isNotEmpty && !isAbsoluteUrl(mapsUrl)) {
-    errors['mapsUrl'] = 'Google Maps link must be a full URL, including https://';
+
+  if (hasOnline) {
+    if (onlineUrl.trim().isEmpty) {
+      errors['onlineUrl'] = 'A join link is required for an online or hybrid event';
+    } else if (!isAbsoluteUrl(onlineUrl)) {
+      errors['onlineUrl'] = 'Join link must be a full URL, including https://';
+    }
+    if (meetingPlatform.trim().isEmpty) errors['meetingPlatform'] = 'Platform is required';
+    if (meetingPassword.trim().isEmpty) errors['meetingPassword'] = 'Meeting password is required';
   }
   return errors;
 }
 
-/// The Windows step. Every window is optional and a pair is checked only when BOTH ends are given —
-/// one end alone is a legitimate open-ended window. Mirrors `invalid_registration_window` /
+/// The Windows step (D-378). Every window is required and each pair must still be ordered.
+///
+/// `isPrivate` mirrors the step's rendering: a Private event is never shown the results or certificate
+/// dates, so it cannot be asked for them. Ordering messages mirror `invalid_registration_window` /
 /// `invalid_checkin_window`.
 Map<String, String> validateEventWindows({
   required DateTime? registrationOpensAt,
   required DateTime? registrationClosesAt,
   required DateTime? checkinOpensAt,
   required DateTime? checkinClosesAt,
+  DateTime? resultDate,
+  DateTime? certificateReleaseAt,
+  bool isPrivate = false,
 }) {
   final errors = <String, String>{};
-  if (registrationOpensAt != null &&
-      registrationClosesAt != null &&
-      !registrationClosesAt.isAfter(registrationOpensAt)) {
+
+  if (registrationOpensAt == null) {
+    errors['registrationOpensAt'] = 'Registration opening time is required';
+  }
+  if (registrationClosesAt == null) {
+    errors['registrationClosesAt'] = 'Registration closing time is required';
+  } else if (registrationOpensAt != null && !registrationClosesAt.isAfter(registrationOpensAt)) {
     errors['registrationClosesAt'] = 'Registration must close after it opens';
   }
-  if (checkinOpensAt != null && checkinClosesAt != null && !checkinClosesAt.isAfter(checkinOpensAt)) {
+
+  if (checkinOpensAt == null) {
+    errors['checkinOpensAt'] = 'Check-in opening time is required';
+  }
+  if (checkinClosesAt == null) {
+    errors['checkinClosesAt'] = 'Check-in closing time is required';
+  } else if (checkinOpensAt != null && !checkinClosesAt.isAfter(checkinOpensAt)) {
     errors['checkinClosesAt'] = 'Check-in must close after it opens';
+  }
+
+  if (!isPrivate) {
+    if (resultDate == null) errors['resultDate'] = 'Results announcement time is required';
+    if (certificateReleaseAt == null) {
+      errors['certificateReleaseAt'] = 'Certificate release time is required';
+    }
   }
   return errors;
 }
 
-/// The Eligibility step. All-optional — an event with no restriction is the normal case — but the values,
-/// once given, have ranges: `invalid_age_range`, and a `maxTeams` of 0 that `ApplyFieldGroups` silently
+/// The Eligibility step (D-378). The ages and the team cap are required; the value rules that were
+/// already here still hold — `invalid_age_range`, and a `maxTeams` of 0 that `ApplyFieldGroups` silently
 /// DISCARDS, so capping teams at 0 meant no cap and no warning.
+///
+/// `isPrivate` mirrors the step's rendering: a Private event is never shown the team cap.
 Map<String, String> validateEventEligibility({
   required String minAge,
   required String maxAge,
   required String maxTeams,
+  bool isPrivate = false,
 }) {
   final errors = <String, String>{};
   const ageRange = 'Age must be a whole number between 0 and 120';
 
-  int? bound(String raw, String field) {
+  int? bound(String raw, String field, String label, {required bool requireIt}) {
     final t = raw.trim();
-    if (t.isEmpty) return null;
+    if (t.isEmpty) {
+      if (requireIt) errors[field] = '$label is required';
+      return null;
+    }
     final n = int.tryParse(t);
     if (n == null || n < 0 || n > 120) {
       errors[field] = ageRange;
@@ -165,29 +245,46 @@ Map<String, String> validateEventEligibility({
     return n;
   }
 
-  final min = bound(minAge, 'minAge');
-  final max = bound(maxAge, 'maxAge');
+  // A Private event is shown NEITHER age bound nor the team cap - only Gender survives the filter, so
+  // those three are required exactly when the step renders them.
+  final min = bound(minAge, 'minAge', 'Minimum age', requireIt: !isPrivate);
+  final max = bound(maxAge, 'maxAge', 'Maximum age', requireIt: !isPrivate);
   if (min != null && max != null && max < min) {
     errors['maxAge'] = 'Maximum age must be at least the minimum age';
   }
 
-  final teams = maxTeams.trim();
-  if (teams.isNotEmpty && (int.tryParse(teams) ?? 0) <= 0) {
-    errors['maxTeams'] = 'Maximum teams must be greater than 0';
+  if (!isPrivate) {
+    final teams = maxTeams.trim();
+    if (teams.isEmpty) {
+      errors['maxTeams'] = 'Maximum teams is required';
+    } else if ((int.tryParse(teams) ?? 0) <= 0) {
+      errors['maxTeams'] = 'Maximum teams must be greater than 0';
+    }
   }
   return errors;
 }
 
-/// The Legal step. Optional except the consent text, which switching consent on makes required
-/// (`consent_text_required`) — acceptance recorded against an empty string is evidence of nothing.
+/// The Legal step (D-378). The four policy fields are required; the consent text stays conditionally
+/// required (`consent_text_required`) — acceptance recorded against an empty string is evidence of
+/// nothing. Mirrors web's `validateLegal` message for message.
 Map<String, String> validateEventLegal({
   required String termsUrl,
   required bool requiresConsent,
   required String consentText,
+  String codeOfConduct = '',
+  String refundPolicy = '',
+  String cancellationPolicy = '',
 }) {
   final errors = <String, String>{};
-  if (termsUrl.trim().isNotEmpty && !isAbsoluteUrl(termsUrl)) {
+  if (termsUrl.trim().isEmpty) {
+    errors['termsUrl'] = 'Terms link is required';
+  } else if (!isAbsoluteUrl(termsUrl)) {
     errors['termsUrl'] = 'Terms link must be a full URL, including https://';
+  }
+  if (codeOfConduct.trim().isEmpty) errors['codeOfConduct'] = 'Code of conduct is required';
+  if (refundPolicy.trim().isEmpty) errors['refundPolicy'] = 'Refund policy is required';
+  if (cancellationPolicy.trim().isEmpty) {
+    errors['cancellationPolicy'] = 'Cancellation policy is required';
   }
   if (requiresConsent && consentText.trim().isEmpty) {
     errors['consentText'] = 'Write the statement registrants must accept, or turn consent off';

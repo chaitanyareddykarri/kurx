@@ -175,8 +175,11 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, institution.StatusCode);
         Assert.Equal("use_representation_request", (await Json(institution)).GetProperty("error").GetString());
 
+        // D-379 — the personal half is refused now. An institution still routes through a
+        // representation request; a personal organization can no longer be created at all.
         var personal = await user.PostAsJsonAsync("/v1/orgs/", new { name = "Just Me Society", personal = true });
-        Assert.Equal(HttpStatusCode.OK, personal.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, personal.StatusCode);
+        Assert.Equal("personal_org_not_supported", (await Json(personal)).GetProperty("error").GetString());
     }
 
     [Fact]
@@ -227,38 +230,44 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
     /// FK-satisfying row is never offered as something to represent. All of that still holds; only the
     /// product it holds for narrowed.</para></summary>
     [Fact]
-    public async Task Create_without_an_org_files_a_private_event_that_carries_no_organization()
+    public async Task Every_event_names_the_real_organization_it_represents()
     {
         // This user has never onboarded, so `Users.Name` is "" — the case that made the resolver fail
         // `invalid_name` and take event creation down with it.
         var user = await LoginAsync("9960000010");
 
-        await user.CreateEventAsync(null, NewSelfHostedEventBody("Solo Gig"));
-        await user.CreateEventAsync(null, NewSelfHostedEventBody("Solo Gig Two"));
+        await user.CreateEventAsync(SelfOrgAsync(user), NewSelfHostedEventBody("Solo Gig"));
+        await user.CreateEventAsync(SelfOrgAsync(user), NewSelfHostedEventBody("Solo Gig Two"));
 
         var mine = await Json(await user.GetAsync("/v1/me/events"));
         var rows = mine.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(2, rows.Count);
 
-        // Both read as Personal, and neither leaks an organization — there is none in the domain, so
-        // the wire carries no id and no name for it (D-268).
+        // D-379 — both now name the real organization they represent. This block asserted the opposite
+        // (kind "personal", no id, no name) because the events were self-hosted; that shape is retired.
         Assert.All(rows, r =>
         {
             var rep = r.GetProperty("representation");
-            Assert.Equal("personal", rep.GetProperty("kind").GetString());
-            Assert.Equal(JsonValueKind.Null, rep.GetProperty("organization_id").ValueKind);
-            Assert.Equal(JsonValueKind.Null, rep.GetProperty("organization_name").ValueKind);
+            // D-379 — always "organization" now; the personal kind is retired for new events.
+            Assert.Equal("organization", rep.GetProperty("kind").GetString());
+            // D-379 — inverted. These asserted that a self-hosted event leaks no organization, because
+            // there was none in the domain. Every event names a real one now, so both must be present.
+            Assert.NotEqual(JsonValueKind.Null, rep.GetProperty("organization_id").ValueKind);
+            Assert.False(string.IsNullOrWhiteSpace(rep.GetProperty("organization_name").GetString()));
         });
 
-        // ...and the self-representation row is never offered as something to represent.
-        Assert.Empty((await Json(await user.GetAsync("/v1/me/representations"))).EnumerateArray());
+        // …and the organization IS offered as something to represent, because it is a real one. The
+        // original assertion (empty) was about the self-representation row never being offered — there
+        // is no such row any more, so the meaningful check is that the real organization appears.
+        var reps = (await Json(await user.GetAsync("/v1/me/representations"))).EnumerateArray().ToList();
+        Assert.NotEmpty(reps);
     }
 
     [Fact]
     public async Task The_owner_manages_their_own_event_without_any_organization_membership()
     {
         var user = await LoginAsync("9960000015");
-        var eventId = (await Json(await user.CreateEventAsync(null, NewSelfHostedEventBody("Owned By Me"))))
+        var eventId = (await Json(await user.CreateEventAsync(SelfOrgAsync(user), NewSelfHostedEventBody("Owned By Me"))))
             .GetProperty("id").GetGuid();
 
         // Ownership alone authorizes the event surface. Before D-268 every one of these resolved to
@@ -286,11 +295,11 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
 
         // One event as themselves, one representing an institution they staged — two different orgs,
         // one flat list. The caller supplies no org id at all.
-        await user.CreateEventAsync(null, NewSelfHostedEventBody("Personal Meetup"));
+        await user.CreateEventAsync(SelfOrgAsync(user), NewSelfHostedEventBody("Personal Meetup"));
         var orgId = (await Json(await SubmitRequest(user, "Two Hats Institute"))).GetProperty("id").GetGuid();
         await user.CreateEventAsync(orgId, NewEventBody("Institute Summit"));
 
-        await stranger.CreateEventAsync(null, NewSelfHostedEventBody("Not Yours"));
+        await stranger.CreateEventAsync(SelfOrgAsync(stranger), NewSelfHostedEventBody("Not Yours"));
 
         var mine = (await Json(await user.GetAsync("/v1/me/events"))).GetProperty("items").EnumerateArray().ToList();
         var titles = mine.Select(r => r.GetProperty("title").GetString()).ToList();
@@ -308,7 +317,7 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
         Assert.Equal("Two Hats Institute", rep.GetProperty("organization_name").GetString());
 
         var personal = mine.Single(r => r.GetProperty("title").GetString() == "Personal Meetup");
-        Assert.Equal("personal", personal.GetProperty("representation").GetProperty("kind").GetString());
+        Assert.Equal("organization", personal.GetProperty("representation").GetProperty("kind").GetString());
     }
 
     [Fact]
@@ -316,7 +325,7 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
     {
         var user = await LoginAsync("9960000013");
         var stranger = await LoginAsync("9960000014");
-        var eventId = (await Json(await user.CreateEventAsync(null, NewSelfHostedEventBody("Id Addressed")))).GetProperty("id").GetGuid();
+        var eventId = (await Json(await user.CreateEventAsync(SelfOrgAsync(user), NewSelfHostedEventBody("Id Addressed")))).GetProperty("id").GetGuid();
 
         var mine = await user.GetAsync($"/v1/events/{eventId}");
         Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
@@ -345,4 +354,14 @@ public class EventFirstTests : IClassFixture<KurxApiFactory>
         categoryId = _categoryId, typeId = _privateTypeId, venueName = "Main Hall", city = "Vizag",
         startsAt = DateTime.UtcNow.AddDays(20), endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
     };
+    /*
+     * D-379 — a real organization for a caller who used to host under their own name.
+     *
+     * These tests' subjects are id-addressability, `/me/events` scoping and creator authority; the fact
+     * that the event was self-represented was incidental to all three and is no longer possible. One
+     * verified organization per caller keeps each test's own subject intact.
+     */
+    private Guid SelfOrgAsync(HttpClient client) =>
+        _factory.SeedVerifiedOrgForClient(client, "Own Org " + Guid.NewGuid().ToString("N")[..8]);
+
 }

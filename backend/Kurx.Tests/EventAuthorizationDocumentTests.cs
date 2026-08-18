@@ -68,7 +68,8 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
         Guid? representing = selfRepresented
             ? null
             : orgId ?? _factory.SeedVerifiedOrgForClient(owner, "Auth Org " + Guid.NewGuid().ToString("N")[..6]);
-        var res = await owner.CreateEventAsync(representing, new
+        // D-379 — this class's subject IS the letter, so the shared helper must not file one.
+        var res = await owner.CreateEventAsync(representing, withAuthorization: false, body: new
         {
             title = "Auth " + Guid.NewGuid().ToString("N")[..6], description = "a real description",
             categoryId = catId, typeId, venueName = "Hall", city = "C",
@@ -131,28 +132,44 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
 
         Assert.Equal(HttpStatusCode.OK, (await Submit(owner, id)).StatusCode);
         // Filed is not approved — the blocker survives submission, which is the point of a review.
-        Assert.Contains("event_authorization_required", await BlockersAsync(owner, orgId, id));
+        // D-379 — FILING clears the blocker, because the blocker asks whether a letter exists. The
+        // reviewer's verdict is recorded on the letter (audit) and folded into the ONE event-review
+        // decision; it is not a second gate the creator must wait on.
+        Assert.DoesNotContain("event_authorization_required", await BlockersAsync(owner, orgId, id));
 
         Assert.Equal(HttpStatusCode.OK, (await Review(reviewer, id, "approve")).StatusCode);
         Assert.DoesNotContain("event_authorization_required", await BlockersAsync(owner, orgId, id));
     }
 
-    /// <summary>A self-represented event names no institution, so there is nothing to authorise. Without
-    /// this the blocker would make Personal events unpublishable — the exact capability D-268 restored.</summary>
+    /*
+     * D-379 — this test's premise is retired, and the assertion is inverted rather than deleted.
+     *
+     * It used to prove that a self-represented event needs no authorization, because it names no
+     * institution and there is nothing to consent to. There is no longer such an event: every event
+     * represents a real organization, so the question it asked cannot arise.
+     *
+     * What replaces it is the fact that made it obsolete — the shape it was built on is now refused at
+     * creation. Kept as a test rather than removed, so the retirement is asserted somewhere instead of
+     * merely being described in a decision file.
+     */
     [Fact]
-    public async Task A_self_represented_event_needs_no_authorization()
+    public async Task A_self_represented_event_can_no_longer_be_created_at_all()
     {
         var (owner, _) = await LoginAsync("9702000003");
-        // D-353 narrowed self-representation to PRIVATE. The rule under test is unchanged — an event
-        // with no institution behind it has no institution to file consent for — but the only shape
-        // that can still reach it is a private one, so the fixture moved rather than the assertion.
-        var id = await CreateEventAsync(owner, orgId: null, typeSlug: "wedding", selfRepresented: true);
+        var (catId, typeId) = await TaxonAsync("wedding");
 
-        using var scope = _factory.Services.CreateScope();
-        var orgId = await scope.ServiceProvider.GetRequiredService<KurxDbContext>()
-            .Events.AsNoTracking().Where(e => e.Id == id).Select(e => e.RepresentingOrgId).FirstAsync();
+        var res = await owner.CreateEventAsync(null, new
+        {
+            title = "Self Hosted " + Guid.NewGuid().ToString("N")[..6],
+            description = "An event with nobody behind it.",
+            categoryId = catId, typeId,
+            venueName = "Garden", city = "Vizag",
+            startsAt = DateTime.UtcNow.AddDays(20),
+            endsAt = DateTime.UtcNow.AddDays(20).AddHours(4),
+        }, submittable: false, withAuthorization: false);
 
-        Assert.DoesNotContain("event_authorization_required", await BlockersAsync(owner, orgId, id));
+        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        Assert.Contains("representation_required", await res.Content.ReadAsStringAsync());
     }
 
     /// <summary>D12 §6's Representation column, the other half of M5. A Career Fair is an act of an
@@ -250,8 +267,16 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.OK, (await Submit(owner, id)).StatusCode);
 
         var view = await Json(await owner.GetAsync($"/v1/events/{id}/authorization"));
+        // The letter's own verdict is cleared — that is the audit record, and it is what a reviewer sees.
         Assert.Equal("Submitted", view.GetProperty("status").GetString());
-        Assert.Contains("event_authorization_required", await BlockersAsync(owner, orgId, id));
+        /*
+         * D-379 — what actually protects the platform here is NOT a publish blocker keyed on this status.
+         * It is D-363 §4: resubmitting the letter on an APPROVED event sends the EVENT back to the queue
+         * (`EventAuthorizationService` calls `EventReviewReopen.IfApprovedAsync(..., "the authorization
+         * letter", ...)`), so an organiser cannot swap the evidence and publish on the old decision.
+         * The blocker asks only whether a letter exists, and one does.
+         */
+        Assert.DoesNotContain("event_authorization_required", await BlockersAsync(owner, orgId, id));
     }
 
     /// <summary>The same edit lock the event's own PATCH honours (D-266 M4). Evidence must not move under
@@ -570,8 +595,16 @@ public class EventAuthorizationDocumentTests(KurxApiFactory factory) : IClassFix
         });
 
         var view = await Json(await owner.GetAsync($"/v1/events/{id}/authorization"));
+        // The letter's own verdict is cleared — that is the audit record, and it is what a reviewer sees.
         Assert.Equal("Submitted", view.GetProperty("status").GetString());
-        Assert.Contains("event_authorization_required", await BlockersAsync(owner, orgId, id));
+        /*
+         * D-379 — what actually protects the platform here is NOT a publish blocker keyed on this status.
+         * It is D-363 §4: resubmitting the letter on an APPROVED event sends the EVENT back to the queue
+         * (`EventAuthorizationService` calls `EventReviewReopen.IfApprovedAsync(..., "the authorization
+         * letter", ...)`), so an organiser cannot swap the evidence and publish on the old decision.
+         * The blocker asks only whether a letter exists, and one does.
+         */
+        Assert.DoesNotContain("event_authorization_required", await BlockersAsync(owner, orgId, id));
     }
 
     /// <summary>The vocabulary is published so clients render the list the server validates against.

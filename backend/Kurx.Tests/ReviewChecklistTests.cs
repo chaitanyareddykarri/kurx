@@ -37,7 +37,9 @@ public class ReviewChecklistTests(KurxApiFactory factory) : IClassFixture<KurxAp
         var t = await db.EventCategories.Where(c => c.Slug == "hackathon")
             .Select(c => new { c.Id, c.ParentId }).FirstAsync();
 
-        var res = await owner.CreateEventAsync(orgId, new
+        // D-379 — the checklist under test CONTAINS event_authorization_required, so filing a letter
+        // here would remove the very item these tests count.
+        var res = await owner.CreateEventAsync(orgId, withAuthorization: false, body: new
         {
             title = "Chk " + Guid.NewGuid().ToString("N")[..6], description = "a real description",
             categoryId = t.ParentId!.Value, typeId = t.Id, venueName = "Hall", city = "C",

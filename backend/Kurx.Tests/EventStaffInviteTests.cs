@@ -143,7 +143,9 @@ public class EventStaffInviteTests : IClassFixture<KurxApiFactory>
         Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
 
         var row = (await Json(await invitee.GetAsync("/v1/me/assignments"))).EnumerateArray().Single();
-        Assert.Equal(JsonValueKind.Null, row.GetProperty("representing_org_name").ValueKind);
+        // D-379 — inverted deliberately. This asserted that a self-represented event carries NO
+        // organization name on the invite; there is no such event now, so the invite always names one.
+        Assert.False(string.IsNullOrWhiteSpace(row.GetProperty("representing_org_name").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(row.GetProperty("event_title").GetString()));
     }
 
@@ -194,7 +196,10 @@ public class EventStaffInviteTests : IClassFixture<KurxApiFactory>
     /// stated rather than defaulted.</para></summary>
     private async Task<Guid> CreateSelfRepresentedEventAsync(HttpClient host)
     {
-        var res = await host.CreateEventAsync(null, EventBody(await TaxonAsync("birthday-party")));
+        // D-379 — every event represents a real organization, so there is no "self-represented" event
+        // to build this on any more. The subject (staff invitations) is unchanged; only the fixture is.
+        var orgId = _factory.SeedVerifiedOrgForClient(host, "Invite Org " + Guid.NewGuid().ToString("N")[..6]);
+        var res = await host.CreateEventAsync(orgId, EventBody(await TaxonAsync("birthday-party")));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var id = (await Json(res)).GetProperty("id").GetGuid();
         _factory.SeedApprovedEventAuthorization(id);

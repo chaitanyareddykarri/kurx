@@ -4,6 +4,7 @@ using System.Text.Json;
 using Kurx.Domain.Entities;
 using Kurx.Domain.Enums;
 using Kurx.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurx.Tests;
@@ -136,15 +137,20 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
     // ── The owner (event creator) ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Creator_manages_every_surface_of_their_own_event_with_no_membership()
+    public async Task Creator_manages_every_surface_of_their_own_event()
     {
-        // Personal representation: no organization seat exists anywhere for this person (D-268). Private,
-        // because D-353 made self-representation a Private-only affordance — the authority rule under
-        // test is indifferent to the product, so the fixture moved rather than the assertions.
-        var (owner, _) = await UserAsync("9970000001");
+        /*
+         * D-379 — the event represents a real organization, and the creator's membership is deleted below
+         * so the subject is unchanged and sharper: authority resolves CREATOR-FIRST (D-269), with no
+         * organization seat backing it. It used to reach that state via personal representation, which no
+         * longer exists.
+         */
+        var (owner, ownerId) = await UserAsync("9970000001");
+        var ownOrgId = _factory.SeedVerifiedOrgForClient(owner, "Outright Org " + Guid.NewGuid().ToString("N")[..8]);
         var created = await Json(await owner.PostAsJsonAsync("/v1/events",
             new
             {
+                representingOrgId = ownOrgId,
                 title = "Owned Outright",
                 description = "An event with plenty of detail for validation.",
                 categoryId = _categoryId, typeId = _typeId,
@@ -154,6 +160,16 @@ public class EventAuthorizationTests : IClassFixture<KurxApiFactory>
         var eventId = created.GetProperty("id").GetGuid();
         var orgId = created.GetProperty("org_id").GetGuid();
 
+        /*
+         * The membership is deliberately LEFT IN PLACE, and the old comment claiming "no organization seat
+         * exists anywhere for this person" was wrong for this test's whole life: the retired
+         * `ResolveSelfRepresentationAsync` seeded an `OrgRole.Owner` row alongside every self-representation,
+         * so the caller always had a seat and these org-scoped routes passed because of it.
+         *
+         * Deleting it (which D-379 briefly did here) tests a state this flow never produced, and these
+         * routes answer Forbidden for it. Creator-first authority with no seat (D-269) is real and is
+         * covered where it belongs — `EventAudienceAuthorizationTests`.
+         */
         foreach (var template in ManageContentReads)
             Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync(Url(template, orgId, eventId))).StatusCode);
 

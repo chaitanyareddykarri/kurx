@@ -293,37 +293,66 @@ describe("validateDetails", () => {
 });
 
 describe("validatePlace", () => {
-  const OFFLINE = {
-    eventMode: "Offline", onlineUrl: "", building: "", floor: "", room: "",
-    googleMapsUrl: "", meetingPlatform: "", meetingPassword: ""
+  /// D-378 — every field the Mode asks for is required. `FULL_OFFLINE` / `FULL_ONLINE` are complete, so
+  /// each test blanks exactly ONE field and a rule that stops firing cannot hide behind a neighbour.
+  const FULL_OFFLINE = {
+    eventMode: "Offline", onlineUrl: "", building: "Block A", floor: "2", room: "204",
+    googleMapsUrl: "https://maps.example.com/x", meetingPlatform: "", meetingPassword: ""
+  };
+  const FULL_ONLINE = {
+    eventMode: "Online", onlineUrl: "https://meet.example.com/x", building: "", floor: "", room: "",
+    googleMapsUrl: "", meetingPlatform: "Meet", meetingPassword: "abc123"
   };
 
-  it("asks nothing of an in-person event", () => {
-    expect(validatePlace(OFFLINE)).toEqual({});
+  it("accepts a fully answered step in either mode", () => {
+    expect(validatePlace(FULL_OFFLINE)).toEqual({});
+    expect(validatePlace(FULL_ONLINE)).toEqual({});
   });
+
+  it.each(["building", "floor", "room", "googleMapsUrl"] as const)(
+    "requires %s on an in-person event", (field) => {
+      expect(validatePlace({ ...FULL_OFFLINE, [field]: "" })[field]).toBeDefined();
+      expect(validatePlace({ ...FULL_OFFLINE, [field]: "   " })[field]).toBeDefined();
+    });
+
+  it.each(["onlineUrl", "meetingPlatform", "meetingPassword"] as const)(
+    "requires %s on an online event", (field) => {
+      expect(validatePlace({ ...FULL_ONLINE, [field]: "" })[field]).toBeDefined();
+    });
 
   /*
-   * The most expensive of the three steps that had no clause at all. `ValidateMode` refuses
-   * `online_url_required`, so choosing Online and leaving the link blank walked four more steps before
-   * the wizard said a word.
+   * The conditional IS the rule, not a softening of it. A join link on an in-person event and a floor
+   * number on an online one are not missing — they do not exist. Requiring both groups unconditionally
+   * would make every event unsubmittable, which is what §9 forbids.
    */
-  it.each(["Online", "Hybrid"])("requires a join link once the event is %s", (eventMode) => {
-    expect(validatePlace({ ...OFFLINE, eventMode }).onlineUrl)
-      .toBe("A join link is required for an online or hybrid event");
+  it("asks an in-person event for nothing online, and an online event for nothing physical", () => {
+    const offline = validatePlace(FULL_OFFLINE);
+    expect(offline.onlineUrl).toBeUndefined();
+    expect(offline.meetingPlatform).toBeUndefined();
+    const online = validatePlace(FULL_ONLINE);
+    expect(online.building).toBeUndefined();
+    expect(online.googleMapsUrl).toBeUndefined();
   });
 
-  it("stops requiring it the moment the mode goes back to in-person", () => {
-    expect(validatePlace({ ...OFFLINE, eventMode: "Offline", onlineUrl: "" })).toEqual({});
+  it("asks a Hybrid event for BOTH groups", () => {
+    const errors = validatePlace({
+      eventMode: "Hybrid", onlineUrl: "", building: "", floor: "", room: "",
+      googleMapsUrl: "", meetingPlatform: "", meetingPassword: ""
+    });
+    expect(errors.building).toBeDefined();
+    expect(errors.onlineUrl).toBeDefined();
   });
 
   it("refuses a link with no scheme, which is what type=url already promised", () => {
-    expect(validatePlace({ ...OFFLINE, eventMode: "Online", onlineUrl: "meet.example.com" }).onlineUrl)
+    expect(validatePlace({ ...FULL_ONLINE, onlineUrl: "meet.example.com" }).onlineUrl)
       .toBe("Join link must be a full URL, including https://");
+    expect(validatePlace({ ...FULL_OFFLINE, googleMapsUrl: "maps.example" }).googleMapsUrl)
+      .toBe("Google Maps link must be a full URL, including https://");
   });
 
-  it("leaves the optional map link alone unless it is filled in badly", () => {
-    expect(validatePlace({ ...OFFLINE, googleMapsUrl: "" })).toEqual({});
-    expect(validatePlace({ ...OFFLINE, googleMapsUrl: "maps.example" }).googleMapsUrl).toBeDefined();
+  it("says nothing else until the mode itself is valid", () => {
+    expect(validatePlace({ ...FULL_OFFLINE, eventMode: "Teleport" }))
+      .toEqual({ eventMode: "Choose how the event is held" });
   });
 });
 
@@ -332,67 +361,110 @@ describe("validateWindows", () => {
     registrationOpensAt: "", registrationClosesAt: "", checkinOpensAt: "",
     checkinClosesAt: "", resultDate: "", certificateReleaseAt: "", autoClose: false
   };
+  const FULL = {
+    ...EMPTY,
+    registrationOpensAt: local(DAY), registrationClosesAt: local(2 * DAY),
+    checkinOpensAt: local(3 * DAY), checkinClosesAt: local(4 * DAY),
+    resultDate: local(5 * DAY), certificateReleaseAt: local(6 * DAY)
+  };
 
-  it("accepts an untouched step — every window is optional", () => {
-    expect(validateWindows(EMPTY)).toEqual({});
+  it("accepts a fully answered step", () => {
+    expect(validateWindows(FULL)).toEqual({});
   });
 
-  it("leaves a one-ended window alone, because that is a legitimate open-ended window", () => {
-    expect(validateWindows({ ...EMPTY, registrationOpensAt: local(DAY) })).toEqual({});
-    expect(validateWindows({ ...EMPTY, checkinClosesAt: local(DAY) })).toEqual({});
+  it("D-378 — every window is required", () => {
+    expect(validateWindows(EMPTY)).toEqual({
+      registrationOpensAt: "Registration opening time is required",
+      registrationClosesAt: "Registration closing time is required",
+      checkinOpensAt: "Check-in opening time is required",
+      checkinClosesAt: "Check-in closing time is required",
+      resultDate: "Results announcement time is required",
+      certificateReleaseAt: "Certificate release time is required"
+    });
+  });
+
+  /// A Private event never SEES the results or certificate dates (D-266 M2 — the archetype has both
+  /// Unsupported), so blocking on them would strand it on a step with nothing to fill in.
+  it("does not ask a private event for the two dates it is never shown", () => {
+    expect(validateWindows({ ...FULL, resultDate: "", certificateReleaseAt: "" }, true)).toEqual({});
   });
 
   it("orders each pair once both ends are given", () => {
     expect(validateWindows({
-      ...EMPTY, registrationOpensAt: local(5 * DAY), registrationClosesAt: local(4 * DAY)
+      ...FULL, registrationOpensAt: local(5 * DAY), registrationClosesAt: local(4 * DAY)
     }).registrationClosesAt).toBe("Registration must close after it opens");
     expect(validateWindows({
-      ...EMPTY, checkinOpensAt: local(5 * DAY), checkinClosesAt: local(5 * DAY)
+      ...FULL, checkinOpensAt: local(5 * DAY), checkinClosesAt: local(5 * DAY)
     }).checkinClosesAt).toBe("Check-in must close after it opens");
   });
 });
 
 describe("validateEligibility", () => {
-  const ANY = { minAge: "", maxAge: "", genderRestriction: "Any", maxTeams: "" };
+  const FULL = { minAge: "16", maxAge: "30", genderRestriction: "Any", maxTeams: "40" };
 
-  it("accepts an event with no restrictions, which is the normal case", () => {
-    expect(validateEligibility(ANY)).toEqual({});
+  it("accepts a fully answered step", () => {
+    expect(validateEligibility(FULL)).toEqual({});
+  });
+
+  it("D-378 — the ages and the team cap are required", () => {
+    expect(validateEligibility({ ...FULL, minAge: "", maxAge: "", maxTeams: "" })).toEqual({
+      minAge: "Minimum age is required",
+      maxAge: "Maximum age is required",
+      maxTeams: "Maximum teams is required"
+    });
+  });
+
+  it("does not ask a private event for the team cap it is never shown", () => {
+    expect(validateEligibility({ ...FULL, maxTeams: "" }, true)).toEqual({});
   });
 
   it("refuses a maximum age below the minimum (invalid_age_range)", () => {
-    expect(validateEligibility({ ...ANY, minAge: "25", maxAge: "18" }).maxAge)
+    expect(validateEligibility({ ...FULL, minAge: "25", maxAge: "18" }).maxAge)
       .toBe("Maximum age must be at least the minimum age");
-  });
-
-  it("accepts a single bound with no partner", () => {
-    expect(validateEligibility({ ...ANY, minAge: "18" })).toEqual({});
   });
 
   it("refuses a team cap of zero, which the server would silently discard", () => {
     // `ApplyFieldGroups` does `MaxTeams <= 0 ? null` — so this used to mean "no cap", with no warning.
-    expect(validateEligibility({ ...ANY, maxTeams: "0" }).maxTeams)
+    expect(validateEligibility({ ...FULL, maxTeams: "0" }).maxTeams)
       .toBe("Maximum teams must be greater than 0");
   });
 
   it("refuses an age outside the range the inputs already declare", () => {
-    expect(validateEligibility({ ...ANY, minAge: "200" }).minAge).toBeDefined();
+    expect(validateEligibility({ ...FULL, minAge: "200" }).minAge).toBeDefined();
   });
 });
 
 describe("validateLegal", () => {
-  const NONE = {
-    termsUrl: "", codeOfConduct: "", refundPolicy: "", cancellationPolicy: "",
+  const FULL = {
+    termsUrl: "https://example.com/terms", codeOfConduct: "Be kind",
+    refundPolicy: "No refunds", cancellationPolicy: "Cancel anytime",
     requiresConsent: false, consentText: ""
   };
 
-  it("accepts an untouched step", () => {
-    expect(validateLegal(NONE)).toEqual({});
+  it("accepts a fully answered step", () => {
+    expect(validateLegal(FULL)).toEqual({});
+  });
+
+  it("D-378 — the four policy fields are required", () => {
+    expect(validateLegal({ ...FULL, termsUrl: "" }).termsUrl).toBe("Terms link is required");
+    expect(validateLegal({ ...FULL, codeOfConduct: "  " }).codeOfConduct)
+      .toBe("Code of conduct is required");
+    expect(validateLegal({ ...FULL, refundPolicy: "" }).refundPolicy)
+      .toBe("Refund policy is required");
+    expect(validateLegal({ ...FULL, cancellationPolicy: "" }).cancellationPolicy)
+      .toBe("Cancellation policy is required");
+  });
+
+  it("refuses a terms link with no scheme", () => {
+    expect(validateLegal({ ...FULL, termsUrl: "example.com/terms" }).termsUrl)
+      .toBe("Terms link must be a full URL, including https://");
   });
 
   it("makes the consent text required only once consent is switched on", () => {
-    expect(validateLegal({ ...NONE, requiresConsent: true }).consentText).toBeDefined();
-    expect(validateLegal({ ...NONE, requiresConsent: true, consentText: "  " }).consentText).toBeDefined();
-    expect(validateLegal({ ...NONE, requiresConsent: true, consentText: "I agree" })).toEqual({});
+    expect(validateLegal({ ...FULL, requiresConsent: true }).consentText).toBeDefined();
+    expect(validateLegal({ ...FULL, requiresConsent: true, consentText: "  " }).consentText)
+      .toBeDefined();
+    expect(validateLegal({ ...FULL, requiresConsent: true, consentText: "I agree" })).toEqual({});
   });
 });
 
@@ -543,12 +615,42 @@ describe("archetypeSupportsTeams", () => {
 });
 
 describe("validateContent", () => {
-  it("is entirely optional, and only caps the two lengths the server refuses", () => {
-    expect(validateContent({ tagline: "", shortDescription: "", rules: "" })).toEqual({});
-    expect(validateContent({ tagline: "x".repeat(161), shortDescription: "", rules: "" }).tagline)
-      .toBeDefined();
-    expect(validateContent({ tagline: "", shortDescription: "x".repeat(301), rules: "" })
-      .shortDescription).toBeDefined();
+  const FILLED = { tagline: "One line", shortDescription: "A summary", rules: "Be kind" };
+
+  it("accepts a fully written step", () => {
+    expect(validateContent(FILLED)).toEqual({});
+  });
+
+  /// D-378 — each field alone blocks the step. Asserted one at a time, because a rule written as
+  /// "all three or nothing" passes a test that fills two and still lets the third through.
+  it("requires all three fields, each independently", () => {
+    expect(validateContent({ tagline: "", shortDescription: "", rules: "" })).toEqual({
+      tagline: "Tagline is required",
+      shortDescription: "Short description is required",
+      rules: "Rules are required"
+    });
+    expect(validateContent({ ...FILLED, tagline: "" }).tagline).toBe("Tagline is required");
+    expect(validateContent({ ...FILLED, shortDescription: "" }).shortDescription)
+      .toBe("Short description is required");
+    expect(validateContent({ ...FILLED, rules: "" }).rules).toBe("Rules are required");
+  });
+
+  /// Whitespace is not content — §3's explicit case.
+  it("treats a whitespace-only value as empty", () => {
+    const errors = validateContent({ tagline: "   ", shortDescription: "\t\n", rules: "  " });
+    expect(errors.tagline).toBe("Tagline is required");
+    expect(errors.shortDescription).toBe("Short description is required");
+    expect(errors.rules).toBe("Rules are required");
+  });
+
+  /// The ceilings still mirror `tagline_too_long` / `short_description_too_long`, and a filled-but-
+  /// over-long field reports the LENGTH problem rather than claiming it is missing.
+  it("still caps the two lengths the server refuses", () => {
+    expect(validateContent({ ...FILLED, tagline: "x".repeat(161) }).tagline)
+      .toBe("Tagline must be 160 characters or fewer");
+    expect(validateContent({ ...FILLED, shortDescription: "x".repeat(301) }).shortDescription)
+      .toBe("Short description must be 300 characters or fewer");
+    expect(validateContent({ ...FILLED, tagline: "x".repeat(160) }).tagline).toBeUndefined();
   });
 });
 

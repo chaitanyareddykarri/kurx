@@ -98,7 +98,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
             Location = new { building = "Block A", floor = "3", room = "301" },
             Eligibility = new { minAge = 18, maxAge = 25, genderRestriction = "Any", maxTeams = 40 },
             Commerce = new { taxPercent = 18.0m, taxInclusive = false },
-        }));
+        }), submittable: false);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
 
         var ev = await LoadAsync((await Json(res)).GetProperty("id").GetGuid());
@@ -121,7 +121,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     {
         // The groups are optional and trailing precisely so every pre-D-265 client keeps working.
         var (client, orgId) = await OwnerWithOrgAsync("9700000802", "D265 Legacy Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("Plain Event"));
+        var res = await client.CreateEventAsync(orgId, CreateBody("Plain Event"), submittable: false);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
 
         var ev = await LoadAsync((await Json(res)).GetProperty("id").GetGuid());
@@ -141,7 +141,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
         var created = await Json(await client.CreateEventAsync(orgId, CreateBody("Patch Me", new
         {
             Content = new { tagline = "Original tagline", rules = "Original rules" },
-        })));
+        }), submittable: false));
         var eventId = created.GetProperty("id").GetGuid();
 
         var res = await client.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}",
@@ -162,7 +162,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
         var created = await Json(await client.CreateEventAsync(orgId, CreateBody("Clear Me", new
         {
             Content = new { tagline = "Delete me" },
-        })));
+        }), submittable: false));
         var eventId = created.GetProperty("id").GetGuid();
 
         await client.PatchAsJsonAsync($"/v1/orgs/{orgId}/events/{eventId}",
@@ -182,7 +182,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
         var res = await client.CreateEventAsync(orgId, CreateBody("Bad Reg Window", new
         {
             Schedule = new { registrationOpensAt = now.AddDays(5), registrationClosesAt = now.AddDays(2) },
-        }));
+        }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("invalid_registration_window", (await Json(res)).GetProperty("error").GetString());
@@ -197,7 +197,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
         var res = await client.CreateEventAsync(orgId, CreateBody("Bad Checkin Window", new
         {
             Schedule = new { checkinOpensAt = now.AddDays(5), checkinClosesAt = now.AddDays(2) },
-        }));
+        }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("invalid_checkin_window", (await Json(res)).GetProperty("error").GetString());
@@ -207,7 +207,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     public async Task A_max_age_below_the_min_is_rejected()
     {
         var (client, orgId) = await OwnerWithOrgAsync("9700000812", "D265 Age Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Ages", new { Eligibility = new { minAge = 30, maxAge = 18 } }));
+        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Ages", new { Eligibility = new { minAge = 30, maxAge = 18 } }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("invalid_age_range", (await Json(res)).GetProperty("error").GetString());
@@ -218,7 +218,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     {
         // Otherwise every registrant "accepts" an empty string and the stored hash evidences nothing.
         var (client, orgId) = await OwnerWithOrgAsync("9700000813", "D265 Consent Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("No Consent Text", new { Legal = new { requiresConsent = true } }));
+        var res = await client.CreateEventAsync(orgId, CreateBody("No Consent Text", new { Legal = new { requiresConsent = true } }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("consent_text_required", (await Json(res)).GetProperty("error").GetString());
@@ -228,7 +228,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     public async Task An_out_of_range_tax_percent_is_rejected()
     {
         var (client, orgId) = await OwnerWithOrgAsync("9700000814", "D265 Tax Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Tax", new { Commerce = new { taxPercent = 150.0m } }));
+        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Tax", new { Commerce = new { taxPercent = 150.0m } }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("invalid_tax_percent", (await Json(res)).GetProperty("error").GetString());
@@ -238,7 +238,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     public async Task An_unknown_gender_restriction_is_rejected()
     {
         var (client, orgId) = await OwnerWithOrgAsync("9700000815", "D265 Gender Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Gender", new { Eligibility = new { genderRestriction = "wizards" } }));
+        var res = await client.CreateEventAsync(orgId, CreateBody("Bad Gender", new { Eligibility = new { genderRestriction = "wizards" } }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("invalid_gender_restriction", (await Json(res)).GetProperty("error").GetString());
@@ -248,7 +248,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     public async Task A_tagline_over_the_cap_is_rejected()
     {
         var (client, orgId) = await OwnerWithOrgAsync("9700000816", "D265 Tagline Org");
-        var res = await client.CreateEventAsync(orgId, CreateBody("Long Tagline", new { Content = new { tagline = new string('x', 161) } }));
+        var res = await client.CreateEventAsync(orgId, CreateBody("Long Tagline", new { Content = new { tagline = new string('x', 161) } }), submittable: false);
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         Assert.Equal("tagline_too_long", (await Json(res)).GetProperty("error").GetString());
@@ -266,7 +266,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
         {
             Content = new { tagline = "Read me back" },
             Eligibility = new { minAge = 16 },
-        })));
+        }), submittable: false));
         var eventId = created.GetProperty("id").GetGuid();
 
         var res = await client.GetAsync($"/v1/orgs/{orgId}/events/{eventId}");
@@ -288,7 +288,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
             eventMode = "Online",
             onlineUrl = "https://meet.example.com/abc",
             Location = new { meetingPlatform = "Meet", meetingPassword = "hunter2" },
-        })));
+        }), submittable: false));
         var eventId = created.GetProperty("id").GetGuid();
 
         // Stored…
@@ -308,7 +308,7 @@ public class EventCreationFieldsTests : IClassFixture<KurxApiFactory>
     public async Task Invite_only_is_an_author_visibility_and_is_distinct_from_admin_hidden()
     {
         var (client, orgId) = await OwnerWithOrgAsync("9700000817", "D265 Visibility Org");
-        var created = await Json(await client.CreateEventAsync(orgId, CreateBody("Invite Only Event", new { visibility = "InviteOnly" })));
+        var created = await Json(await client.CreateEventAsync(orgId, CreateBody("Invite Only Event", new { visibility = "InviteOnly" }), submittable: false));
 
         var ev = await LoadAsync(created.GetProperty("id").GetGuid());
         Assert.Equal(EventVisibility.InviteOnly, ev.Visibility);

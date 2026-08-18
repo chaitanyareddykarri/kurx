@@ -18,6 +18,61 @@ Changes · Verification · Remaining Work).
 
 ## [Unreleased]
 
+### A wizard step that asks a question waits for the answer (2026-08-17) - D-378
+
+**Implementation Summary.** The create-event wizard blocked Continue on **one** step. Details refused
+every field it asked for; Content, Location, Windows, Eligibility and Legal let an empty step through,
+because their validators encoded only what the *storage contract* refuses — two length ceilings, one
+conditional join link, one conditional consent text — and every other field in those groups is nullable.
+An organiser could reach "Create draft" with no tagline, no summary, no rules, no map link, no
+registration window, no age policy and no terms.
+
+**Every field a step renders is now required** — and where a field belongs to a configuration the
+organiser did not choose, it is not required, because it does not exist. That conditional half is
+load-bearing: taken literally, "require everything" makes the wizard impossible to finish, since a join
+link on an in-person event and a floor number on an online one are questions nobody asked. Both wizards
+already rendered those groups conditionally; the validators now agree with what is on screen, so Continue
+never waits on a control the organiser cannot see. A Private event is the same case one level up — its
+archetype has `teams`, `scoring` and `certificates` Unsupported, so it is shown neither age bound, nor
+the team cap, nor the results/certificate dates, and is asked for none of them.
+
+**Enforced server-side on `submit_review`, and nowhere else.** A disabled button is a rendering state,
+not an authorization. `ValidateSubmissionReadiness` refuses an incomplete event at the transition
+(`missing_tagline`, `missing_building`, `missing_registration_opens`, `missing_min_age`,
+`missing_terms_url`, …). Create and update stay permissive on purpose: the wizard writes a Draft step by
+step and `EventDraftBodyValidator` (D-266 M8) exists to preserve half-filled work, so a gate on the write
+would delete that feature. Kept separate from `ValidatePublishReadiness`, which runs on `publish` and so
+would have retroactively made already-approved events unpublishable.
+
+**Files Changed.** Backend: `Kurx.Infrastructure/Events/EventService.cs` (`ValidateSubmissionReadiness`
++ the `submit_review` call), `docs/DECISIONS.md` (D-378), `docs/api/README.md`.
+Web: `lib/event-wizard.ts` (`validateContent`, `validatePlace`, `validateWindows`, `validateEligibility`,
+`validateLegal` + the field orders), `components/host/create-event-wizard.tsx` (every affected control
+moved onto the shared `Field`/`DateTimeField` contract, so the required mark, the error and the
+`aria-describedby` wiring come from one place), `vitest.config.mts` (`testTimeout`).
+Mobile: `features/organizer/domain/event_wizard_payload.dart` (new `validateEventContent`, the other four
+rewritten), `presentation/pages/create_event_page.dart` (Content step wired to `_currentErrors`).
+Shared: `packages/ui/src/problem-copy.ts` + `mobile/lib/core/network/api_error.dart` (word-for-word, as
+`error-copy.test.ts` requires).
+
+**Database.** None. No schema change, no migration, no data change — the columns stay nullable and this
+is a submission-completeness rule layered over the storage contract.
+
+**API.** `POST /v1/orgs/{orgId}/events/{eventId}/transition` with `submit_review` gains the refusal codes
+above. No route, request shape or response shape changed.
+
+**Breaking Changes.** An organiser mid-draft with an incomplete event will be refused at submit until the
+new fields are filled. Drafts already saved are untouched and still load; nothing already in review or
+published is re-examined.
+
+**Verification.** web 920 pass / 1 skip · flutter 504 pass · `flutter analyze` clean · `dotnet build`
+0 warnings.
+
+**Remaining Work.** Requiring `Rules` on every event invites `n/a` from a casual meetup, and the same is
+true of a floor number for an event in a park. Raised and reaffirmed, so it ships as specified; if junk
+values appear the fix is to make these conditional on the archetype, for which the `isPrivate` arm is
+already the pattern.
+
 ### A team ticket is not sellable at the gate or in a seat block (2026-08-17) - D-369
 
 **Implementation Summary.** D-366 made `TicketType.PricePaise` a derived value — the cheapest band — so

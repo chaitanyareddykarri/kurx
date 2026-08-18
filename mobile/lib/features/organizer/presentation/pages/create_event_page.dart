@@ -11,7 +11,6 @@ import '../../../../core/theme/design_tokens.dart';
 import '../../../events/domain/entities/event_category.dart';
 import '../../../events/presentation/providers/search_providers.dart';
 import '../../domain/event_wizard_payload.dart';
-import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/event_content_providers.dart';
 import '../providers/organizer_providers.dart';
 
@@ -183,8 +182,12 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   /// D-351 — Authorization is present only for a Public event that represents an institution, which is
   /// exactly the shape `PolicyResolver` raises `event_authorization_required` for. A self-represented
   /// event has no institution to authorise it and never sees the step.
-  bool get _needsAuthorization =>
-      widget.product == 'Public' && _representingOrgId != null;
+  /// D-379 - required for EVERY event. Was `product == 'Public' && _representingOrgId != null`, so a
+  /// private event carried no letter and neither did one created before an organisation was picked. The
+  /// letter proves "this representative may run THIS event for this organisation", which a private
+  /// gathering needs as much as a public one. `submit_review` refuses without it either way, so a
+  /// conditional step would only hide the refusal until the end of the wizard.
+  bool get _needsAuthorization => true;
 
   List<_Step> get _steps => _needsAuthorization
       ? _Step.values
@@ -304,29 +307,48 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
           venueAddress: _venueAddress.text,
           capacity: _capacity.text,
         ),
-        // Content is all-optional: every field on `EventContentInput` is nullable, and the two length
-        // ceilings are already enforced by `maxLength` on the inputs.
-        _Step.content: const {},
+        // D-378 — Content is required. The fields are still nullable on the wire (a draft saves
+        // blank); this is the completeness rule that stops an unlistable event reaching review.
+        _Step.content: validateEventContent(
+          tagline: _tagline.text,
+          shortDescription: _shortDescription.text,
+          rules: _rules.text,
+        ),
+        // D-378 — every field the Mode asks for is required; the Mode decides which group applies.
         _Step.location: validateEventPlace(
           eventMode: _eventMode,
           onlineUrl: _onlineUrl.text,
           mapsUrl: _mapsUrl.text,
+          building: _building.text,
+          floor: _floor.text,
+          room: _room.text,
+          meetingPlatform: _meetingPlatform.text,
+          meetingPassword: _meetingPassword.text,
         ),
+        // `isPrivate` mirrors the step's rendering: a Private event is never shown the results or
+        // certificate dates, so it must not be blocked on them.
         _Step.windows: validateEventWindows(
           registrationOpensAt: _registrationOpensAt,
           registrationClosesAt: _registrationClosesAt,
           checkinOpensAt: _checkinOpensAt,
           checkinClosesAt: _checkinClosesAt,
+          resultDate: _resultDate,
+          certificateReleaseAt: _certificateReleaseAt,
+          isPrivate: widget.product == 'Private',
         ),
         _Step.eligibility: validateEventEligibility(
           minAge: _minAge.text,
           maxAge: _maxAge.text,
           maxTeams: _maxTeams.text,
+          isPrivate: widget.product == 'Private',
         ),
         _Step.legal: validateEventLegal(
           termsUrl: _termsUrl.text,
           requiresConsent: _requiresConsent,
           consentText: _consentText.text,
+          codeOfConduct: _codeOfConduct.text,
+          refundPolicy: _refundPolicy.text,
+          cancellationPolicy: _cancellationPolicy.text,
         ),
         _Step.authorization: _needsAuthorization
             ? validateEventAuthorization(
@@ -359,10 +381,10 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
   /// Failing CLOSED on a representation list that has not loaded: unlike the type lookup above, an
   /// absent answer here means "we do not know that a verified organisation exists", and letting a paid
   /// event through on that assumption is the failure this guard exists to prevent.
+  /// D-379 - every event represents a real organisation. Both escapes are gone: `product == 'Private'`
+  /// (a private event represents somebody too) and the dev-bypass arm (it lifts the mock-backed identity
+  /// proofs, not the question of who is answerable for an event). Web's `representingValid` is the twin.
   bool get _representingValid =>
-      widget.product == 'Private' ||
-      // D-352 — the server states whether an organisation is required at all.
-      !(ref.read(currentUserProvider)?.trust.requiresRepresentation ?? true) ||
       ref.read(myRepresentationsProvider).maybeWhen(
             data: (list) => list.any((r) =>
                 r.organizationId == _representingOrgId && (r.canBackPaidEvent || r.isVerified)),
@@ -1263,15 +1285,21 @@ class _CreateEventPageState extends ConsumerState<CreateEventPage> {
     );
   }
 
-  Widget _buildContent() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _hint('Optional, but this is what a listing card and a shared link show.'),
-          _field(_tagline, 'Tagline', maxLength: 160),
-          _field(_shortDescription, 'Short description', maxLength: 300, lines: 2),
-          _field(_rules, 'Rules', lines: 4),
-        ],
-      );
+  /// D-378 — required, and errors wired the same way Details wires its own: from `_currentErrors`,
+  /// which is the map Continue is derived from, so a field can never disagree with the button.
+  Widget _buildContent() {
+    final errors = _currentErrors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _hint('This is what a listing card and a shared link show.'),
+        _field(_tagline, 'Tagline', maxLength: 160, error: errors['tagline']),
+        _field(_shortDescription, 'Short description',
+            maxLength: 300, lines: 2, error: errors['shortDescription']),
+        _field(_rules, 'Rules', lines: 4, error: errors['rules']),
+      ],
+    );
+  }
 
   Widget _buildLocation() {
     final errors = _currentErrors;

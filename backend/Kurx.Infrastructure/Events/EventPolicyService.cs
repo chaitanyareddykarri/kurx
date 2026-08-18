@@ -56,8 +56,11 @@ public class EventPolicyService(KurxDbContext db, IdentityVerificationOptions id
 
         var facts = new PolicyResolver.RepresentationFacts(
             RepresentsInstitution: representsInstitution,
-            HasApprovedAuthorization: representsInstitution && await db.EventAuthorizations.AsNoTracking()
-                .AnyAsync(a => a.EventId == ev.Id && a.Status == EventAuthorizationStatus.Approved, ct),
+            // D-379 — EXISTS, not Approved, and no longer conditioned on `representsInstitution` (every
+            // event represents a real organization now). One row per event, keyed on EventId, so another
+            // event's letter can never satisfy this.
+            HasAuthorization: await db.EventAuthorizations.AsNoTracking()
+                .AnyAsync(a => a.EventId == ev.Id, ct),
             ArchetypeRequiresRepresentation: archetype?.RequiresRepresentation ?? false,
             ArchetypeRequiresFinancialReview: archetype?.RequiresFinancialReview ?? false,
             FinancialReviewPassed: ev.FinancialReviewStatus == FinancialReviewStatus.Passed,

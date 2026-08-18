@@ -95,6 +95,11 @@ export const PROBLEM_COPY: Record<string, string> = {
   missing_venue: "Add a venue before publishing this event.",
   missing_online_url: "Add the joining link before publishing this online event.",
   missing_venue_or_url: "Add a venue or a joining link before publishing this event.",
+  // D-378 — refused at submit_review, not at publish, so the copy says "submitting" rather than
+  // "publishing": the organiser is still holding a Draft they can fix and resubmit.
+  missing_tagline: "Add a tagline before submitting this event for review.",
+  missing_short_description: "Add a short description before submitting this event for review.",
+  missing_rules: "Add the rules before submitting this event for review.",
   missing_owner_unit: "This event isn't attached to a team yet. Set one before publishing.",
   // The V3 §14.2 lifecycle gates. Every one of these is a refusal an organiser can act on in a minute,
   // and not one had copy anywhere — so `open_registration` on an event with no ticket type reached them
